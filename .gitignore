@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Secrets: never commit these (the repo is public). Use Actions secrets / backend env vars.
+.env
+.env.*
+!.env.example
+
+# League and lineup data (saved lineups, PIN hashes, scores, audit log)
+data/
+
+# Caches and local test data
+.cache/
+.bakeoff/
+*.tmp
+
+# Local editor/agent settings
+.claude/settings.local.json
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini

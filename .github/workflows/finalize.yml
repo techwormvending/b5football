@@ -1,0 +1,77 @@
+# Nightly nflverse finalization (build rule 5). Rescores every unlocked week from
+# nflverse, logs live-vs-final differences and stat corrections, and
+# auto-finalizes weeks past their deadline. See CLAUDE.md, "Live scoring and finalization".
+#
+# Storage (INTERIM until the backend exists): the league data folder lives on the
+# `league-data` branch, never on `main`, so GitHub Pages doesn't serve it. Each run
+# checks it out, updates it and commits it back. The repo is public, so that
+# branch is too: it holds scores, diff logs, review items and the audit log.
+# No secrets are needed (nflverse and ESPN are public).
+#
+# Actions cron runs in UTC and can start late; that's fine for a nightly job.
+# Note: GitHub disables scheduled workflows in public repos after 60 days with no
+# repository activity. Re-enable it in the Actions tab before the season if it stops.
+
+name: Nightly finalization
+
+on:
+  schedule:
+    - cron: "17 9 * * *"     # 09:17 UTC daily = 5:17 AM EDT / 4:17 AM EST (off the hour to dodge the rush)
+  workflow_dispatch:
+    inputs:
+      season:
+        description: "Season (blank = current, from ESPN)"
+        required: false
+      through_week:
+        description: "Finalize weeks 1 through this week (blank = current)"
+        required: false
+
+permissions:
+  contents: write            # push to the league-data branch
+
+concurrency:
+  group: finalize
+  cancel-in-progress: false  # never interrupt a run that is writing league data
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Check out league data (league-data branch)
+        run: |
+          if git ls-remote --exit-code --heads origin league-data > /dev/null; then
+            git fetch --depth=1 origin league-data
+            git worktree add league-store FETCH_HEAD
+          else
+            git worktree add --orphan -b league-data league-store
+          fi
+
+      - name: Finalize
+        env:
+          B5_DATA: league-store/league
+          B5_ACTOR: github-actions
+          # Repository variable AUTO_FINALIZE: "off" or "<weekday 0-6>@<hour 0-23>" US Eastern. Default Tue 11 PM.
+          AUTO_FINALIZE: ${{ vars.AUTO_FINALIZE || '2@23' }}
+          SEASON: ${{ inputs.season }}
+          THROUGH_WEEK: ${{ inputs.through_week }}
+        run: node scripts/finalize.mts $SEASON $THROUGH_WEEK
+
+      - name: Save league data
+        working-directory: league-store
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then echo "No changes."; exit 0; fi
+          git commit -m "Nightly finalization $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push origin HEAD:league-data

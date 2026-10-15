@@ -1,0 +1,2 @@
+# Keep LF line endings in the repo (GitHub Actions runs on Linux).
+* text=auto eol=lf
