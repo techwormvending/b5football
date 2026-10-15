@@ -1,0 +1,5144 @@
+{
+ "season": 2026,
+ "week": 2,
+ "status": "final",
+ "missingGames": [],
+ "diffLog": [
+  {
+   "at": "2026-10-15T16:35:49.489Z",
+   "kind": "live_vs_final",
+   "entries": [],
+   "note": "no live numbers were recorded for CAR@ATL, CIN@HOU, CLE@TB, DET@BUF, GB@NYJ, IND@KC, JAX@DEN, LV@LAC, MIA@SF, MIN@CHI, NO@BAL, NYG@LAR, PHI@TEN, PIT@NE, SEA@ARI, WAS@DAL"
+  }
+ ],
+ "updatedAt": "2026-10-15T16:35:49.489Z",
+ "final": {
+  "season": 2026,
+  "week": 2,
+  "source": "final",
+  "computedAt": "2026-10-15T16:35:49.489Z",
+  "delayed": false,
+  "errors": [],
+  "games": [
+   {
+    "gameKey": "CAR@ATL",
+    "sourceGameId": "2026_02_CAR_ATL",
+    "home": "ATL",
+    "away": "CAR",
+    "homeScore": 3,
+    "awayScore": 34,
+    "status": "final",
+    "gameDate": "2026-09-20"
+   },
+   {
+    "gameKey": "CIN@HOU",
+    "sourceGameId": "2026_02_CIN_HOU",
+    "home": "HOU",
+    "away": "CIN",
+    "homeScore": 6,
+    "awayScore": 20,
+    "status": "final",
+    "gameDate": "2026-09-20"
+   },
+   {
+    "gameKey": "CLE@TB",
+    "sourceGameId": "2026_02_CLE_TB",
+    "home": "TB",
+    "away": "CLE",
+    "homeScore": 19,
+    "awayScore": 23,
+    "status": "final",
+    "gameDate": "2026-09-20"
+   },
+   {
+    "gameKey": "DET@BUF",
+    "sourceGameId": "2026_02_DET_BUF",
+    "home": "BUF",
+    "away": "DET",
+    "homeScore": 41,
+    "awayScore": 31,
+    "status": "final",
+    "gameDate": "2026-09-17"
+   },
+   {
+    "gameKey": "GB@NYJ",
+    "sourceGameId": "2026_02_GB_NYJ",
+    "home": "NYJ",
+    "away": "GB",
+    "homeScore": 17,
+    "awayScore": 20,
+    "status": "final",
+    "gameDate": "2026-09-20"
+   },
+   {
+    "gameKey": "IND@KC",
+    "sourceGameId": "2026_02_IND_KC",
+    "home": "KC",
+    "away": "IND",
+    "homeScore": 33,
+    "awayScore": 30,
+    "status": "final",
+    "gameDate": "2026-09-20"
+   },
+   {
+    "gameKey": "JAX@DEN",
+    "sourceGameId": "2026_02_JAX_DEN",
+    "home": "DEN",
+    "away": "JAX",
+    "homeScore": 20,
+    "awayScore": 13,
+    "status": "final",
+    "gameDate": "2026-09-20"
+   },
+   {
+    "gameKey": "LV@LAC",
+    "sourceGameId": "2026_02_LV_LAC",
+    "home": "LAC",
+    "away": "LV",
+    "homeScore": 14,
+    "awayScore": 26,
+    "status": "final",
+    "gameDate": "2026-09-20"
+   },
+   {
+    "gameKey": "MIA@SF",
+    "sourceGameId": "2026_02_MIA_SF",
+    "home": "SF",
+    "away": "MIA",
+    "homeScore": 35,
+    "awayScore": 13,
+    "status": "final",
+    "gameDate": "2026-09-20"
+   },
+   {
+    "gameKey": "MIN@CHI",
+    "sourceGameId": "2026_02_MIN_CHI",
+    "home": "CHI",
+    "away": "MIN",
+    "homeScore": 3,
+    "awayScore": 9,
+    "status": "final",
+    "gameDate": "2026-09-20"
+   },
+   {
+    "gameKey": "NO@BAL",
+    "sourceGameId": "2026_02_NO_BAL",
+    "home": "BAL",
+    "away": "NO",
+    "homeScore": 17,
+    "awayScore": 24,
+    "status": "final",
+    "gameDate": "2026-09-20"
+   },
+   {
+    "gameKey": "NYG@LAR",
+    "sourceGameId": "2026_02_NYG_LA",
+    "home": "LAR",
+    "away": "NYG",
+    "homeScore": 28,
+    "awayScore": 6,
+    "status": "final",
+    "gameDate": "2026-09-21"
+   },
+   {
+    "gameKey": "PHI@TEN",
+    "sourceGameId": "2026_02_PHI_TEN",
+    "home": "TEN",
+    "away": "PHI",
+    "homeScore": 20,
+    "awayScore": 24,
+    "status": "final",
+    "gameDate": "2026-09-20"
+   },
+   {
+    "gameKey": "PIT@NE",
+    "sourceGameId": "2026_02_PIT_NE",
+    "home": "NE",
+    "away": "PIT",
+    "homeScore": 20,
+    "awayScore": 3,
+    "status": "final",
+    "gameDate": "2026-09-20"
+   },
+   {
+    "gameKey": "SEA@ARI",
+    "sourceGameId": "2026_02_SEA_ARI",
+    "home": "ARI",
+    "away": "SEA",
+    "homeScore": 7,
+    "awayScore": 31,
+    "status": "final",
+    "gameDate": "2026-09-20"
+   },
+   {
+    "gameKey": "WAS@DAL",
+    "sourceGameId": "2026_02_WAS_DAL",
+    "home": "DAL",
+    "away": "WAS",
+    "homeScore": 37,
+    "awayScore": 20,
+    "status": "final",
+    "gameDate": "2026-09-20"
+   }
+  ],
+  "players": {
+   "nflverse:00-0033662": {
+    "key": "nflverse:00-0033662",
+    "name": "Cooper Rush",
+    "position": "QB",
+    "team": "ATL",
+    "gameKey": "CAR@ATL",
+    "points": 0,
+    "stats": {
+     "passYds": 86,
+     "rushYds": 20,
+     "interceptionsThrown": 2
+    }
+   },
+   "nflverse:00-0039150": {
+    "key": "nflverse:00-0039150",
+    "name": "Bryce Young",
+    "position": "QB",
+    "team": "CAR",
+    "gameKey": "CAR@ATL",
+    "points": 25,
+    "stats": {
+     "passYds": 287,
+     "rushYds": 6,
+     "passTdLengths": [
+      3,
+      7,
+      12
+     ]
+    }
+   },
+   "nflverse:00-0036555": {
+    "key": "nflverse:00-0036555",
+    "name": "Chuba Hubbard",
+    "position": "RB",
+    "team": "CAR",
+    "gameKey": "CAR@ATL",
+    "points": 11,
+    "stats": {
+     "rushYds": 53,
+     "recYds": 11,
+     "receptions": 2,
+     "recTdLengths": [
+      3
+     ]
+    }
+   },
+   "nflverse:00-0039491": {
+    "key": "nflverse:00-0039491",
+    "name": "Jalen Coker",
+    "position": "WR",
+    "team": "CAR",
+    "gameKey": "CAR@ATL",
+    "points": 6,
+    "stats": {
+     "recYds": 66,
+     "receptions": 8
+    }
+   },
+   "nflverse:00-0040124": {
+    "key": "nflverse:00-0040124",
+    "name": "Tetairoa McMillan",
+    "position": "WR",
+    "team": "CAR",
+    "gameKey": "CAR@ATL",
+    "points": 8.5,
+    "stats": {
+     "recYds": 101,
+     "receptions": 5
+    }
+   },
+   "nflverse:00-0037238": {
+    "key": "nflverse:00-0037238",
+    "name": "Drake London",
+    "position": "WR",
+    "team": "ATL",
+    "gameKey": "CAR@ATL",
+    "points": 3,
+    "stats": {
+     "rushYds": -2,
+     "recYds": 51,
+     "receptions": 4
+    }
+   },
+   "nflverse:00-0038542": {
+    "key": "nflverse:00-0038542",
+    "name": "Bijan Robinson",
+    "position": "RB",
+    "team": "ATL",
+    "gameKey": "CAR@ATL",
+    "points": 7.5,
+    "stats": {
+     "rushYds": 72,
+     "recYds": 9,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0039342": {
+    "key": "nflverse:00-0039342",
+    "name": "Xavier Legette",
+    "position": "WR",
+    "team": "CAR",
+    "gameKey": "CAR@ATL",
+    "points": 3,
+    "stats": {
+     "recYds": 64,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0036970": {
+    "key": "nflverse:00-0036970",
+    "name": "Kyle Pitts",
+    "position": "TE",
+    "team": "ATL",
+    "gameKey": "CAR@ATL",
+    "points": 2,
+    "stats": {
+     "recYds": 15,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0039344": {
+    "key": "nflverse:00-0039344",
+    "name": "Jonathon Brooks",
+    "position": "RB",
+    "team": "CAR",
+    "gameKey": "CAR@ATL",
+    "points": 0.5,
+    "stats": {
+     "rushYds": 16,
+     "recYds": -5,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0037746": {
+    "key": "nflverse:00-0037746",
+    "name": "Brian Robinson",
+    "position": "RB",
+    "team": "ATL",
+    "gameKey": "CAR@ATL",
+    "points": 5,
+    "stats": {
+     "rushYds": 51,
+     "recYds": 16,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0041044": {
+    "key": "nflverse:00-0041044",
+    "name": "Zachariah Branch",
+    "position": "WR",
+    "team": "ATL",
+    "gameKey": "CAR@ATL",
+    "points": 1,
+    "stats": {
+     "recYds": 14,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0037741": {
+    "key": "nflverse:00-0037741",
+    "name": "Jahan Dotson",
+    "position": "WR",
+    "team": "ATL",
+    "gameKey": "CAR@ATL",
+    "points": 1,
+    "stats": {
+     "recYds": 11,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0037005": {
+    "key": "nflverse:00-0037005",
+    "name": "Tommy Tremble",
+    "position": "TE",
+    "team": "CAR",
+    "gameKey": "CAR@ATL",
+    "points": 2,
+    "stats": {
+     "recYds": 4,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0035208": {
+    "key": "nflverse:00-0035208",
+    "name": "Olamide Zaccheaus",
+    "position": "WR",
+    "team": "ATL",
+    "gameKey": "CAR@ATL",
+    "points": 0.5,
+    "stats": {
+     "recYds": 3,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0031610": {
+    "key": "nflverse:00-0031610",
+    "name": "Darren Waller",
+    "position": "TE",
+    "team": "CAR",
+    "gameKey": "CAR@ATL",
+    "points": 18,
+    "stats": {
+     "recYds": 33,
+     "receptions": 3,
+     "recTdLengths": [
+      7,
+      12
+     ]
+    }
+   },
+   "nflverse:00-0041194": {
+    "key": "nflverse:00-0041194",
+    "name": "Jack Strand",
+    "position": "QB",
+    "team": "ATL",
+    "gameKey": "CAR@ATL",
+    "points": 0,
+    "stats": {
+     "passYds": 59,
+     "rushYds": 16,
+     "interceptionsThrown": 1
+    }
+   },
+   "nflverse:00-0036429": {
+    "key": "nflverse:00-0036429",
+    "name": "Charlie Woerner",
+    "position": "TE",
+    "team": "ATL",
+    "gameKey": "CAR@ATL",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0036463": {
+    "key": "nflverse:00-0036463",
+    "name": "Chris Blair",
+    "position": "WR",
+    "team": "ATL",
+    "gameKey": "CAR@ATL",
+    "points": 0.5,
+    "stats": {
+     "recYds": 6,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0040187": {
+    "key": "nflverse:00-0040187",
+    "name": "Mitchell Evans",
+    "position": "TE",
+    "team": "CAR",
+    "gameKey": "CAR@ATL",
+    "points": 2,
+    "stats": {
+     "recYds": 13,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0032392": {
+    "key": "nflverse:00-0032392",
+    "name": "Austin Hooper",
+    "position": "TE",
+    "team": "ATL",
+    "gameKey": "CAR@ATL",
+    "points": 3,
+    "stats": {
+     "recYds": 20,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0036265": {
+    "key": "nflverse:00-0036265",
+    "name": "AJ Dillon",
+    "position": "RB",
+    "team": "CAR",
+    "gameKey": "CAR@ATL",
+    "points": 0,
+    "stats": {
+     "rushYds": -3
+    }
+   },
+   "nflverse:00-0038102": {
+    "key": "nflverse:00-0038102",
+    "name": "Kenny Pickett",
+    "position": "QB",
+    "team": "CAR",
+    "gameKey": "CAR@ATL",
+    "points": 0,
+    "stats": {
+     "rushYds": -4
+    }
+   },
+   "nflverse:00-0040279": {
+    "key": "nflverse:00-0040279",
+    "name": "Ryan Fitzgerald",
+    "position": "K",
+    "team": "CAR",
+    "gameKey": "CAR@ATL",
+    "points": 10.7,
+    "stats": {
+     "extraPoints": 4,
+     "fgMadeLengths": [
+      37,
+      25
+     ]
+    }
+   },
+   "nflverse:00-0025565": {
+    "key": "nflverse:00-0025565",
+    "name": "Nick Folk",
+    "position": "K",
+    "team": "ATL",
+    "gameKey": "CAR@ATL",
+    "points": 4.1,
+    "stats": {
+     "fgMadeLengths": [
+      41
+     ]
+    }
+   },
+   "nflverse:00-0036442": {
+    "key": "nflverse:00-0036442",
+    "name": "Joe Burrow",
+    "position": "QB",
+    "team": "CIN",
+    "gameKey": "CIN@HOU",
+    "points": 19,
+    "stats": {
+     "passYds": 207,
+     "rushYds": -1,
+     "passTdLengths": [
+      32,
+      18
+     ]
+    }
+   },
+   "nflverse:00-0038597": {
+    "key": "nflverse:00-0038597",
+    "name": "Chase Brown",
+    "position": "RB",
+    "team": "CIN",
+    "gameKey": "CIN@HOU",
+    "points": 7.5,
+    "stats": {
+     "rushYds": 80,
+     "recYds": 2,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0036900": {
+    "key": "nflverse:00-0036900",
+    "name": "Ja'Marr Chase",
+    "position": "WR",
+    "team": "CIN",
+    "gameKey": "CIN@HOU",
+    "points": 21.5,
+    "stats": {
+     "recYds": 75,
+     "receptions": 7,
+     "recTdLengths": [
+      32,
+      18
+     ]
+    }
+   },
+   "nflverse:00-0035685": {
+    "key": "nflverse:00-0035685",
+    "name": "David Montgomery",
+    "position": "RB",
+    "team": "HOU",
+    "gameKey": "CIN@HOU",
+    "points": 1,
+    "stats": {
+     "rushYds": 10,
+     "recYds": 14,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0039163": {
+    "key": "nflverse:00-0039163",
+    "name": "C.J. Stroud",
+    "position": "QB",
+    "team": "HOU",
+    "gameKey": "CIN@HOU",
+    "points": 11,
+    "stats": {
+     "passYds": 353,
+     "rushYds": 29
+    }
+   },
+   "nflverse:00-0038618": {
+    "key": "nflverse:00-0038618",
+    "name": "Xavier Hutchinson",
+    "position": "WR",
+    "team": "HOU",
+    "gameKey": "CIN@HOU",
+    "points": 2.5,
+    "stats": {
+     "recYds": 37,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0038728": {
+    "key": "nflverse:00-0038728",
+    "name": "Jared Wayne",
+    "position": "WR",
+    "team": "HOU",
+    "gameKey": "CIN@HOU",
+    "points": 2,
+    "stats": {
+     "recYds": 33,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0033526": {
+    "key": "nflverse:00-0033526",
+    "name": "Samaje Perine",
+    "position": "RB",
+    "team": "CIN",
+    "gameKey": "CIN@HOU",
+    "points": 0.5,
+    "stats": {
+     "rushYds": 6,
+     "recYds": 16,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0041069": {
+    "key": "nflverse:00-0041069",
+    "name": "Colbie Young",
+    "position": "WR",
+    "team": "CIN",
+    "gameKey": "CIN@HOU",
+    "points": 0.5,
+    "stats": {
+     "recYds": 7,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0040138": {
+    "key": "nflverse:00-0040138",
+    "name": "Jaylin Noel",
+    "position": "WR",
+    "team": "HOU",
+    "gameKey": "CIN@HOU",
+    "points": 1.5,
+    "stats": {
+     "rushYds": 13,
+     "recYds": 31,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0034383": {
+    "key": "nflverse:00-0034383",
+    "name": "Dalton Schultz",
+    "position": "TE",
+    "team": "HOU",
+    "gameKey": "CIN@HOU",
+    "points": 22,
+    "stats": {
+     "recYds": 140,
+     "receptions": 12
+    }
+   },
+   "nflverse:00-0038608": {
+    "key": "nflverse:00-0038608",
+    "name": "Kayshon Boutte",
+    "position": "WR",
+    "team": "HOU",
+    "gameKey": "CIN@HOU",
+    "points": 2.5,
+    "stats": {
+     "recYds": 37,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0040583": {
+    "key": "nflverse:00-0040583",
+    "name": "Woody Marks",
+    "position": "RB",
+    "team": "HOU",
+    "gameKey": "CIN@HOU",
+    "points": 4.5,
+    "stats": {
+     "rushYds": 8,
+     "recYds": 27,
+     "receptions": 5
+    }
+   },
+   "nflverse:00-0036410": {
+    "key": "nflverse:00-0036410",
+    "name": "Tee Higgins",
+    "position": "WR",
+    "team": "CIN",
+    "gameKey": "CIN@HOU",
+    "points": 6.5,
+    "stats": {
+     "recYds": 95,
+     "receptions": 5
+    }
+   },
+   "nflverse:00-0034981": {
+    "key": "nflverse:00-0034981",
+    "name": "Foster Moreau",
+    "position": "TE",
+    "team": "HOU",
+    "gameKey": "CIN@HOU",
+    "points": 4,
+    "stats": {
+     "recYds": 34,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0039814": {
+    "key": "nflverse:00-0039814",
+    "name": "Erick All",
+    "position": "TE",
+    "team": "CIN",
+    "gameKey": "CIN@HOU",
+    "points": 3,
+    "stats": {
+     "recYds": 5,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0038619": {
+    "key": "nflverse:00-0038619",
+    "name": "Andrei Iosivas",
+    "position": "WR",
+    "team": "CIN",
+    "gameKey": "CIN@HOU",
+    "points": 0.5,
+    "stats": {
+     "recYds": 7,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0040785": {
+    "key": "nflverse:00-0040785",
+    "name": "Dohnte Meyers",
+    "position": "WR",
+    "team": "CIN",
+    "gameKey": "CIN@HOU",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0036854": {
+    "key": "nflverse:00-0036854",
+    "name": "Evan McPherson",
+    "position": "K",
+    "team": "CIN",
+    "gameKey": "CIN@HOU",
+    "points": 12.8,
+    "stats": {
+     "extraPoints": 2,
+     "fgMadeLengths": [
+      51,
+      57
+     ]
+    }
+   },
+   "nflverse:00-0032726": {
+    "key": "nflverse:00-0032726",
+    "name": "Ka'imi Fairbairn",
+    "position": "K",
+    "team": "HOU",
+    "gameKey": "CIN@HOU",
+    "points": 8.2,
+    "stats": {
+     "fgMadeLengths": [
+      37,
+      45
+     ]
+    }
+   },
+   "nflverse:00-0033537": {
+    "key": "nflverse:00-0033537",
+    "name": "Deshaun Watson",
+    "position": "QB",
+    "team": "CLE",
+    "gameKey": "CLE@TB",
+    "points": 23,
+    "stats": {
+     "passYds": 238,
+     "rushYds": 22,
+     "passTdLengths": [
+      55,
+      17
+     ]
+    }
+   },
+   "nflverse:00-0041547": {
+    "key": "nflverse:00-0041547",
+    "name": "KC Concepcion",
+    "position": "WR",
+    "team": "CLE",
+    "gameKey": "CLE@TB",
+    "points": 3,
+    "stats": {
+     "rushYds": -6,
+     "recYds": 28,
+     "receptions": 6
+    }
+   },
+   "nflverse:00-0040784": {
+    "key": "nflverse:00-0040784",
+    "name": "Quinshon Judkins",
+    "position": "RB",
+    "team": "CLE",
+    "gameKey": "CLE@TB",
+    "points": 4.5,
+    "stats": {
+     "rushYds": 21,
+     "recYds": 27,
+     "receptions": 5
+    }
+   },
+   "nflverse:00-0033921": {
+    "key": "nflverse:00-0033921",
+    "name": "Chris Godwin Jr.",
+    "position": "WR",
+    "team": "TB",
+    "gameKey": "CLE@TB",
+    "points": 3.5,
+    "stats": {
+     "rushYds": 12,
+     "recYds": 46,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0034855": {
+    "key": "nflverse:00-0034855",
+    "name": "Baker Mayfield",
+    "position": "QB",
+    "team": "TB",
+    "gameKey": "CLE@TB",
+    "points": 10,
+    "stats": {
+     "passYds": 182,
+     "rushYds": 29,
+     "interceptionsThrown": 1,
+     "passTdLengths": [
+      5
+     ]
+    }
+   },
+   "nflverse:00-0041048": {
+    "key": "nflverse:00-0041048",
+    "name": "Ted Hurst III",
+    "position": "WR",
+    "team": "TB",
+    "gameKey": "CLE@TB",
+    "points": 2,
+    "stats": {
+     "recYds": 27,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0040129": {
+    "key": "nflverse:00-0040129",
+    "name": "Emeka Egbuka",
+    "position": "WR",
+    "team": "TB",
+    "gameKey": "CLE@TB",
+    "points": 7.5,
+    "stats": {
+     "rushYds": -3,
+     "recYds": 16,
+     "receptions": 3,
+     "recTdLengths": [
+      5
+     ]
+    }
+   },
+   "nflverse:00-0038129": {
+    "key": "nflverse:00-0038129",
+    "name": "Cade Otton",
+    "position": "TE",
+    "team": "TB",
+    "gameKey": "CLE@TB",
+    "points": 7,
+    "stats": {
+     "recYds": 38,
+     "receptions": 5
+    }
+   },
+   "nflverse:00-0040663": {
+    "key": "nflverse:00-0040663",
+    "name": "Harold Fannin Jr.",
+    "position": "TE",
+    "team": "CLE",
+    "gameKey": "CLE@TB",
+    "points": 9,
+    "stats": {
+     "recYds": 54,
+     "receptions": 5
+    }
+   },
+   "nflverse:00-0040466": {
+    "key": "nflverse:00-0040466",
+    "name": "Raheim Sanders",
+    "position": "RB",
+    "team": "CLE",
+    "gameKey": "CLE@TB",
+    "points": 0.5,
+    "stats": {
+     "rushYds": 4,
+     "recYds": 7,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0039361": {
+    "key": "nflverse:00-0039361",
+    "name": "Bucky Irving",
+    "position": "RB",
+    "team": "TB",
+    "gameKey": "CLE@TB",
+    "points": 8,
+    "stats": {
+     "rushYds": 89,
+     "recYds": 1,
+     "receptions": 4
+    }
+   },
+   "nflverse:00-0036919": {
+    "key": "nflverse:00-0036919",
+    "name": "Kenny Gainwell",
+    "position": "RB",
+    "team": "TB",
+    "gameKey": "CLE@TB",
+    "points": 1.5,
+    "stats": {
+     "rushYds": 10,
+     "recYds": 5,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0041037": {
+    "key": "nflverse:00-0041037",
+    "name": "Denzel Boston",
+    "position": "WR",
+    "team": "CLE",
+    "gameKey": "CLE@TB",
+    "points": 16.5,
+    "stats": {
+     "recYds": 95,
+     "receptions": 5,
+     "recTdLengths": [
+      55
+     ]
+    }
+   },
+   "nflverse:00-0040237": {
+    "key": "nflverse:00-0040237",
+    "name": "Tez Johnson",
+    "position": "WR",
+    "team": "TB",
+    "gameKey": "CLE@TB",
+    "points": 1.5,
+    "stats": {
+     "recYds": 49,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0040782": {
+    "key": "nflverse:00-0040782",
+    "name": "Isaiah Bond",
+    "position": "WR",
+    "team": "CLE",
+    "gameKey": "CLE@TB",
+    "points": 0.5,
+    "stats": {
+     "recYds": 10,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0038710": {
+    "key": "nflverse:00-0038710",
+    "name": "Blake Whiteheart",
+    "position": "TE",
+    "team": "CLE",
+    "gameKey": "CLE@TB",
+    "points": 9,
+    "stats": {
+     "recYds": 17,
+     "receptions": 1,
+     "recTdLengths": [
+      17
+     ]
+    }
+   },
+   "nflverse:00-0036407": {
+    "key": "nflverse:00-0036407",
+    "name": "Jerry Jeudy",
+    "position": "WR",
+    "team": "CLE",
+    "gameKey": "CLE@TB",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0038794": {
+    "key": "nflverse:00-0038794",
+    "name": "Jaleel McLaughlin",
+    "position": "RB",
+    "team": "CLE",
+    "gameKey": "CLE@TB",
+    "points": 0,
+    "stats": {
+     "rushYds": 3
+    }
+   },
+   "nflverse:00-0035358": {
+    "key": "nflverse:00-0035358",
+    "name": "Chase McLaughlin",
+    "position": "K",
+    "team": "TB",
+    "gameKey": "CLE@TB",
+    "points": 17.6,
+    "stats": {
+     "fgMadeLengths": [
+      59,
+      45,
+      31,
+      31
+     ],
+     "extraPoints": 1
+    }
+   },
+   "nflverse:00-0038428": {
+    "key": "nflverse:00-0038428",
+    "name": "Andre Szmyt",
+    "position": "K",
+    "team": "CLE",
+    "gameKey": "CLE@TB",
+    "points": 13.8,
+    "stats": {
+     "fgMadeLengths": [
+      50,
+      34,
+      34
+     ],
+     "extraPoints": 2
+    }
+   },
+   "nflverse:00-0034857": {
+    "key": "nflverse:00-0034857",
+    "name": "Josh Allen",
+    "position": "QB",
+    "team": "BUF",
+    "gameKey": "DET@BUF",
+    "points": 41,
+    "stats": {
+     "passYds": 248,
+     "rushYds": 69,
+     "rushTdLengths": [
+      1,
+      2
+     ],
+     "passTdLengths": [
+      43,
+      1,
+      16
+     ]
+    }
+   },
+   "nflverse:00-0037261": {
+    "key": "nflverse:00-0037261",
+    "name": "Khalil Shakir",
+    "position": "WR",
+    "team": "BUF",
+    "gameKey": "DET@BUF",
+    "points": 2.5,
+    "stats": {
+     "recYds": 38,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0037248": {
+    "key": "nflverse:00-0037248",
+    "name": "James Cook",
+    "position": "RB",
+    "team": "BUF",
+    "gameKey": "DET@BUF",
+    "points": 16.5,
+    "stats": {
+     "rushYds": 135,
+     "recYds": 4,
+     "receptions": 1,
+     "rushTdLengths": [
+      1
+     ]
+    }
+   },
+   "nflverse:00-0033106": {
+    "key": "nflverse:00-0033106",
+    "name": "Jared Goff",
+    "position": "QB",
+    "team": "DET",
+    "gameKey": "DET@BUF",
+    "points": 33,
+    "stats": {
+     "passYds": 327,
+     "rushYds": 7,
+     "passTdLengths": [
+      11,
+      2,
+      1,
+      27
+     ]
+    }
+   },
+   "nflverse:00-0039065": {
+    "key": "nflverse:00-0039065",
+    "name": "Sam LaPorta",
+    "position": "TE",
+    "team": "DET",
+    "gameKey": "DET@BUF",
+    "points": 16,
+    "stats": {
+     "recYds": 52,
+     "receptions": 6,
+     "recTdLengths": [
+      1
+     ]
+    }
+   },
+   "nflverse:00-0039139": {
+    "key": "nflverse:00-0039139",
+    "name": "Jahmyr Gibbs",
+    "position": "RB",
+    "team": "DET",
+    "gameKey": "DET@BUF",
+    "points": 17,
+    "stats": {
+     "rushYds": 52,
+     "recYds": 61,
+     "receptions": 6,
+     "recTdLengths": [
+      11
+     ]
+    }
+   },
+   "nflverse:00-0039901": {
+    "key": "nflverse:00-0039901",
+    "name": "Keon Coleman",
+    "position": "WR",
+    "team": "BUF",
+    "gameKey": "DET@BUF",
+    "points": 5,
+    "stats": {
+     "recYds": 63,
+     "receptions": 6
+    }
+   },
+   "nflverse:00-0038933": {
+    "key": "nflverse:00-0038933",
+    "name": "Dalton Kincaid",
+    "position": "TE",
+    "team": "BUF",
+    "gameKey": "DET@BUF",
+    "points": 20,
+    "stats": {
+     "recYds": 95,
+     "receptions": 7,
+     "recTdLengths": [
+      16
+     ]
+    }
+   },
+   "nflverse:00-0034827": {
+    "key": "nflverse:00-0034827",
+    "name": "DJ Moore",
+    "position": "WR",
+    "team": "BUF",
+    "gameKey": "DET@BUF",
+    "points": 0,
+    "stats": {
+     "rushYds": -1
+    }
+   },
+   "nflverse:00-0036988": {
+    "key": "nflverse:00-0036988",
+    "name": "Josh Palmer",
+    "position": "WR",
+    "team": "BUF",
+    "gameKey": "DET@BUF",
+    "points": 9.5,
+    "stats": {
+     "recYds": 43,
+     "receptions": 1,
+     "recTdLengths": [
+      43
+     ]
+    }
+   },
+   "nflverse:00-0035689": {
+    "key": "nflverse:00-0035689",
+    "name": "Dawson Knox",
+    "position": "TE",
+    "team": "BUF",
+    "gameKey": "DET@BUF",
+    "points": 9,
+    "stats": {
+     "recYds": 5,
+     "receptions": 2,
+     "recTdLengths": [
+      1
+     ]
+    }
+   },
+   "nflverse:00-0039364": {
+    "key": "nflverse:00-0039364",
+    "name": "Sione Vaki",
+    "position": "RB",
+    "team": "DET",
+    "gameKey": "DET@BUF",
+    "points": 0.5,
+    "stats": {
+     "rushYds": 7,
+     "recYds": 13,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0036963": {
+    "key": "nflverse:00-0036963",
+    "name": "Amon-Ra St. Brown",
+    "position": "WR",
+    "team": "DET",
+    "gameKey": "DET@BUF",
+    "points": 24.5,
+    "stats": {
+     "recYds": 142,
+     "receptions": 9,
+     "recTdLengths": [
+      2,
+      27
+     ]
+    }
+   },
+   "nflverse:00-0037240": {
+    "key": "nflverse:00-0037240",
+    "name": "Jameson Williams",
+    "position": "WR",
+    "team": "DET",
+    "gameKey": "DET@BUF",
+    "points": 2,
+    "stats": {
+     "recYds": 33,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0040669": {
+    "key": "nflverse:00-0040669",
+    "name": "Isaac TeSlaa",
+    "position": "WR",
+    "team": "DET",
+    "gameKey": "DET@BUF",
+    "points": 2,
+    "stats": {
+     "recYds": 26,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0036162": {
+    "key": "nflverse:00-0036162",
+    "name": "Tyler Bass",
+    "position": "K",
+    "team": "BUF",
+    "gameKey": "DET@BUF",
+    "points": 5,
+    "stats": {
+     "extraPoints": 5
+    }
+   },
+   "nflverse:00-0039172": {
+    "key": "nflverse:00-0039172",
+    "name": "Jake Bates",
+    "position": "K",
+    "team": "DET",
+    "gameKey": "DET@BUF",
+    "points": 7.1,
+    "stats": {
+     "extraPoints": 4,
+     "fgMadeLengths": [
+      31
+     ]
+    }
+   },
+   "nflverse:00-0036264": {
+    "key": "nflverse:00-0036264",
+    "name": "Jordan Love",
+    "position": "QB",
+    "team": "GB",
+    "gameKey": "GB@NYJ",
+    "points": 14,
+    "stats": {
+     "passYds": 145,
+     "passTdLengths": [
+      6,
+      3
+     ]
+    }
+   },
+   "nflverse:00-0039146": {
+    "key": "nflverse:00-0039146",
+    "name": "Jayden Reed",
+    "position": "WR",
+    "team": "GB",
+    "gameKey": "GB@NYJ",
+    "points": 0.5,
+    "stats": {
+     "recYds": 4,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0040667": {
+    "key": "nflverse:00-0040667",
+    "name": "Matthew Golden",
+    "position": "WR",
+    "team": "GB",
+    "gameKey": "GB@NYJ",
+    "points": 4,
+    "stats": {
+     "recYds": 58,
+     "receptions": 4
+    }
+   },
+   "nflverse:00-0038120": {
+    "key": "nflverse:00-0038120",
+    "name": "Breece Hall",
+    "position": "RB",
+    "team": "NYJ",
+    "gameKey": "GB@NYJ",
+    "points": 8.5,
+    "stats": {
+     "rushYds": 29,
+     "recYds": 63,
+     "receptions": 5
+    }
+   },
+   "nflverse:00-0030565": {
+    "key": "nflverse:00-0030565",
+    "name": "Geno Smith",
+    "position": "QB",
+    "team": "NYJ",
+    "gameKey": "GB@NYJ",
+    "points": 13,
+    "stats": {
+     "passYds": 247,
+     "rushYds": 17,
+     "passTdLengths": [
+      5
+     ]
+    }
+   },
+   "nflverse:00-0041032": {
+    "key": "nflverse:00-0041032",
+    "name": "Kenyon Sadiq",
+    "position": "TE",
+    "team": "NYJ",
+    "gameKey": "GB@NYJ",
+    "points": 3,
+    "stats": {
+     "recYds": 17,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0039890": {
+    "key": "nflverse:00-0039890",
+    "name": "Adonai Mitchell",
+    "position": "WR",
+    "team": "NYJ",
+    "gameKey": "GB@NYJ",
+    "points": 5,
+    "stats": {
+     "recYds": 63,
+     "receptions": 6
+    }
+   },
+   "nflverse:00-0037740": {
+    "key": "nflverse:00-0037740",
+    "name": "Garrett Wilson",
+    "position": "WR",
+    "team": "NYJ",
+    "gameKey": "GB@NYJ",
+    "points": 10.5,
+    "stats": {
+     "recYds": 57,
+     "receptions": 5,
+     "recTdLengths": [
+      5
+     ]
+    }
+   },
+   "nflverse:00-0039811": {
+    "key": "nflverse:00-0039811",
+    "name": "MarShawn Lloyd",
+    "position": "RB",
+    "team": "GB",
+    "gameKey": "GB@NYJ",
+    "points": 9,
+    "stats": {
+     "rushYds": 20,
+     "recYds": 6,
+     "receptions": 2,
+     "recTdLengths": [
+      6
+     ]
+    }
+   },
+   "nflverse:00-0038090": {
+    "key": "nflverse:00-0038090",
+    "name": "Skyy Moore",
+    "position": "WR",
+    "team": "GB",
+    "gameKey": "GB@NYJ",
+    "points": 1,
+    "stats": {
+     "recYds": 6,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0040142": {
+    "key": "nflverse:00-0040142",
+    "name": "Kaleb Johnson",
+    "position": "RB",
+    "team": "GB",
+    "gameKey": "GB@NYJ",
+    "points": 2,
+    "stats": {
+     "rushYds": 32
+    }
+   },
+   "nflverse:00-0038124": {
+    "key": "nflverse:00-0038124",
+    "name": "Christian Watson",
+    "position": "WR",
+    "team": "GB",
+    "gameKey": "GB@NYJ",
+    "points": 9,
+    "stats": {
+     "recYds": 41,
+     "receptions": 4,
+     "recTdLengths": [
+      3
+     ]
+    }
+   },
+   "nflverse:00-0039794": {
+    "key": "nflverse:00-0039794",
+    "name": "Braelon Allen",
+    "position": "RB",
+    "team": "NYJ",
+    "gameKey": "GB@NYJ",
+    "points": 6.5,
+    "stats": {
+     "rushYds": 7,
+     "recYds": 8,
+     "receptions": 1,
+     "rushTdLengths": [
+      5
+     ]
+    }
+   },
+   "nflverse:00-0037805": {
+    "key": "nflverse:00-0037805",
+    "name": "Jeremy Ruckert",
+    "position": "TE",
+    "team": "NYJ",
+    "gameKey": "GB@NYJ",
+    "points": 3,
+    "stats": {
+     "recYds": 5,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0038996": {
+    "key": "nflverse:00-0038996",
+    "name": "Tucker Kraft",
+    "position": "TE",
+    "team": "GB",
+    "gameKey": "GB@NYJ",
+    "points": 3,
+    "stats": {
+     "recYds": 15,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0037091": {
+    "key": "nflverse:00-0037091",
+    "name": "Bo Melton",
+    "position": "WR",
+    "team": "GB",
+    "gameKey": "GB@NYJ",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0039451": {
+    "key": "nflverse:00-0039451",
+    "name": "Isaiah Williams",
+    "position": "WR",
+    "team": "NYJ",
+    "gameKey": "GB@NYJ",
+    "points": 4,
+    "stats": {
+     "rushYds": 14,
+     "recYds": 34,
+     "receptions": 6
+    }
+   },
+   "nflverse:00-0038685": {
+    "key": "nflverse:00-0038685",
+    "name": "Chris Brooks",
+    "position": "RB",
+    "team": "GB",
+    "gameKey": "GB@NYJ",
+    "points": 2.5,
+    "stats": {
+     "rushYds": 11,
+     "recYds": 15,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0040899": {
+    "key": "nflverse:00-0040899",
+    "name": "Trey Smack",
+    "position": "K",
+    "team": "GB",
+    "gameKey": "GB@NYJ",
+    "points": 8.4,
+    "stats": {
+     "extraPoints": 2,
+     "fgMadeLengths": [
+      34,
+      26
+     ]
+    }
+   },
+   "nflverse:00-0034794": {
+    "key": "nflverse:00-0034794",
+    "name": "Jason Sanders",
+    "position": "K",
+    "team": "NYJ",
+    "gameKey": "GB@NYJ",
+    "points": 5.2,
+    "stats": {
+     "extraPoints": 2,
+     "fgMadeLengths": [
+      32
+     ]
+    }
+   },
+   "nflverse:00-0036223": {
+    "key": "nflverse:00-0036223",
+    "name": "Jonathan Taylor",
+    "position": "RB",
+    "team": "IND",
+    "gameKey": "IND@KC",
+    "points": 26,
+    "stats": {
+     "rushYds": 92,
+     "recYds": 40,
+     "receptions": 4,
+     "rushTdLengths": [
+      24,
+      5
+     ]
+    }
+   },
+   "nflverse:00-0040128": {
+    "key": "nflverse:00-0040128",
+    "name": "Tyler Warren",
+    "position": "TE",
+    "team": "IND",
+    "gameKey": "IND@KC",
+    "points": 13,
+    "stats": {
+     "rushYds": 3,
+     "recYds": 21,
+     "receptions": 6,
+     "recTdLengths": [
+      1
+     ]
+    }
+   },
+   "nflverse:00-0035710": {
+    "key": "nflverse:00-0035710",
+    "name": "Daniel Jones",
+    "position": "QB",
+    "team": "IND",
+    "gameKey": "IND@KC",
+    "points": 10,
+    "stats": {
+     "passYds": 210,
+     "rushYds": 10,
+     "interceptionsThrown": 1,
+     "passTdLengths": [
+      1
+     ]
+    }
+   },
+   "nflverse:00-0037664": {
+    "key": "nflverse:00-0037664",
+    "name": "Alec Pierce",
+    "position": "WR",
+    "team": "IND",
+    "gameKey": "IND@KC",
+    "points": 0.5,
+    "stats": {
+     "recYds": 11,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0041132": {
+    "key": "nflverse:00-0041132",
+    "name": "Deion Burks",
+    "position": "WR",
+    "team": "IND",
+    "gameKey": "IND@KC",
+    "points": 0,
+    "stats": {
+     "rushYds": 14
+    }
+   },
+   "nflverse:00-0032951": {
+    "key": "nflverse:00-0032951",
+    "name": "Laquon Treadwell",
+    "position": "WR",
+    "team": "IND",
+    "gameKey": "IND@KC",
+    "points": 3.5,
+    "stats": {
+     "recYds": 61,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0038997": {
+    "key": "nflverse:00-0038997",
+    "name": "Josh Downs",
+    "position": "WR",
+    "team": "IND",
+    "gameKey": "IND@KC",
+    "points": 5.5,
+    "stats": {
+     "recYds": 72,
+     "receptions": 7
+    }
+   },
+   "nflverse:00-0038134": {
+    "key": "nflverse:00-0038134",
+    "name": "Kenneth Walker III",
+    "position": "RB",
+    "team": "KC",
+    "gameKey": "IND@KC",
+    "points": 17,
+    "stats": {
+     "rushYds": 117,
+     "recYds": 61,
+     "receptions": 6
+    }
+   },
+   "nflverse:00-0033873": {
+    "key": "nflverse:00-0033873",
+    "name": "Patrick Mahomes",
+    "position": "QB",
+    "team": "KC",
+    "gameKey": "IND@KC",
+    "points": 29,
+    "stats": {
+     "passYds": 382,
+     "rushYds": 17,
+     "passTdLengths": [
+      13,
+      1,
+      1
+     ]
+    }
+   },
+   "nflverse:00-0039894": {
+    "key": "nflverse:00-0039894",
+    "name": "Xavier Worthy",
+    "position": "WR",
+    "team": "KC",
+    "gameKey": "IND@KC",
+    "points": 9.5,
+    "stats": {
+     "recYds": 25,
+     "receptions": 5,
+     "recTdLengths": [
+      1
+     ]
+    }
+   },
+   "nflverse:00-0030279": {
+    "key": "nflverse:00-0030279",
+    "name": "Keenan Allen",
+    "position": "WR",
+    "team": "IND",
+    "gameKey": "IND@KC",
+    "points": 0.5,
+    "stats": {
+     "recYds": 5,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0030506": {
+    "key": "nflverse:00-0030506",
+    "name": "Travis Kelce",
+    "position": "TE",
+    "team": "KC",
+    "gameKey": "IND@KC",
+    "points": 24,
+    "stats": {
+     "recYds": 101,
+     "receptions": 9,
+     "recTdLengths": [
+      13
+     ]
+    }
+   },
+   "nflverse:00-0037292": {
+    "key": "nflverse:00-0037292",
+    "name": "Andrew Ogletree",
+    "position": "TE",
+    "team": "IND",
+    "gameKey": "IND@KC",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0039067": {
+    "key": "nflverse:00-0039067",
+    "name": "Rashee Rice",
+    "position": "WR",
+    "team": "KC",
+    "gameKey": "IND@KC",
+    "points": 6,
+    "stats": {
+     "recYds": 83,
+     "receptions": 4
+    }
+   },
+   "nflverse:00-0041125": {
+    "key": "nflverse:00-0041125",
+    "name": "Seth McGowan",
+    "position": "RB",
+    "team": "IND",
+    "gameKey": "IND@KC",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0038104": {
+    "key": "nflverse:00-0038104",
+    "name": "Tyquan Thornton",
+    "position": "WR",
+    "team": "KC",
+    "gameKey": "IND@KC",
+    "points": 6,
+    "stats": {
+     "recYds": 86,
+     "receptions": 4
+    }
+   },
+   "nflverse:00-0040646": {
+    "key": "nflverse:00-0040646",
+    "name": "Jalen Royals",
+    "position": "WR",
+    "team": "KC",
+    "gameKey": "IND@KC",
+    "points": 7,
+    "stats": {
+     "recYds": 6,
+     "receptions": 2,
+     "recTdLengths": [
+      1
+     ]
+    }
+   },
+   "nflverse:00-0041013": {
+    "key": "nflverse:00-0041013",
+    "name": "Emmett Johnson",
+    "position": "RB",
+    "team": "KC",
+    "gameKey": "IND@KC",
+    "points": 3,
+    "stats": {
+     "rushYds": 15,
+     "recYds": 20,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0036637": {
+    "key": "nflverse:00-0036637",
+    "name": "Noah Gray",
+    "position": "TE",
+    "team": "KC",
+    "gameKey": "IND@KC",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0039576": {
+    "key": "nflverse:00-0039576",
+    "name": "Spencer Shrader",
+    "position": "K",
+    "team": "IND",
+    "gameKey": "IND@KC",
+    "points": 15.9,
+    "stats": {
+     "extraPoints": 3,
+     "fgMadeLengths": [
+      42,
+      49,
+      38
+     ]
+    }
+   },
+   "nflverse:00-0033303": {
+    "key": "nflverse:00-0033303",
+    "name": "Harrison Butker",
+    "position": "K",
+    "team": "KC",
+    "gameKey": "IND@KC",
+    "points": 17.7,
+    "stats": {
+     "fgMadeLengths": [
+      46,
+      28,
+      31,
+      40
+     ],
+     "extraPoints": 3
+    }
+   },
+   "nflverse:00-0036158": {
+    "key": "nflverse:00-0036158",
+    "name": "J.K. Dobbins",
+    "position": "RB",
+    "team": "DEN",
+    "gameKey": "JAX@DEN",
+    "points": 2,
+    "stats": {
+     "rushYds": 36
+    }
+   },
+   "nflverse:00-0039732": {
+    "key": "nflverse:00-0039732",
+    "name": "Bo Nix",
+    "position": "QB",
+    "team": "DEN",
+    "gameKey": "JAX@DEN",
+    "points": 12,
+    "stats": {
+     "passYds": 288,
+     "rushYds": 6,
+     "interceptionsThrown": 1,
+     "passTdLengths": [
+      7
+     ]
+    }
+   },
+   "nflverse:00-0040134": {
+    "key": "nflverse:00-0040134",
+    "name": "Pat Bryant",
+    "position": "WR",
+    "team": "DEN",
+    "gameKey": "JAX@DEN",
+    "points": 0,
+    "stats": {
+     "rushYds": 16
+    }
+   },
+   "nflverse:00-0040719": {
+    "key": "nflverse:00-0040719",
+    "name": "Bhayshul Tuten",
+    "position": "RB",
+    "team": "JAX",
+    "gameKey": "JAX@DEN",
+    "points": 11,
+    "stats": {
+     "rushYds": 65,
+     "recYds": -3,
+     "receptions": 2,
+     "rushTdLengths": [
+      1
+     ]
+    }
+   },
+   "nflverse:00-0036971": {
+    "key": "nflverse:00-0036971",
+    "name": "Trevor Lawrence",
+    "position": "QB",
+    "team": "JAX",
+    "gameKey": "JAX@DEN",
+    "points": 2,
+    "stats": {
+     "passYds": 189,
+     "rushYds": 6,
+     "interceptionsThrown": 1
+    }
+   },
+   "nflverse:00-0038606": {
+    "key": "nflverse:00-0038606",
+    "name": "Parker Washington",
+    "position": "WR",
+    "team": "JAX",
+    "gameKey": "JAX@DEN",
+    "points": 7.5,
+    "stats": {
+     "recYds": 98,
+     "receptions": 7
+    }
+   },
+   "nflverse:00-0038611": {
+    "key": "nflverse:00-0038611",
+    "name": "Chris Rodriguez Jr.",
+    "position": "RB",
+    "team": "JAX",
+    "gameKey": "JAX@DEN",
+    "points": 0,
+    "stats": {
+     "rushYds": 13
+    }
+   },
+   "nflverse:00-0036613": {
+    "key": "nflverse:00-0036613",
+    "name": "Jaylen Waddle",
+    "position": "WR",
+    "team": "DEN",
+    "gameKey": "JAX@DEN",
+    "points": 12,
+    "stats": {
+     "recYds": 138,
+     "receptions": 8
+    }
+   },
+   "nflverse:00-0041496": {
+    "key": "nflverse:00-0041496",
+    "name": "Jonah Coleman",
+    "position": "RB",
+    "team": "DEN",
+    "gameKey": "JAX@DEN",
+    "points": 11.5,
+    "stats": {
+     "rushYds": 39,
+     "recYds": 19,
+     "receptions": 3,
+     "rushTdLengths": [
+      3
+     ]
+    }
+   },
+   "nflverse:00-0037085": {
+    "key": "nflverse:00-0037085",
+    "name": "Tyler Badie",
+    "position": "RB",
+    "team": "DEN",
+    "gameKey": "JAX@DEN",
+    "points": 3,
+    "stats": {
+     "rushYds": 1,
+     "recYds": 28,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0039893": {
+    "key": "nflverse:00-0039893",
+    "name": "Brian Thomas Jr.",
+    "position": "WR",
+    "team": "JAX",
+    "gameKey": "JAX@DEN",
+    "points": 2.5,
+    "stats": {
+     "recYds": 40,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0038783": {
+    "key": "nflverse:00-0038783",
+    "name": "Nate Adkins",
+    "position": "TE",
+    "team": "DEN",
+    "gameKey": "JAX@DEN",
+    "points": 11,
+    "stats": {
+     "rushYds": 6,
+     "recYds": 32,
+     "receptions": 3,
+     "recTdLengths": [
+      7
+     ]
+    }
+   },
+   "nflverse:00-0038935": {
+    "key": "nflverse:00-0038935",
+    "name": "Brenton Strange",
+    "position": "TE",
+    "team": "JAX",
+    "gameKey": "JAX@DEN",
+    "points": 3,
+    "stats": {
+     "recYds": 17,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0034348": {
+    "key": "nflverse:00-0034348",
+    "name": "Courtland Sutton",
+    "position": "WR",
+    "team": "DEN",
+    "gameKey": "JAX@DEN",
+    "points": 2.5,
+    "stats": {
+     "recYds": 25,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0039868": {
+    "key": "nflverse:00-0039868",
+    "name": "Troy Franklin",
+    "position": "WR",
+    "team": "DEN",
+    "gameKey": "JAX@DEN",
+    "points": 1.5,
+    "stats": {
+     "recYds": 27,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0036590": {
+    "key": "nflverse:00-0036590",
+    "name": "Quintin Morris",
+    "position": "TE",
+    "team": "JAX",
+    "gameKey": "JAX@DEN",
+    "points": 2,
+    "stats": {
+     "recYds": 7,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0040238": {
+    "key": "nflverse:00-0040238",
+    "name": "LeQuint Allen Jr.",
+    "position": "RB",
+    "team": "JAX",
+    "gameKey": "JAX@DEN",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0032104": {
+    "key": "nflverse:00-0032104",
+    "name": "Ameer Abdullah",
+    "position": "RB",
+    "team": "JAX",
+    "gameKey": "JAX@DEN",
+    "points": 0.5,
+    "stats": {
+     "rushYds": 11,
+     "recYds": 2,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0036727": {
+    "key": "nflverse:00-0036727",
+    "name": "Adam Prentice",
+    "position": "RB",
+    "team": "DEN",
+    "gameKey": "JAX@DEN",
+    "points": 0.5,
+    "stats": {
+     "recYds": 2,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0034960": {
+    "key": "nflverse:00-0034960",
+    "name": "Jakobi Meyers",
+    "position": "WR",
+    "team": "JAX",
+    "gameKey": "JAX@DEN",
+    "points": 1.5,
+    "stats": {
+     "recYds": 28,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0033881": {
+    "key": "nflverse:00-0033881",
+    "name": "Evan Engram",
+    "position": "TE",
+    "team": "DEN",
+    "gameKey": "JAX@DEN",
+    "points": 2,
+    "stats": {
+     "recYds": 17,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0035406": {
+    "key": "nflverse:00-0035406",
+    "name": "Lil'Jordan Humphrey",
+    "position": "WR",
+    "team": "DEN",
+    "gameKey": "JAX@DEN",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0039409": {
+    "key": "nflverse:00-0039409",
+    "name": "Cam Little",
+    "position": "K",
+    "team": "JAX",
+    "gameKey": "JAX@DEN",
+    "points": 8.4,
+    "stats": {
+     "extraPoints": 1,
+     "fgMadeLengths": [
+      44,
+      23
+     ]
+    }
+   },
+   "nflverse:00-0032569": {
+    "key": "nflverse:00-0032569",
+    "name": "Wil Lutz",
+    "position": "K",
+    "team": "DEN",
+    "gameKey": "JAX@DEN",
+    "points": 9.5,
+    "stats": {
+     "fgMadeLengths": [
+      20,
+      45
+     ],
+     "extraPoints": 2
+    }
+   },
+   "nflverse:00-0040666": {
+    "key": "nflverse:00-0040666",
+    "name": "Omarion Hampton",
+    "position": "RB",
+    "team": "LAC",
+    "gameKey": "LV@LAC",
+    "points": 15,
+    "stats": {
+     "rushYds": 94,
+     "recYds": 21,
+     "receptions": 2,
+     "rushTdLengths": [
+      1
+     ]
+    }
+   },
+   "nflverse:00-0036355": {
+    "key": "nflverse:00-0036355",
+    "name": "Justin Herbert",
+    "position": "QB",
+    "team": "LAC",
+    "gameKey": "LV@LAC",
+    "points": 7,
+    "stats": {
+     "passYds": 192,
+     "rushYds": 2,
+     "interceptionsThrown": 2,
+     "passTdLengths": [
+      10
+     ]
+    }
+   },
+   "nflverse:00-0038544": {
+    "key": "nflverse:00-0038544",
+    "name": "Quentin Johnston",
+    "position": "WR",
+    "team": "LAC",
+    "gameKey": "LV@LAC",
+    "points": 0.5,
+    "stats": {
+     "rushYds": 7,
+     "recYds": 7,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0033885": {
+    "key": "nflverse:00-0033885",
+    "name": "David Njoku",
+    "position": "TE",
+    "team": "LAC",
+    "gameKey": "LV@LAC",
+    "points": 2,
+    "stats": {
+     "recYds": 9,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0041550": {
+    "key": "nflverse:00-0041550",
+    "name": "Brenen Thompson",
+    "position": "WR",
+    "team": "LAC",
+    "gameKey": "LV@LAC",
+    "points": 0.5,
+    "stats": {
+     "recYds": 13,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0040122": {
+    "key": "nflverse:00-0040122",
+    "name": "Ashton Jeanty",
+    "position": "RB",
+    "team": "LV",
+    "gameKey": "LV@LAC",
+    "points": 6,
+    "stats": {
+     "rushYds": 48,
+     "recYds": 15,
+     "receptions": 4
+    }
+   },
+   "nflverse:00-0029604": {
+    "key": "nflverse:00-0029604",
+    "name": "Kirk Cousins",
+    "position": "QB",
+    "team": "LV",
+    "gameKey": "LV@LAC",
+    "points": 26,
+    "stats": {
+     "passYds": 253,
+     "rushYds": 1,
+     "interceptionsThrown": 1,
+     "passTdLengths": [
+      40,
+      13,
+      11
+     ]
+    }
+   },
+   "nflverse:00-0039066": {
+    "key": "nflverse:00-0039066",
+    "name": "Michael Mayer",
+    "position": "TE",
+    "team": "LV",
+    "gameKey": "LV@LAC",
+    "points": 4,
+    "stats": {
+     "recYds": 23,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0038563": {
+    "key": "nflverse:00-0038563",
+    "name": "Tre Tucker",
+    "position": "WR",
+    "team": "LV",
+    "gameKey": "LV@LAC",
+    "points": 16.5,
+    "stats": {
+     "recYds": 119,
+     "receptions": 5,
+     "recTdLengths": [
+      40
+     ]
+    }
+   },
+   "nflverse:00-0038454": {
+    "key": "nflverse:00-0038454",
+    "name": "Keaton Mitchell",
+    "position": "RB",
+    "team": "LAC",
+    "gameKey": "LV@LAC",
+    "points": 2.5,
+    "stats": {
+     "rushYds": 24,
+     "recYds": 15,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0040729": {
+    "key": "nflverse:00-0040729",
+    "name": "Jack Bech",
+    "position": "WR",
+    "team": "LV",
+    "gameKey": "LV@LAC",
+    "points": 2,
+    "stats": {
+     "recYds": 25,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0040878": {
+    "key": "nflverse:00-0040878",
+    "name": "Mike Washington Jr.",
+    "position": "RB",
+    "team": "LV",
+    "gameKey": "LV@LAC",
+    "points": 0,
+    "stats": {
+     "rushYds": 7
+    }
+   },
+   "nflverse:00-0039915": {
+    "key": "nflverse:00-0039915",
+    "name": "Ladd McConkey",
+    "position": "WR",
+    "team": "LAC",
+    "gameKey": "LV@LAC",
+    "points": 2.5,
+    "stats": {
+     "recYds": 35,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0038046": {
+    "key": "nflverse:00-0038046",
+    "name": "Charlie Kolar",
+    "position": "TE",
+    "team": "LAC",
+    "gameKey": "LV@LAC",
+    "points": 4,
+    "stats": {
+     "recYds": 21,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0040727": {
+    "key": "nflverse:00-0040727",
+    "name": "Tre Harris",
+    "position": "WR",
+    "team": "LAC",
+    "gameKey": "LV@LAC",
+    "points": 2.5,
+    "stats": {
+     "recYds": 53,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0037291": {
+    "key": "nflverse:00-0037291",
+    "name": "Jalen Nailor",
+    "position": "WR",
+    "team": "LV",
+    "gameKey": "LV@LAC",
+    "points": 0.5,
+    "stats": {
+     "recYds": 9,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0040189": {
+    "key": "nflverse:00-0040189",
+    "name": "Oronde Gadsden II",
+    "position": "TE",
+    "team": "LAC",
+    "gameKey": "LV@LAC",
+    "points": 9,
+    "stats": {
+     "recYds": 18,
+     "receptions": 2,
+     "recTdLengths": [
+      10
+     ]
+    }
+   },
+   "nflverse:00-0037304": {
+    "key": "nflverse:00-0037304",
+    "name": "Connor Heyward",
+    "position": "RB",
+    "team": "LV",
+    "gameKey": "LV@LAC",
+    "points": 0,
+    "stats": {
+     "rushYds": 1
+    }
+   },
+   "nflverse:00-0034365": {
+    "key": "nflverse:00-0034365",
+    "name": "Ian Thomas",
+    "position": "TE",
+    "team": "LV",
+    "gameKey": "LV@LAC",
+    "points": 2,
+    "stats": {
+     "recYds": 11,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0037093": {
+    "key": "nflverse:00-0037093",
+    "name": "Dareke Young",
+    "position": "WR",
+    "team": "LV",
+    "gameKey": "LV@LAC",
+    "points": 1.5,
+    "stats": {
+     "recYds": 27,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0035891": {
+    "key": "nflverse:00-0035891",
+    "name": "Cody White",
+    "position": "WR",
+    "team": "LV",
+    "gameKey": "LV@LAC",
+    "points": 13,
+    "stats": {
+     "recYds": 24,
+     "receptions": 2,
+     "recTdLengths": [
+      13,
+      11
+     ]
+    }
+   },
+   "nflverse:00-0040894": {
+    "key": "nflverse:00-0040894",
+    "name": "Malik Benson",
+    "position": "WR",
+    "team": "LV",
+    "gameKey": "LV@LAC",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0038573": {
+    "key": "nflverse:00-0038573",
+    "name": "Derius Davis",
+    "position": "WR",
+    "team": "LAC",
+    "gameKey": "LV@LAC",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0035269": {
+    "key": "nflverse:00-0035269",
+    "name": "Matt Gay",
+    "position": "K",
+    "team": "LV",
+    "gameKey": "LV@LAC",
+    "points": 8.9,
+    "stats": {
+     "extraPoints": 3,
+     "fgMadeLengths": [
+      59
+     ]
+    }
+   },
+   "nflverse:00-0037224": {
+    "key": "nflverse:00-0037224",
+    "name": "Cameron Dicker",
+    "position": "K",
+    "team": "LAC",
+    "gameKey": "LV@LAC",
+    "points": 2,
+    "stats": {
+     "extraPoints": 2
+    }
+   },
+   "nflverse:00-0038128": {
+    "key": "nflverse:00-0038128",
+    "name": "Malik Willis",
+    "position": "QB",
+    "team": "MIA",
+    "gameKey": "MIA@SF",
+    "points": 17,
+    "stats": {
+     "passYds": 197,
+     "rushYds": 6,
+     "passTdLengths": [
+      77
+     ]
+    }
+   },
+   "nflverse:00-0039040": {
+    "key": "nflverse:00-0039040",
+    "name": "De'Von Achane",
+    "position": "RB",
+    "team": "MIA",
+    "gameKey": "MIA@SF",
+    "points": 7.5,
+    "stats": {
+     "rushYds": 74,
+     "recYds": 19,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0041436": {
+    "key": "nflverse:00-0041436",
+    "name": "DJ Herman",
+    "position": "RB",
+    "team": "MIA",
+    "gameKey": "MIA@SF",
+    "points": 0.5,
+    "stats": {
+     "recYds": 18,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0039880": {
+    "key": "nflverse:00-0039880",
+    "name": "Malik Washington",
+    "position": "WR",
+    "team": "MIA",
+    "gameKey": "MIA@SF",
+    "points": 3,
+    "stats": {
+     "rushYds": 4,
+     "recYds": 43,
+     "receptions": 4
+    }
+   },
+   "nflverse:00-0037834": {
+    "key": "nflverse:00-0037834",
+    "name": "Brock Purdy",
+    "position": "QB",
+    "team": "SF",
+    "gameKey": "MIA@SF",
+    "points": 27,
+    "stats": {
+     "passYds": 287,
+     "rushYds": 30,
+     "rushTdLengths": [
+      2
+     ],
+     "passTdLengths": [
+      12,
+      6
+     ]
+    }
+   },
+   "nflverse:00-0035719": {
+    "key": "nflverse:00-0035719",
+    "name": "Deebo Samuel Sr.",
+    "position": "WR",
+    "team": "SF",
+    "gameKey": "MIA@SF",
+    "points": 2.5,
+    "stats": {
+     "rushYds": 4,
+     "recYds": 31,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0032775": {
+    "key": "nflverse:00-0032775",
+    "name": "Demarcus Robinson",
+    "position": "WR",
+    "team": "SF",
+    "gameKey": "MIA@SF",
+    "points": 2.5,
+    "stats": {
+     "recYds": 34,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0033280": {
+    "key": "nflverse:00-0033280",
+    "name": "Christian McCaffrey",
+    "position": "RB",
+    "team": "SF",
+    "gameKey": "MIA@SF",
+    "points": 18,
+    "stats": {
+     "rushYds": 23,
+     "recYds": 43,
+     "receptions": 4,
+     "rushTdLengths": [
+      1,
+      1
+     ]
+    }
+   },
+   "nflverse:00-0031408": {
+    "key": "nflverse:00-0031408",
+    "name": "Mike Evans",
+    "position": "WR",
+    "team": "SF",
+    "gameKey": "MIA@SF",
+    "points": 3.5,
+    "stats": {
+     "recYds": 54,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0041052": {
+    "key": "nflverse:00-0041052",
+    "name": "Kaelon Black",
+    "position": "RB",
+    "team": "SF",
+    "gameKey": "MIA@SF",
+    "points": 2,
+    "stats": {
+     "rushYds": 25
+    }
+   },
+   "nflverse:00-0037252": {
+    "key": "nflverse:00-0037252",
+    "name": "Greg Dulcich",
+    "position": "TE",
+    "team": "MIA",
+    "gameKey": "MIA@SF",
+    "points": 3,
+    "stats": {
+     "recYds": 17,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0039874": {
+    "key": "nflverse:00-0039874",
+    "name": "Jaylen Wright",
+    "position": "RB",
+    "team": "MIA",
+    "gameKey": "MIA@SF",
+    "points": 0,
+    "stats": {
+     "rushYds": 11
+    }
+   },
+   "nflverse:00-0040198": {
+    "key": "nflverse:00-0040198",
+    "name": "Ollie Gordon II",
+    "position": "RB",
+    "team": "MIA",
+    "gameKey": "MIA@SF",
+    "points": 0,
+    "stats": {
+     "rushYds": 7
+    }
+   },
+   "nflverse:00-0041523": {
+    "key": "nflverse:00-0041523",
+    "name": "Caleb Douglas",
+    "position": "WR",
+    "team": "MIA",
+    "gameKey": "MIA@SF",
+    "points": 1,
+    "stats": {
+     "recYds": 19,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0033288": {
+    "key": "nflverse:00-0033288",
+    "name": "George Kittle",
+    "position": "TE",
+    "team": "SF",
+    "gameKey": "MIA@SF",
+    "points": 17,
+    "stats": {
+     "recYds": 80,
+     "receptions": 4,
+     "recTdLengths": [
+      12
+     ]
+    }
+   },
+   "nflverse:00-0029892": {
+    "key": "nflverse:00-0029892",
+    "name": "Kyle Juszczyk",
+    "position": "RB",
+    "team": "SF",
+    "gameKey": "MIA@SF",
+    "points": 9,
+    "stats": {
+     "recYds": 27,
+     "receptions": 2,
+     "recTdLengths": [
+      6
+     ]
+    }
+   },
+   "nflverse:00-0041524": {
+    "key": "nflverse:00-0041524",
+    "name": "Will Kacmarek",
+    "position": "TE",
+    "team": "MIA",
+    "gameKey": "MIA@SF",
+    "points": 2,
+    "stats": {
+     "recYds": 4,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0034854": {
+    "key": "nflverse:00-0034854",
+    "name": "KhaDarel Hodge",
+    "position": "WR",
+    "team": "SF",
+    "gameKey": "MIA@SF",
+    "points": 0.5,
+    "stats": {
+     "recYds": 18,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0041525": {
+    "key": "nflverse:00-0041525",
+    "name": "Chris Bell",
+    "position": "WR",
+    "team": "MIA",
+    "gameKey": "MIA@SF",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0040177": {
+    "key": "nflverse:00-0040177",
+    "name": "Jordan James",
+    "position": "RB",
+    "team": "SF",
+    "gameKey": "MIA@SF",
+    "points": 0,
+    "stats": {
+     "rushYds": 15
+    }
+   },
+   "nflverse:00-0038824": {
+    "key": "nflverse:00-0038824",
+    "name": "Ryan Miller",
+    "position": "WR",
+    "team": "MIA",
+    "gameKey": "MIA@SF",
+    "points": 16.5,
+    "stats": {
+     "recYds": 77,
+     "receptions": 1,
+     "recTdLengths": [
+      77
+     ]
+    }
+   },
+   "nflverse:00-0036972": {
+    "key": "nflverse:00-0036972",
+    "name": "Mac Jones",
+    "position": "QB",
+    "team": "SF",
+    "gameKey": "MIA@SF",
+    "points": 0,
+    "stats": {
+     "rushYds": -2
+    }
+   },
+   "nflverse:00-0034173": {
+    "key": "nflverse:00-0034173",
+    "name": "Eddy Pineiro",
+    "position": "K",
+    "team": "SF",
+    "gameKey": "MIA@SF",
+    "points": 5,
+    "stats": {
+     "extraPoints": 5
+    }
+   },
+   "nflverse:00-0036816": {
+    "key": "nflverse:00-0036816",
+    "name": "Riley Patterson",
+    "position": "K",
+    "team": "MIA",
+    "gameKey": "MIA@SF",
+    "points": 7,
+    "stats": {
+     "fgMadeLengths": [
+      28,
+      24
+     ],
+     "extraPoints": 1
+    }
+   },
+   "nflverse:00-0033293": {
+    "key": "nflverse:00-0033293",
+    "name": "Aaron Jones",
+    "position": "RB",
+    "team": "MIN",
+    "gameKey": "MIN@CHI",
+    "points": 8,
+    "stats": {
+     "rushYds": 105
+    }
+   },
+   "nflverse:00-0032950": {
+    "key": "nflverse:00-0032950",
+    "name": "Carson Wentz",
+    "position": "QB",
+    "team": "MIN",
+    "gameKey": "MIN@CHI",
+    "points": 2,
+    "stats": {
+     "passYds": 143,
+     "rushYds": 6
+    }
+   },
+   "nflverse:00-0036322": {
+    "key": "nflverse:00-0036322",
+    "name": "Justin Jefferson",
+    "position": "WR",
+    "team": "MIN",
+    "gameKey": "MIN@CHI",
+    "points": 3.5,
+    "stats": {
+     "recYds": 55,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0038994": {
+    "key": "nflverse:00-0038994",
+    "name": "Jordan Addison",
+    "position": "WR",
+    "team": "MIN",
+    "gameKey": "MIN@CHI",
+    "points": 1,
+    "stats": {
+     "recYds": 21,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0035229": {
+    "key": "nflverse:00-0035229",
+    "name": "T.J. Hockenson",
+    "position": "TE",
+    "team": "MIN",
+    "gameKey": "MIN@CHI",
+    "points": 5,
+    "stats": {
+     "recYds": 29,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0039918": {
+    "key": "nflverse:00-0039918",
+    "name": "Caleb Williams",
+    "position": "QB",
+    "team": "CHI",
+    "gameKey": "MIN@CHI",
+    "points": 2,
+    "stats": {
+     "passYds": 138,
+     "rushYds": 42,
+     "interceptionsThrown": 1
+    }
+   },
+   "nflverse:00-0036275": {
+    "key": "nflverse:00-0036275",
+    "name": "D'Andre Swift",
+    "position": "RB",
+    "team": "CHI",
+    "gameKey": "MIN@CHI",
+    "points": 8.5,
+    "stats": {
+     "rushYds": 45,
+     "recYds": 54,
+     "receptions": 5
+    }
+   },
+   "nflverse:00-0040236": {
+    "key": "nflverse:00-0040236",
+    "name": "Kyle Monangai",
+    "position": "RB",
+    "team": "CHI",
+    "gameKey": "MIN@CHI",
+    "points": 5,
+    "stats": {
+     "rushYds": 47,
+     "recYds": 11,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0040126": {
+    "key": "nflverse:00-0040126",
+    "name": "Colston Loveland",
+    "position": "TE",
+    "team": "CHI",
+    "gameKey": "MIN@CHI",
+    "points": 2,
+    "stats": {
+     "recYds": 3,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0040735": {
+    "key": "nflverse:00-0040735",
+    "name": "Luther Burden III",
+    "position": "WR",
+    "team": "CHI",
+    "gameKey": "MIN@CHI",
+    "points": 2.5,
+    "stats": {
+     "recYds": 32,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0039919": {
+    "key": "nflverse:00-0039919",
+    "name": "Rome Odunze",
+    "position": "WR",
+    "team": "CHI",
+    "gameKey": "MIN@CHI",
+    "points": 2.5,
+    "stats": {
+     "recYds": 43,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0041104": {
+    "key": "nflverse:00-0041104",
+    "name": "Demond Claiborne",
+    "position": "RB",
+    "team": "MIN",
+    "gameKey": "MIN@CHI",
+    "points": 0.5,
+    "stats": {
+     "recYds": 2,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0032464": {
+    "key": "nflverse:00-0032464",
+    "name": "Kalif Raymond",
+    "position": "WR",
+    "team": "CHI",
+    "gameKey": "MIN@CHI",
+    "points": 3.5,
+    "stats": {
+     "recYds": 40,
+     "receptions": 5
+    }
+   },
+   "nflverse:00-0036290": {
+    "key": "nflverse:00-0036290",
+    "name": "Cole Kmet",
+    "position": "TE",
+    "team": "CHI",
+    "gameKey": "MIN@CHI",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0040506": {
+    "key": "nflverse:00-0040506",
+    "name": "Myles Price",
+    "position": "WR",
+    "team": "MIN",
+    "gameKey": "MIN@CHI",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0041558": {
+    "key": "nflverse:00-0041558",
+    "name": "Sam Roush",
+    "position": "TE",
+    "team": "CHI",
+    "gameKey": "MIN@CHI",
+    "points": 2,
+    "stats": {
+     "recYds": 9,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0036425": {
+    "key": "nflverse:00-0036425",
+    "name": "DeeJay Dallas",
+    "position": "RB",
+    "team": "MIN",
+    "gameKey": "MIN@CHI",
+    "points": 0.5,
+    "stats": {
+     "rushYds": 8,
+     "recYds": 12,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0035249": {
+    "key": "nflverse:00-0035249",
+    "name": "Josh Oliver",
+    "position": "TE",
+    "team": "MIN",
+    "gameKey": "MIN@CHI",
+    "points": 2,
+    "stats": {
+     "recYds": 24,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0038416": {
+    "key": "nflverse:00-0038416",
+    "name": "Tyson Bagent",
+    "position": "QB",
+    "team": "CHI",
+    "gameKey": "MIN@CHI",
+    "points": 1,
+    "stats": {
+     "passYds": 54
+    }
+   },
+   "nflverse:00-0039404": {
+    "key": "nflverse:00-0039404",
+    "name": "Will Reichard",
+    "position": "K",
+    "team": "MIN",
+    "gameKey": "MIN@CHI",
+    "points": 12.3,
+    "stats": {
+     "fgMadeLengths": [
+      35,
+      49,
+      39
+     ]
+    }
+   },
+   "nflverse:00-0031203": {
+    "key": "nflverse:00-0031203",
+    "name": "Cairo Santos",
+    "position": "K",
+    "team": "CHI",
+    "gameKey": "MIN@CHI",
+    "points": 5,
+    "stats": {
+     "fgMadeLengths": [
+      50
+     ]
+    }
+   },
+   "nflverse:00-0032764": {
+    "key": "nflverse:00-0032764",
+    "name": "Derrick Henry",
+    "position": "RB",
+    "team": "BAL",
+    "gameKey": "NO@BAL",
+    "points": 13.5,
+    "stats": {
+     "rushYds": 68,
+     "recYds": 19,
+     "receptions": 3,
+     "rushTdLengths": [
+      1
+     ]
+    }
+   },
+   "nflverse:00-0034796": {
+    "key": "nflverse:00-0034796",
+    "name": "Lamar Jackson",
+    "position": "QB",
+    "team": "BAL",
+    "gameKey": "NO@BAL",
+    "points": 12,
+    "stats": {
+     "passYds": 235,
+     "rushYds": 34,
+     "interceptionsThrown": 1,
+     "passTdLengths": [
+      22
+     ]
+    }
+   },
+   "nflverse:00-0034753": {
+    "key": "nflverse:00-0034753",
+    "name": "Mark Andrews",
+    "position": "TE",
+    "team": "BAL",
+    "gameKey": "NO@BAL",
+    "points": 8,
+    "stats": {
+     "recYds": 49,
+     "receptions": 6
+    }
+   },
+   "nflverse:00-0036973": {
+    "key": "nflverse:00-0036973",
+    "name": "Travis Etienne",
+    "position": "RB",
+    "team": "NO",
+    "gameKey": "NO@BAL",
+    "points": 5,
+    "stats": {
+     "rushYds": 25,
+     "recYds": 6,
+     "receptions": 2,
+     "twoPtRushes": 1
+    }
+   },
+   "nflverse:00-0041326": {
+    "key": "nflverse:00-0041326",
+    "name": "CJ Donaldson",
+    "position": "RB",
+    "team": "NO",
+    "gameKey": "NO@BAL",
+    "points": 0,
+    "stats": {
+     "rushYds": 2
+    }
+   },
+   "nflverse:00-0040743": {
+    "key": "nflverse:00-0040743",
+    "name": "Tyler Shough",
+    "position": "QB",
+    "team": "NO",
+    "gameKey": "NO@BAL",
+    "points": 19,
+    "stats": {
+     "passYds": 252,
+     "rushYds": 23,
+     "passTdLengths": [
+      21
+     ],
+     "rushTdLengths": [
+      1
+     ]
+    }
+   },
+   "nflverse:00-0033906": {
+    "key": "nflverse:00-0033906",
+    "name": "Alvin Kamara",
+    "position": "RB",
+    "team": "NO",
+    "gameKey": "NO@BAL",
+    "points": 2.5,
+    "stats": {
+     "rushYds": 15,
+     "recYds": 7,
+     "receptions": 5
+    }
+   },
+   "nflverse:00-0040075": {
+    "key": "nflverse:00-0040075",
+    "name": "LaJohntay Wester",
+    "position": "WR",
+    "team": "BAL",
+    "gameKey": "NO@BAL",
+    "points": 0.5,
+    "stats": {
+     "recYds": 14,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0036550": {
+    "key": "nflverse:00-0036550",
+    "name": "Rashod Bateman",
+    "position": "WR",
+    "team": "BAL",
+    "gameKey": "NO@BAL",
+    "points": 13.5,
+    "stats": {
+     "recYds": 88,
+     "receptions": 7,
+     "recTdLengths": [
+      22
+     ]
+    }
+   },
+   "nflverse:00-0037239": {
+    "key": "nflverse:00-0037239",
+    "name": "Chris Olave",
+    "position": "WR",
+    "team": "NO",
+    "gameKey": "NO@BAL",
+    "points": 14,
+    "stats": {
+     "recYds": 86,
+     "receptions": 8,
+     "recTdLengths": [
+      21
+     ]
+    }
+   },
+   "nflverse:00-0039424": {
+    "key": "nflverse:00-0039424",
+    "name": "Devaughn Vele",
+    "position": "WR",
+    "team": "NO",
+    "gameKey": "NO@BAL",
+    "points": 4.5,
+    "stats": {
+     "recYds": 64,
+     "receptions": 5
+    }
+   },
+   "nflverse:00-0036040": {
+    "key": "nflverse:00-0036040",
+    "name": "Juwan Johnson",
+    "position": "TE",
+    "team": "NO",
+    "gameKey": "NO@BAL",
+    "points": 8,
+    "stats": {
+     "recYds": 66,
+     "receptions": 4
+    }
+   },
+   "nflverse:00-0039792": {
+    "key": "nflverse:00-0039792",
+    "name": "Devontez Walker",
+    "position": "WR",
+    "team": "BAL",
+    "gameKey": "NO@BAL",
+    "points": 1.5,
+    "stats": {
+     "recYds": 47,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0034975": {
+    "key": "nflverse:00-0034975",
+    "name": "Justice Hill",
+    "position": "RB",
+    "team": "BAL",
+    "gameKey": "NO@BAL",
+    "points": 1,
+    "stats": {
+     "rushYds": 6,
+     "recYds": 12,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0032398": {
+    "key": "nflverse:00-0032398",
+    "name": "Chris Moore",
+    "position": "WR",
+    "team": "BAL",
+    "gameKey": "NO@BAL",
+    "points": 0.5,
+    "stats": {
+     "recYds": 6,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0034798": {
+    "key": "nflverse:00-0034798",
+    "name": "Durham Smythe",
+    "position": "TE",
+    "team": "BAL",
+    "gameKey": "NO@BAL",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0041067": {
+    "key": "nflverse:00-0041067",
+    "name": "Bryce Lance",
+    "position": "WR",
+    "team": "NO",
+    "gameKey": "NO@BAL",
+    "points": 0.5,
+    "stats": {
+     "recYds": 8,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0041041": {
+    "key": "nflverse:00-0041041",
+    "name": "Oscar Delp",
+    "position": "TE",
+    "team": "NO",
+    "gameKey": "NO@BAL",
+    "points": 2,
+    "stats": {
+     "recYds": 8,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0037231": {
+    "key": "nflverse:00-0037231",
+    "name": "Kevin Austin Jr.",
+    "position": "WR",
+    "team": "NO",
+    "gameKey": "NO@BAL",
+    "points": 0.5,
+    "stats": {
+     "recYds": 7,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0040074": {
+    "key": "nflverse:00-0040074",
+    "name": "Tyler Loop",
+    "position": "K",
+    "team": "BAL",
+    "gameKey": "NO@BAL",
+    "points": 6.9,
+    "stats": {
+     "extraPoints": 2,
+     "fgMadeLengths": [
+      49
+     ]
+    }
+   },
+   "nflverse:00-0034161": {
+    "key": "nflverse:00-0034161",
+    "name": "Daniel Carlson",
+    "position": "K",
+    "team": "NO",
+    "gameKey": "NO@BAL",
+    "points": 13.8,
+    "stats": {
+     "fgMadeLengths": [
+      23,
+      47,
+      51
+     ],
+     "extraPoints": 1
+    }
+   },
+   "nflverse:00-0040715": {
+    "key": "nflverse:00-0040715",
+    "name": "Cam Skattebo",
+    "position": "RB",
+    "team": "NYG",
+    "gameKey": "NYG@LAR",
+    "points": 6,
+    "stats": {
+     "rushYds": 36,
+     "recYds": 19,
+     "receptions": 4
+    }
+   },
+   "nflverse:00-0040691": {
+    "key": "nflverse:00-0040691",
+    "name": "Jaxson Dart",
+    "position": "QB",
+    "team": "NYG",
+    "gameKey": "NYG@LAR",
+    "points": 0,
+    "stats": {
+     "passYds": 20
+    }
+   },
+   "nflverse:00-0037838": {
+    "key": "nflverse:00-0037838",
+    "name": "Isaiah Likely",
+    "position": "TE",
+    "team": "NYG",
+    "gameKey": "NYG@LAR",
+    "points": 7,
+    "stats": {
+     "recYds": 33,
+     "receptions": 5
+    }
+   },
+   "nflverse:00-0041042": {
+    "key": "nflverse:00-0041042",
+    "name": "Malachi Fields",
+    "position": "WR",
+    "team": "NYG",
+    "gameKey": "NYG@LAR",
+    "points": 2,
+    "stats": {
+     "recYds": 30,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0039847": {
+    "key": "nflverse:00-0039847",
+    "name": "Theo Johnson",
+    "position": "TE",
+    "team": "NYG",
+    "gameKey": "NYG@LAR",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0037840": {
+    "key": "nflverse:00-0037840",
+    "name": "Kyren Williams",
+    "position": "RB",
+    "team": "LAR",
+    "gameKey": "NYG@LAR",
+    "points": 13,
+    "stats": {
+     "rushYds": 85,
+     "recYds": 12,
+     "receptions": 2,
+     "recTdLengths": [
+      10
+     ]
+    }
+   },
+   "nflverse:00-0026498": {
+    "key": "nflverse:00-0026498",
+    "name": "Matthew Stafford",
+    "position": "QB",
+    "team": "LAR",
+    "gameKey": "NYG@LAR",
+    "points": 34,
+    "stats": {
+     "passYds": 327,
+     "rushYds": -1,
+     "interceptionsThrown": 1,
+     "passTdLengths": [
+      31,
+      10,
+      11,
+      5
+     ]
+    }
+   },
+   "nflverse:00-0031381": {
+    "key": "nflverse:00-0031381",
+    "name": "Davante Adams",
+    "position": "WR",
+    "team": "LAR",
+    "gameKey": "NYG@LAR",
+    "points": 30,
+    "stats": {
+     "recYds": 195,
+     "receptions": 8,
+     "recTdLengths": [
+      31,
+      11
+     ]
+    }
+   },
+   "nflverse:00-0035250": {
+    "key": "nflverse:00-0035250",
+    "name": "Devin Singletary",
+    "position": "RB",
+    "team": "NYG",
+    "gameKey": "NYG@LAR",
+    "points": 0,
+    "stats": {
+     "rushYds": 9
+    }
+   },
+   "nflverse:00-0031503": {
+    "key": "nflverse:00-0031503",
+    "name": "Jameis Winston",
+    "position": "QB",
+    "team": "NYG",
+    "gameKey": "NYG@LAR",
+    "points": 1,
+    "stats": {
+     "passYds": 111,
+     "rushYds": 1,
+     "interceptionsThrown": 1
+    }
+   },
+   "nflverse:00-0039337": {
+    "key": "nflverse:00-0039337",
+    "name": "Malik Nabers",
+    "position": "WR",
+    "team": "NYG",
+    "gameKey": "NYG@LAR",
+    "points": 0.5,
+    "stats": {
+     "recYds": 1,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0039738": {
+    "key": "nflverse:00-0039738",
+    "name": "Blake Corum",
+    "position": "RB",
+    "team": "LAR",
+    "gameKey": "NYG@LAR",
+    "points": 6.5,
+    "stats": {
+     "rushYds": 79,
+     "recYds": 13,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0040737": {
+    "key": "nflverse:00-0040737",
+    "name": "Terrance Ferguson",
+    "position": "TE",
+    "team": "LAR",
+    "gameKey": "NYG@LAR",
+    "points": 16,
+    "stats": {
+     "recYds": 54,
+     "receptions": 6,
+     "recTdLengths": [
+      5
+     ]
+    }
+   },
+   "nflverse:00-0036244": {
+    "key": "nflverse:00-0036244",
+    "name": "Colby Parkinson",
+    "position": "TE",
+    "team": "LAR",
+    "gameKey": "NYG@LAR",
+    "points": 3,
+    "stats": {
+     "recYds": 15,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0038359": {
+    "key": "nflverse:00-0038359",
+    "name": "Xavier Smith",
+    "position": "WR",
+    "team": "LAR",
+    "gameKey": "NYG@LAR",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0036893": {
+    "key": "nflverse:00-0036893",
+    "name": "Najee Harris",
+    "position": "RB",
+    "team": "NYG",
+    "gameKey": "NYG@LAR",
+    "points": 0,
+    "stats": {
+     "rushYds": 6
+    }
+   },
+   "nflverse:00-0036309": {
+    "key": "nflverse:00-0036309",
+    "name": "Darnell Mooney",
+    "position": "WR",
+    "team": "NYG",
+    "gameKey": "NYG@LAR",
+    "points": 2,
+    "stats": {
+     "recYds": 48,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0036849": {
+    "key": "nflverse:00-0036849",
+    "name": "Tutu Atwell",
+    "position": "WR",
+    "team": "LAR",
+    "gameKey": "NYG@LAR",
+    "points": 0.5,
+    "stats": {
+     "recYds": 19,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0040590": {
+    "key": "nflverse:00-0040590",
+    "name": "Konata Mumpfield",
+    "position": "WR",
+    "team": "LAR",
+    "gameKey": "NYG@LAR",
+    "points": 0.5,
+    "stats": {
+     "recYds": 12,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0039074": {
+    "key": "nflverse:00-0039074",
+    "name": "Davis Allen",
+    "position": "TE",
+    "team": "LAR",
+    "gameKey": "NYG@LAR",
+    "points": 2,
+    "stats": {
+     "recYds": 7,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0039498": {
+    "key": "nflverse:00-0039498",
+    "name": "Harrison Mevis",
+    "position": "K",
+    "team": "LAR",
+    "gameKey": "NYG@LAR",
+    "points": 4,
+    "stats": {
+     "extraPoints": 4
+    }
+   },
+   "nflverse:00-0041145": {
+    "key": "nflverse:00-0041145",
+    "name": "Dominic Zvada",
+    "position": "K",
+    "team": "NYG",
+    "gameKey": "NYG@LAR",
+    "points": 8.2,
+    "stats": {
+     "fgMadeLengths": [
+      24,
+      52
+     ]
+    }
+   },
+   "nflverse:00-0035261": {
+    "key": "nflverse:00-0035261",
+    "name": "Tony Pollard",
+    "position": "RB",
+    "team": "TEN",
+    "gameKey": "PHI@TEN",
+    "points": 4.5,
+    "stats": {
+     "rushYds": 64,
+     "recYds": 1,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0040676": {
+    "key": "nflverse:00-0040676",
+    "name": "Cam Ward",
+    "position": "QB",
+    "team": "TEN",
+    "gameKey": "PHI@TEN",
+    "points": 15,
+    "stats": {
+     "passYds": 183,
+     "rushYds": 7,
+     "rushTdLengths": [
+      1,
+      1
+     ]
+    }
+   },
+   "nflverse:00-0041438": {
+    "key": "nflverse:00-0041438",
+    "name": "Carnell Tate",
+    "position": "WR",
+    "team": "TEN",
+    "gameKey": "PHI@TEN",
+    "points": 2.5,
+    "stats": {
+     "recYds": 27,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0034844": {
+    "key": "nflverse:00-0034844",
+    "name": "Saquon Barkley",
+    "position": "RB",
+    "team": "PHI",
+    "gameKey": "PHI@TEN",
+    "points": 0.5,
+    "stats": {
+     "rushYds": 9,
+     "recYds": 11,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0036389": {
+    "key": "nflverse:00-0036389",
+    "name": "Jalen Hurts",
+    "position": "QB",
+    "team": "PHI",
+    "gameKey": "PHI@TEN",
+    "points": 17,
+    "stats": {
+     "passYds": 264,
+     "rushYds": 16,
+     "interceptionsThrown": 2,
+     "passTdLengths": [
+      22,
+      3
+     ]
+    }
+   },
+   "nflverse:00-0038555": {
+    "key": "nflverse:00-0038555",
+    "name": "Tank Bigsby",
+    "position": "RB",
+    "team": "PHI",
+    "gameKey": "PHI@TEN",
+    "points": 9,
+    "stats": {
+     "rushYds": 33,
+     "recYds": 5,
+     "receptions": 2,
+     "rushTdLengths": [
+      2
+     ]
+    }
+   },
+   "nflverse:00-0038393": {
+    "key": "nflverse:00-0038393",
+    "name": "Dontayvion Wicks",
+    "position": "WR",
+    "team": "PHI",
+    "gameKey": "PHI@TEN",
+    "points": 4.5,
+    "stats": {
+     "recYds": 74,
+     "receptions": 5
+    }
+   },
+   "nflverse:00-0034351": {
+    "key": "nflverse:00-0034351",
+    "name": "Dallas Goedert",
+    "position": "TE",
+    "team": "PHI",
+    "gameKey": "PHI@TEN",
+    "points": 2,
+    "stats": {
+     "recYds": 4,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0039746": {
+    "key": "nflverse:00-0039746",
+    "name": "Will Shipley",
+    "position": "RB",
+    "team": "PHI",
+    "gameKey": "PHI@TEN",
+    "points": 3,
+    "stats": {
+     "rushYds": 24,
+     "recYds": 5,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0036912": {
+    "key": "nflverse:00-0036912",
+    "name": "DeVonta Smith",
+    "position": "WR",
+    "team": "PHI",
+    "gameKey": "PHI@TEN",
+    "points": 17,
+    "stats": {
+     "recYds": 117,
+     "receptions": 10,
+     "recTdLengths": [
+      22
+     ]
+    }
+   },
+   "nflverse:00-0040170": {
+    "key": "nflverse:00-0040170",
+    "name": "Elic Ayomanor",
+    "position": "WR",
+    "team": "TEN",
+    "gameKey": "PHI@TEN",
+    "points": 3,
+    "stats": {
+     "recYds": 69,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0040867": {
+    "key": "nflverse:00-0040867",
+    "name": "Makai Lemon",
+    "position": "WR",
+    "team": "PHI",
+    "gameKey": "PHI@TEN",
+    "points": 0.5,
+    "stats": {
+     "rushYds": -5,
+     "recYds": 14,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0039032": {
+    "key": "nflverse:00-0039032",
+    "name": "Tyjae Spears",
+    "position": "RB",
+    "team": "TEN",
+    "gameKey": "PHI@TEN",
+    "points": 5,
+    "stats": {
+     "rushYds": 41,
+     "recYds": 29,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0040584": {
+    "key": "nflverse:00-0040584",
+    "name": "Gunnar Helm",
+    "position": "TE",
+    "team": "TEN",
+    "gameKey": "PHI@TEN",
+    "points": 3,
+    "stats": {
+     "recYds": 13,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0035662": {
+    "key": "nflverse:00-0035662",
+    "name": "Marquise Brown",
+    "position": "WR",
+    "team": "PHI",
+    "gameKey": "PHI@TEN",
+    "points": 0,
+    "stats": {
+     "rushYds": 12
+    }
+   },
+   "nflverse:00-0033246": {
+    "key": "nflverse:00-0033246",
+    "name": "Johnny Mundt",
+    "position": "TE",
+    "team": "PHI",
+    "gameKey": "PHI@TEN",
+    "points": 3,
+    "stats": {
+     "recYds": 8,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0038115": {
+    "key": "nflverse:00-0038115",
+    "name": "Daniel Bellinger",
+    "position": "TE",
+    "team": "TEN",
+    "gameKey": "PHI@TEN",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0040886": {
+    "key": "nflverse:00-0040886",
+    "name": "Nicholas Singleton",
+    "position": "RB",
+    "team": "TEN",
+    "gameKey": "PHI@TEN",
+    "points": 0,
+    "stats": {
+     "rushYds": 10
+    }
+   },
+   "nflverse:00-0038117": {
+    "key": "nflverse:00-0038117",
+    "name": "Wan'Dale Robinson",
+    "position": "WR",
+    "team": "TEN",
+    "gameKey": "PHI@TEN",
+    "points": 0.5,
+    "stats": {
+     "recYds": 9,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0034837": {
+    "key": "nflverse:00-0034837",
+    "name": "Calvin Ridley",
+    "position": "WR",
+    "team": "TEN",
+    "gameKey": "PHI@TEN",
+    "points": 2,
+    "stats": {
+     "recYds": 35,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0040024": {
+    "key": "nflverse:00-0040024",
+    "name": "Darius Cooper",
+    "position": "WR",
+    "team": "PHI",
+    "gameKey": "PHI@TEN",
+    "points": 8,
+    "stats": {
+     "recYds": 26,
+     "receptions": 2,
+     "recTdLengths": [
+      3
+     ]
+    }
+   },
+   "nflverse:00-0035192": {
+    "key": "nflverse:00-0035192",
+    "name": "Joey Slye",
+    "position": "K",
+    "team": "TEN",
+    "gameKey": "PHI@TEN",
+    "points": 9,
+    "stats": {
+     "extraPoints": 2,
+     "fgMadeLengths": [
+      37,
+      33
+     ]
+    }
+   },
+   "nflverse:00-0033787": {
+    "key": "nflverse:00-0033787",
+    "name": "Jake Elliott",
+    "position": "K",
+    "team": "PHI",
+    "gameKey": "PHI@TEN",
+    "points": 8.8,
+    "stats": {
+     "extraPoints": 3,
+     "fgMadeLengths": [
+      58
+     ]
+    }
+   },
+   "nflverse:00-0036139": {
+    "key": "nflverse:00-0036139",
+    "name": "Rico Dowdle",
+    "position": "RB",
+    "team": "PIT",
+    "gameKey": "PIT@NE",
+    "points": 3,
+    "stats": {
+     "rushYds": 22,
+     "recYds": 22,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0023459": {
+    "key": "nflverse:00-0023459",
+    "name": "Aaron Rodgers",
+    "position": "QB",
+    "team": "PIT",
+    "gameKey": "PIT@NE",
+    "points": 2,
+    "stats": {
+     "passYds": 187,
+     "rushYds": 5,
+     "interceptionsThrown": 1
+    }
+   },
+   "nflverse:00-0035640": {
+    "key": "nflverse:00-0035640",
+    "name": "DK Metcalf",
+    "position": "WR",
+    "team": "PIT",
+    "gameKey": "PIT@NE",
+    "points": 3,
+    "stats": {
+     "recYds": 27,
+     "receptions": 4
+    }
+   },
+   "nflverse:00-0039851": {
+    "key": "nflverse:00-0039851",
+    "name": "Drake Maye",
+    "position": "QB",
+    "team": "NE",
+    "gameKey": "PIT@NE",
+    "points": 4,
+    "stats": {
+     "passYds": 208,
+     "rushYds": 17,
+     "interceptionsThrown": 1
+    }
+   },
+   "nflverse:00-0038621": {
+    "key": "nflverse:00-0038621",
+    "name": "DeMario Douglas",
+    "position": "WR",
+    "team": "NE",
+    "gameKey": "PIT@NE",
+    "points": 0.5,
+    "stats": {
+     "recYds": 9,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0036875": {
+    "key": "nflverse:00-0036875",
+    "name": "Rhamondre Stevenson",
+    "position": "RB",
+    "team": "NE",
+    "gameKey": "PIT@NE",
+    "points": 2.5,
+    "stats": {
+     "rushYds": 43,
+     "recYds": 3,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0033090": {
+    "key": "nflverse:00-0033090",
+    "name": "Hunter Henry",
+    "position": "TE",
+    "team": "NE",
+    "gameKey": "PIT@NE",
+    "points": 5,
+    "stats": {
+     "recYds": 40,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0037228": {
+    "key": "nflverse:00-0037228",
+    "name": "Jaylen Warren",
+    "position": "RB",
+    "team": "PIT",
+    "gameKey": "PIT@NE",
+    "points": 7,
+    "stats": {
+     "rushYds": 43,
+     "recYds": 34,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0036894": {
+    "key": "nflverse:00-0036894",
+    "name": "Pat Freiermuth",
+    "position": "TE",
+    "team": "PIT",
+    "gameKey": "PIT@NE",
+    "points": 6,
+    "stats": {
+     "rushYds": 2,
+     "recYds": 32,
+     "receptions": 4
+    }
+   },
+   "nflverse:00-0036187": {
+    "key": "nflverse:00-0036187",
+    "name": "Reggie Gilliam",
+    "position": "RB",
+    "team": "NE",
+    "gameKey": "PIT@NE",
+    "points": 0.5,
+    "stats": {
+     "recYds": 4,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0040734": {
+    "key": "nflverse:00-0040734",
+    "name": "TreVeyon Henderson",
+    "position": "RB",
+    "team": "NE",
+    "gameKey": "PIT@NE",
+    "points": 16,
+    "stats": {
+     "rushYds": 76,
+     "rushTdLengths": [
+      39
+     ]
+    }
+   },
+   "nflverse:00-0038558": {
+    "key": "nflverse:00-0038558",
+    "name": "Darnell Washington",
+    "position": "TE",
+    "team": "PIT",
+    "gameKey": "PIT@NE",
+    "points": 2,
+    "stats": {
+     "recYds": 7,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0037816": {
+    "key": "nflverse:00-0037816",
+    "name": "Romeo Doubs",
+    "position": "WR",
+    "team": "NE",
+    "gameKey": "PIT@NE",
+    "points": 5.5,
+    "stats": {
+     "recYds": 96,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0041395": {
+    "key": "nflverse:00-0041395",
+    "name": "Eli Raridon",
+    "position": "TE",
+    "team": "NE",
+    "gameKey": "PIT@NE",
+    "points": 3,
+    "stats": {
+     "recYds": 30,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0041489": {
+    "key": "nflverse:00-0041489",
+    "name": "Germie Bernard",
+    "position": "WR",
+    "team": "PIT",
+    "gameKey": "PIT@NE",
+    "points": 3,
+    "stats": {
+     "recYds": 35,
+     "receptions": 4
+    }
+   },
+   "nflverse:00-0033555": {
+    "key": "nflverse:00-0033555",
+    "name": "Mack Hollins",
+    "position": "WR",
+    "team": "NE",
+    "gameKey": "PIT@NE",
+    "points": 1,
+    "stats": {
+     "recYds": 18,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0035594": {
+    "key": "nflverse:00-0035594",
+    "name": "Travis Homer",
+    "position": "RB",
+    "team": "PIT",
+    "gameKey": "PIT@NE",
+    "points": 0,
+    "stats": {
+     "rushYds": 16
+    }
+   },
+   "nflverse:00-0039739": {
+    "key": "nflverse:00-0039739",
+    "name": "Roman Wilson",
+    "position": "WR",
+    "team": "PIT",
+    "gameKey": "PIT@NE",
+    "points": 3.5,
+    "stats": {
+     "recYds": 28,
+     "receptions": 5
+    }
+   },
+   "nflverse:00-0040131": {
+    "key": "nflverse:00-0040131",
+    "name": "Kyle Williams",
+    "position": "WR",
+    "team": "NE",
+    "gameKey": "PIT@NE",
+    "points": 0.5,
+    "stats": {
+     "recYds": 10,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0040563": {
+    "key": "nflverse:00-0040563",
+    "name": "Efton Chism III",
+    "position": "WR",
+    "team": "NE",
+    "gameKey": "PIT@NE",
+    "points": 0.5,
+    "stats": {
+     "recYds": -2,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0036862": {
+    "key": "nflverse:00-0036862",
+    "name": "Ben Skowronek",
+    "position": "WR",
+    "team": "PIT",
+    "gameKey": "PIT@NE",
+    "points": 0.5,
+    "stats": {
+     "recYds": 2,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0034771": {
+    "key": "nflverse:00-0034771",
+    "name": "Mason Rudolph",
+    "position": "QB",
+    "team": "PIT",
+    "gameKey": "PIT@NE",
+    "points": 0,
+    "stats": {
+     "rushYds": 3
+    }
+   },
+   "nflverse:00-0040556": {
+    "key": "nflverse:00-0040556",
+    "name": "Corey Kiner",
+    "position": "RB",
+    "team": "NE",
+    "gameKey": "PIT@NE",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0040200": {
+    "key": "nflverse:00-0040200",
+    "name": "Andy Borregales",
+    "position": "K",
+    "team": "NE",
+    "gameKey": "PIT@NE",
+    "points": 9.5,
+    "stats": {
+     "extraPoints": 2,
+     "fgMadeLengths": [
+      30,
+      45
+     ]
+    }
+   },
+   "nflverse:00-0031136": {
+    "key": "nflverse:00-0031136",
+    "name": "Chris Boswell",
+    "position": "K",
+    "team": "PIT",
+    "gameKey": "PIT@NE",
+    "points": 5.6,
+    "stats": {
+     "fgMadeLengths": [
+      56
+     ]
+    }
+   },
+   "nflverse:00-0033119": {
+    "key": "nflverse:00-0033119",
+    "name": "Jacoby Brissett",
+    "position": "QB",
+    "team": "ARI",
+    "gameKey": "SEA@ARI",
+    "points": 7,
+    "stats": {
+     "passYds": 95,
+     "rushYds": 7,
+     "interceptionsThrown": 1,
+     "passTdLengths": [
+      2
+     ]
+    }
+   },
+   "nflverse:00-0037744": {
+    "key": "nflverse:00-0037744",
+    "name": "Trey McBride",
+    "position": "TE",
+    "team": "ARI",
+    "gameKey": "SEA@ARI",
+    "points": 16,
+    "stats": {
+     "recYds": 41,
+     "receptions": 8,
+     "recTdLengths": [
+      2
+     ]
+    }
+   },
+   "nflverse:00-0038559": {
+    "key": "nflverse:00-0038559",
+    "name": "Michael Wilson",
+    "position": "WR",
+    "team": "ARI",
+    "gameKey": "SEA@ARI",
+    "points": 1,
+    "stats": {
+     "recYds": 18,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0037263": {
+    "key": "nflverse:00-0037263",
+    "name": "Tyler Allgeier",
+    "position": "RB",
+    "team": "ARI",
+    "gameKey": "SEA@ARI",
+    "points": 1,
+    "stats": {
+     "rushYds": 10,
+     "recYds": 9,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0041512": {
+    "key": "nflverse:00-0041512",
+    "name": "Jadarian Price",
+    "position": "RB",
+    "team": "SEA",
+    "gameKey": "SEA@ARI",
+    "points": 4.5,
+    "stats": {
+     "rushYds": 52,
+     "recYds": 8,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0035704": {
+    "key": "nflverse:00-0035704",
+    "name": "Drew Lock",
+    "position": "QB",
+    "team": "SEA",
+    "gameKey": "SEA@ARI",
+    "points": 29,
+    "stats": {
+     "passYds": 235,
+     "passTdLengths": [
+      82,
+      7,
+      12
+     ]
+    }
+   },
+   "nflverse:00-0038543": {
+    "key": "nflverse:00-0038543",
+    "name": "Jaxon Smith-Njigba",
+    "position": "WR",
+    "team": "SEA",
+    "gameKey": "SEA@ARI",
+    "points": 38.5,
+    "stats": {
+     "recYds": 155,
+     "receptions": 9,
+     "recTdLengths": [
+      82,
+      7,
+      12
+     ]
+    }
+   },
+   "nflverse:00-0041027": {
+    "key": "nflverse:00-0041027",
+    "name": "Jeremiyah Love",
+    "position": "RB",
+    "team": "ARI",
+    "gameKey": "SEA@ARI",
+    "points": 3.5,
+    "stats": {
+     "rushYds": 29,
+     "recYds": 16,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0037545": {
+    "key": "nflverse:00-0037545",
+    "name": "Rashid Shaheed",
+    "position": "WR",
+    "team": "SEA",
+    "gameKey": "SEA@ARI",
+    "points": 2.5,
+    "stats": {
+     "rushYds": 4,
+     "recYds": 35,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0033307": {
+    "key": "nflverse:00-0033307",
+    "name": "Kendrick Bourne",
+    "position": "WR",
+    "team": "ARI",
+    "gameKey": "SEA@ARI",
+    "points": 1,
+    "stats": {
+     "recYds": 11,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0039793": {
+    "key": "nflverse:00-0039793",
+    "name": "AJ Barner",
+    "position": "TE",
+    "team": "SEA",
+    "gameKey": "SEA@ARI",
+    "points": 8,
+    "stats": {
+     "rushYds": 1,
+     "recYds": 8,
+     "receptions": 1,
+     "rushTdLengths": [
+      1
+     ]
+    }
+   },
+   "nflverse:00-0038797": {
+    "key": "nflverse:00-0038797",
+    "name": "Emanuel Wilson",
+    "position": "RB",
+    "team": "SEA",
+    "gameKey": "SEA@ARI",
+    "points": 6,
+    "stats": {
+     "rushYds": 92
+    }
+   },
+   "nflverse:00-0033908": {
+    "key": "nflverse:00-0033908",
+    "name": "Cooper Kupp",
+    "position": "WR",
+    "team": "SEA",
+    "gameKey": "SEA@ARI",
+    "points": 1,
+    "stats": {
+     "recYds": 20,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0039849": {
+    "key": "nflverse:00-0039849",
+    "name": "Marvin Harrison Jr.",
+    "position": "WR",
+    "team": "ARI",
+    "gameKey": "SEA@ARI",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0040739": {
+    "key": "nflverse:00-0040739",
+    "name": "Elijah Arroyo",
+    "position": "TE",
+    "team": "SEA",
+    "gameKey": "SEA@ARI",
+    "points": 2,
+    "stats": {
+     "recYds": 17,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0039299": {
+    "key": "nflverse:00-0039299",
+    "name": "George Holani",
+    "position": "RB",
+    "team": "SEA",
+    "gameKey": "SEA@ARI",
+    "points": 0.5,
+    "stats": {
+     "rushYds": 13,
+     "recYds": 2,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0033576": {
+    "key": "nflverse:00-0033576",
+    "name": "Eric Saubert",
+    "position": "TE",
+    "team": "SEA",
+    "gameKey": "SEA@ARI",
+    "points": 1,
+    "stats": {
+     "recYds": -10,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0037157": {
+    "key": "nflverse:00-0037157",
+    "name": "Bam Knight",
+    "position": "RB",
+    "team": "ARI",
+    "gameKey": "SEA@ARI",
+    "points": 0,
+    "stats": {
+     "rushYds": 24
+    }
+   },
+   "nflverse:00-0031492": {
+    "key": "nflverse:00-0031492",
+    "name": "Jason Myers",
+    "position": "K",
+    "team": "SEA",
+    "gameKey": "SEA@ARI",
+    "points": 7.3,
+    "stats": {
+     "extraPoints": 4,
+     "fgMadeLengths": [
+      33
+     ]
+    }
+   },
+   "nflverse:00-0038567": {
+    "key": "nflverse:00-0038567",
+    "name": "Chad Ryland",
+    "position": "K",
+    "team": "ARI",
+    "gameKey": "SEA@ARI",
+    "points": 1,
+    "stats": {
+     "extraPoints": 1
+    }
+   },
+   "nflverse:00-0033077": {
+    "key": "nflverse:00-0033077",
+    "name": "Dak Prescott",
+    "position": "QB",
+    "team": "DAL",
+    "gameKey": "WAS@DAL",
+    "points": 33,
+    "stats": {
+     "passYds": 279,
+     "rushYds": 26,
+     "passTdLengths": [
+      3,
+      10,
+      12,
+      24
+     ]
+    }
+   },
+   "nflverse:00-0036997": {
+    "key": "nflverse:00-0036997",
+    "name": "Javonte Williams",
+    "position": "RB",
+    "team": "DAL",
+    "gameKey": "WAS@DAL",
+    "points": 5.5,
+    "stats": {
+     "rushYds": 30,
+     "recYds": 20,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0037247": {
+    "key": "nflverse:00-0037247",
+    "name": "George Pickens",
+    "position": "WR",
+    "team": "DAL",
+    "gameKey": "WAS@DAL",
+    "points": 4,
+    "stats": {
+     "recYds": 40,
+     "receptions": 6
+    }
+   },
+   "nflverse:00-0036358": {
+    "key": "nflverse:00-0036358",
+    "name": "CeeDee Lamb",
+    "position": "WR",
+    "team": "DAL",
+    "gameKey": "WAS@DAL",
+    "points": 26,
+    "stats": {
+     "recYds": 153,
+     "receptions": 8,
+     "recTdLengths": [
+      3,
+      24
+     ]
+    }
+   },
+   "nflverse:00-0039910": {
+    "key": "nflverse:00-0039910",
+    "name": "Jayden Daniels",
+    "position": "QB",
+    "team": "WAS",
+    "gameKey": "WAS@DAL",
+    "points": 9,
+    "stats": {
+     "passYds": 96,
+     "rushYds": 69,
+     "passTdLengths": [
+      4
+     ]
+    }
+   },
+   "nflverse:00-0039912": {
+    "key": "nflverse:00-0039912",
+    "name": "Ben Sinnott",
+    "position": "TE",
+    "team": "WAS",
+    "gameKey": "WAS@DAL",
+    "points": 2,
+    "stats": {
+     "recYds": 6,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0040242": {
+    "key": "nflverse:00-0040242",
+    "name": "Jacory Croskey-Merritt",
+    "position": "RB",
+    "team": "WAS",
+    "gameKey": "WAS@DAL",
+    "points": 2.5,
+    "stats": {
+     "rushYds": 43,
+     "recYds": 5,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0037256": {
+    "key": "nflverse:00-0037256",
+    "name": "Rachaad White",
+    "position": "RB",
+    "team": "WAS",
+    "gameKey": "WAS@DAL",
+    "points": 9,
+    "stats": {
+     "rushYds": 43,
+     "recYds": 40,
+     "receptions": 6
+    }
+   },
+   "nflverse:00-0039410": {
+    "key": "nflverse:00-0039410",
+    "name": "Ryan Flournoy",
+    "position": "WR",
+    "team": "DAL",
+    "gameKey": "WAS@DAL",
+    "points": 2.5,
+    "stats": {
+     "recYds": 23,
+     "receptions": 5
+    }
+   },
+   "nflverse:00-0036626": {
+    "key": "nflverse:00-0036626",
+    "name": "Dyami Brown",
+    "position": "WR",
+    "team": "WAS",
+    "gameKey": "WAS@DAL",
+    "points": 2,
+    "stats": {
+     "recYds": 21,
+     "receptions": 4
+    }
+   },
+   "nflverse:00-0035659": {
+    "key": "nflverse:00-0035659",
+    "name": "Terry McLaurin",
+    "position": "WR",
+    "team": "WAS",
+    "gameKey": "WAS@DAL",
+    "points": 3,
+    "stats": {
+     "recYds": 50,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0039686": {
+    "key": "nflverse:00-0039686",
+    "name": "Colson Yankoff",
+    "position": "TE",
+    "team": "WAS",
+    "gameKey": "WAS@DAL",
+    "points": 2,
+    "stats": {
+     "recYds": 14,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0038705": {
+    "key": "nflverse:00-0038705",
+    "name": "Emari Demercado",
+    "position": "RB",
+    "team": "DAL",
+    "gameKey": "WAS@DAL",
+    "points": 0,
+    "stats": {
+     "rushYds": 8
+    }
+   },
+   "nflverse:00-0038041": {
+    "key": "nflverse:00-0038041",
+    "name": "Jake Ferguson",
+    "position": "TE",
+    "team": "DAL",
+    "gameKey": "WAS@DAL",
+    "points": 19,
+    "stats": {
+     "recYds": 43,
+     "receptions": 4,
+     "recTdLengths": [
+      10,
+      12
+     ]
+    }
+   },
+   "nflverse:00-0031588": {
+    "key": "nflverse:00-0031588",
+    "name": "Stefon Diggs",
+    "position": "WR",
+    "team": "WAS",
+    "gameKey": "WAS@DAL",
+    "points": 15.5,
+    "stats": {
+     "recYds": 47,
+     "receptions": 5,
+     "recTdLengths": [
+      4,
+      20
+     ]
+    }
+   },
+   "nflverse:00-0037742": {
+    "key": "nflverse:00-0037742",
+    "name": "Treylon Burks",
+    "position": "WR",
+    "team": "WAS",
+    "gameKey": "WAS@DAL",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0032268": {
+    "key": "nflverse:00-0032268",
+    "name": "Marcus Mariota",
+    "position": "QB",
+    "team": "WAS",
+    "gameKey": "WAS@DAL",
+    "points": 8,
+    "stats": {
+     "passYds": 111,
+     "rushYds": 3,
+     "passTdLengths": [
+      20
+     ]
+    }
+   },
+   "nflverse:00-0037801": {
+    "key": "nflverse:00-0037801",
+    "name": "KaVontae Turpin",
+    "position": "WR",
+    "team": "DAL",
+    "gameKey": "WAS@DAL",
+    "points": 0,
+    "stats": {
+     "rushYds": 1
+    }
+   },
+   "nflverse:00-0041040": {
+    "key": "nflverse:00-0041040",
+    "name": "Antonio Williams",
+    "position": "WR",
+    "team": "WAS",
+    "gameKey": "WAS@DAL",
+    "points": 1.5,
+    "stats": {
+     "recYds": 24,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0038738": {
+    "key": "nflverse:00-0038738",
+    "name": "Hunter Luepke",
+    "position": "RB",
+    "team": "DAL",
+    "gameKey": "WAS@DAL",
+    "points": 0,
+    "stats": {
+     "rushYds": 1
+    }
+   },
+   "nflverse:00-0041096": {
+    "key": "nflverse:00-0041096",
+    "name": "Kaytron Allen",
+    "position": "RB",
+    "team": "WAS",
+    "gameKey": "WAS@DAL",
+    "points": 0,
+    "stats": {
+     "rushYds": 24
+    }
+   },
+   "nflverse:00-0037692": {
+    "key": "nflverse:00-0037692",
+    "name": "Brandon Aubrey",
+    "position": "K",
+    "team": "DAL",
+    "gameKey": "WAS@DAL",
+    "points": 21.4,
+    "stats": {
+     "extraPoints": 4,
+     "fgMadeLengths": [
+      25,
+      44,
+      60
+     ]
+    }
+   },
+   "nflverse:00-0041182": {
+    "key": "nflverse:00-0041182",
+    "name": "Drew Stevens",
+    "position": "K",
+    "team": "WAS",
+    "gameKey": "WAS@DAL",
+    "points": 9.7,
+    "stats": {
+     "fgMadeLengths": [
+      27,
+      47
+     ],
+     "extraPoints": 2
+    }
+   }
+  },
+  "defenses": {
+   "ATL": {
+    "team": "ATL",
+    "gameKey": "CAR@ATL",
+    "points": 8,
+    "stats": {
+     "opponentPoints": 34,
+     "offensiveTdsAllowed": 3,
+     "passYdsAllowed": 272,
+     "rushYdsAllowed": 68,
+     "sacks": 2
+    }
+   },
+   "CAR": {
+    "team": "CAR",
+    "gameKey": "CAR@ATL",
+    "points": 33,
+    "stats": {
+     "opponentPoints": 3,
+     "offensiveTdsAllowed": 0,
+     "passYdsAllowed": 129,
+     "rushYdsAllowed": 157,
+     "sacks": 3,
+     "interceptions": 3,
+     "fumbleRecoveries": 2,
+     "intReturnTds": 1
+    }
+   },
+   "HOU": {
+    "team": "HOU",
+    "gameKey": "CIN@HOU",
+    "points": 12,
+    "stats": {
+     "opponentPoints": 20,
+     "offensiveTdsAllowed": 2,
+     "passYdsAllowed": 182,
+     "rushYdsAllowed": 85,
+     "sacks": 5
+    }
+   },
+   "CIN": {
+    "team": "CIN",
+    "gameKey": "CIN@HOU",
+    "points": 18,
+    "stats": {
+     "opponentPoints": 6,
+     "offensiveTdsAllowed": 0,
+     "passYdsAllowed": 314,
+     "rushYdsAllowed": 60,
+     "sacks": 4
+    }
+   },
+   "TB": {
+    "team": "TB",
+    "gameKey": "CLE@TB",
+    "points": 8,
+    "stats": {
+     "opponentPoints": 23,
+     "offensiveTdsAllowed": 2,
+     "passYdsAllowed": 223,
+     "rushYdsAllowed": 44,
+     "sacks": 2
+    }
+   },
+   "CLE": {
+    "team": "CLE",
+    "gameKey": "CLE@TB",
+    "points": 6,
+    "stats": {
+     "opponentPoints": 19,
+     "offensiveTdsAllowed": 1,
+     "passYdsAllowed": 176,
+     "rushYdsAllowed": 137,
+     "sacks": 3,
+     "interceptions": 1
+    }
+   },
+   "BUF": {
+    "team": "BUF",
+    "gameKey": "DET@BUF",
+    "points": 10,
+    "stats": {
+     "opponentPoints": 31,
+     "offensiveTdsAllowed": 4,
+     "passYdsAllowed": 289,
+     "rushYdsAllowed": 66,
+     "sacks": 4
+    }
+   },
+   "DET": {
+    "team": "DET",
+    "gameKey": "DET@BUF",
+    "points": 2,
+    "stats": {
+     "opponentPoints": 41,
+     "offensiveTdsAllowed": 6,
+     "passYdsAllowed": 243,
+     "rushYdsAllowed": 203,
+     "sacks": 2
+    }
+   },
+   "NYJ": {
+    "team": "NYJ",
+    "gameKey": "GB@NYJ",
+    "points": 17,
+    "stats": {
+     "opponentPoints": 20,
+     "offensiveTdsAllowed": 2,
+     "passYdsAllowed": 136,
+     "rushYdsAllowed": 63,
+     "sacks": 3,
+     "fumbleRecoveries": 1
+    }
+   },
+   "GB": {
+    "team": "GB",
+    "gameKey": "GB@NYJ",
+    "points": 10,
+    "stats": {
+     "opponentPoints": 17,
+     "offensiveTdsAllowed": 2,
+     "passYdsAllowed": 218,
+     "rushYdsAllowed": 67,
+     "sacks": 4
+    }
+   },
+   "KC": {
+    "team": "KC",
+    "gameKey": "IND@KC",
+    "points": 2,
+    "stats": {
+     "opponentPoints": 30,
+     "offensiveTdsAllowed": 3,
+     "passYdsAllowed": 210,
+     "rushYdsAllowed": 119,
+     "interceptions": 1
+    }
+   },
+   "IND": {
+    "team": "IND",
+    "gameKey": "IND@KC",
+    "points": 2,
+    "stats": {
+     "opponentPoints": 33,
+     "offensiveTdsAllowed": 3,
+     "passYdsAllowed": 371,
+     "rushYdsAllowed": 152,
+     "sacks": 2
+    }
+   },
+   "DEN": {
+    "team": "DEN",
+    "gameKey": "JAX@DEN",
+    "points": 13,
+    "stats": {
+     "opponentPoints": 13,
+     "offensiveTdsAllowed": 1,
+     "passYdsAllowed": 173,
+     "rushYdsAllowed": 95,
+     "sacks": 2,
+     "interceptions": 1
+    }
+   },
+   "JAX": {
+    "team": "JAX",
+    "gameKey": "JAX@DEN",
+    "points": 2,
+    "stats": {
+     "opponentPoints": 20,
+     "offensiveTdsAllowed": 2,
+     "passYdsAllowed": 288,
+     "rushYdsAllowed": 104,
+     "interceptions": 1
+    }
+   },
+   "LAC": {
+    "team": "LAC",
+    "gameKey": "LV@LAC",
+    "points": 10,
+    "stats": {
+     "opponentPoints": 26,
+     "offensiveTdsAllowed": 3,
+     "passYdsAllowed": 248,
+     "rushYdsAllowed": 57,
+     "sacks": 2,
+     "interceptions": 1
+    }
+   },
+   "LV": {
+    "team": "LV",
+    "gameKey": "LV@LAC",
+    "points": 12,
+    "stats": {
+     "opponentPoints": 14,
+     "offensiveTdsAllowed": 2,
+     "passYdsAllowed": 183,
+     "rushYdsAllowed": 127,
+     "sacks": 3,
+     "interceptions": 2,
+     "fumbleRecoveries": 1,
+     "safeties": 1
+    }
+   },
+   "SF": {
+    "team": "SF",
+    "gameKey": "MIA@SF",
+    "points": 5,
+    "stats": {
+     "opponentPoints": 13,
+     "offensiveTdsAllowed": 1,
+     "passYdsAllowed": 182,
+     "rushYdsAllowed": 102,
+     "sacks": 4
+    }
+   },
+   "MIA": {
+    "team": "MIA",
+    "gameKey": "MIA@SF",
+    "points": 6,
+    "stats": {
+     "opponentPoints": 35,
+     "offensiveTdsAllowed": 5,
+     "passYdsAllowed": 287,
+     "rushYdsAllowed": 95
+    }
+   },
+   "CHI": {
+    "team": "CHI",
+    "gameKey": "MIN@CHI",
+    "points": 17,
+    "stats": {
+     "opponentPoints": 9,
+     "offensiveTdsAllowed": 0,
+     "passYdsAllowed": 127,
+     "rushYdsAllowed": 119,
+     "sacks": 3
+    }
+   },
+   "MIN": {
+    "team": "MIN",
+    "gameKey": "MIN@CHI",
+    "points": 20,
+    "stats": {
+     "opponentPoints": 3,
+     "offensiveTdsAllowed": 0,
+     "passYdsAllowed": 163,
+     "rushYdsAllowed": 134,
+     "sacks": 4,
+     "interceptions": 1,
+     "fumbleRecoveries": 1,
+     "blockedFgs": 1
+    }
+   },
+   "BAL": {
+    "team": "BAL",
+    "gameKey": "NO@BAL",
+    "points": 9,
+    "stats": {
+     "opponentPoints": 24,
+     "offensiveTdsAllowed": 2,
+     "passYdsAllowed": 233,
+     "rushYdsAllowed": 65,
+     "sacks": 3
+    }
+   },
+   "NO": {
+    "team": "NO",
+    "gameKey": "NO@BAL",
+    "points": 6,
+    "stats": {
+     "opponentPoints": 17,
+     "offensiveTdsAllowed": 2,
+     "passYdsAllowed": 204,
+     "rushYdsAllowed": 108,
+     "sacks": 3,
+     "interceptions": 1,
+     "blockedFgs": 1
+    }
+   },
+   "LAR": {
+    "team": "LAR",
+    "gameKey": "NYG@LAR",
+    "points": 24,
+    "stats": {
+     "opponentPoints": 6,
+     "offensiveTdsAllowed": 0,
+     "passYdsAllowed": 130,
+     "rushYdsAllowed": 52,
+     "sacks": 2,
+     "interceptions": 1
+    }
+   },
+   "NYG": {
+    "team": "NYG",
+    "gameKey": "NYG@LAR",
+    "points": 5,
+    "stats": {
+     "opponentPoints": 28,
+     "offensiveTdsAllowed": 4,
+     "passYdsAllowed": 318,
+     "rushYdsAllowed": 163,
+     "sacks": 1,
+     "interceptions": 1,
+     "fumbleRecoveries": 1
+    }
+   },
+   "TEN": {
+    "team": "TEN",
+    "gameKey": "PHI@TEN",
+    "points": 13,
+    "stats": {
+     "opponentPoints": 24,
+     "offensiveTdsAllowed": 3,
+     "passYdsAllowed": 252,
+     "rushYdsAllowed": 89,
+     "sacks": 3,
+     "interceptions": 2
+    }
+   },
+   "PHI": {
+    "team": "PHI",
+    "gameKey": "PHI@TEN",
+    "points": 5,
+    "stats": {
+     "opponentPoints": 20,
+     "offensiveTdsAllowed": 2,
+     "passYdsAllowed": 169,
+     "rushYdsAllowed": 122,
+     "sacks": 2
+    }
+   },
+   "NE": {
+    "team": "NE",
+    "gameKey": "PIT@NE",
+    "points": 34,
+    "stats": {
+     "opponentPoints": 3,
+     "offensiveTdsAllowed": 0,
+     "passYdsAllowed": 144,
+     "rushYdsAllowed": 91,
+     "sacks": 4,
+     "interceptions": 1,
+     "fumbleRecoveries": 1,
+     "defFumbleRecoveryTds": 1
+    }
+   },
+   "PIT": {
+    "team": "PIT",
+    "gameKey": "PIT@NE",
+    "points": 8,
+    "stats": {
+     "opponentPoints": 20,
+     "offensiveTdsAllowed": 1,
+     "passYdsAllowed": 191,
+     "rushYdsAllowed": 136,
+     "sacks": 3,
+     "interceptions": 1,
+     "fumbleRecoveries": 1
+    }
+   },
+   "ARI": {
+    "team": "ARI",
+    "gameKey": "SEA@ARI",
+    "points": 3,
+    "stats": {
+     "opponentPoints": 31,
+     "offensiveTdsAllowed": 4,
+     "passYdsAllowed": 219,
+     "rushYdsAllowed": 162,
+     "sacks": 1,
+     "fumbleRecoveries": 1
+    }
+   },
+   "SEA": {
+    "team": "SEA",
+    "gameKey": "SEA@ARI",
+    "points": 16,
+    "stats": {
+     "opponentPoints": 7,
+     "offensiveTdsAllowed": 1,
+     "passYdsAllowed": 81,
+     "rushYdsAllowed": 70,
+     "sacks": 2,
+     "interceptions": 1
+    }
+   },
+   "DAL": {
+    "team": "DAL",
+    "gameKey": "WAS@DAL",
+    "points": 2,
+    "stats": {
+     "opponentPoints": 20,
+     "offensiveTdsAllowed": 2,
+     "passYdsAllowed": 207,
+     "rushYdsAllowed": 182,
+     "fumbleRecoveries": 1
+    }
+   },
+   "WAS": {
+    "team": "WAS",
+    "gameKey": "WAS@DAL",
+    "points": 8,
+    "stats": {
+     "opponentPoints": 37,
+     "offensiveTdsAllowed": 4,
+     "passYdsAllowed": 266,
+     "rushYdsAllowed": 66,
+     "sacks": 2
+    }
+   }
+  },
+  "unmatched": [],
+  "warnings": []
+ },
+ "autoFinalizeAt": "2026-09-23T03:00:00.000Z",
+ "finalizedAt": "2026-10-15T16:35:49.489Z",
+ "finalizedBy": "auto"
+}
