@@ -1,0 +1,21 @@
+# B5 keep-alive Worker: keeps the free-tier Supabase project awake.
+# Deploy (from this folder):
+#   npx wrangler@4.145.0 login
+#   npx wrangler@4.145.0 secret put SUPABASE_SERVICE_ROLE_KEY     (paste the key when asked)
+#   npx wrangler@4.145.0 deploy
+# Never put the service_role key in this file: the repo is public.
+
+name = "b5-keepalive"
+main = "index.ts"
+compatibility_date = "2026-09-01"
+workers_dev = false            # no public URL; it only runs on the cron schedule
+preview_urls = false
+
+[triggers]
+crons = ["13 6 * * *", "13 18 * * *"]   # twice a day (UTC); one missed run is harmless
+
+[vars]
+SUPABASE_URL = "https://kngwdttpbpezlvjrkrrg.supabase.co"
+
+[observability]
+enabled = true                 # cron runs and failures visible in the Cloudflare dashboard

@@ -74,6 +74,19 @@ describe("every table is protected", () => {
   });
 });
 
+test("no default grants leak: anon only ever has SELECT, and only on public-data tables", async () => {
+  const PUBLIC = new Set(["teams", "nfl_players", "nfl_games", "roster_entries", "score_weeks", "player_scores", "matchups", "standings", "announcements"]);
+  const g = (await db.query<{ table_name: string; privilege_type: string }>(`
+    select table_name, privilege_type from information_schema.role_table_grants
+    where table_schema = 'public' and grantee = 'anon'`)).rows;
+  for (const r of g) {
+    assert.equal(r.privilege_type, "SELECT", `anon must not have ${r.privilege_type} on ${r.table_name}`);
+    assert.ok(PUBLIC.has(r.table_name), `anon must not have access to ${r.table_name}`);
+  }
+  const hb = (await db.query(`select 1 from information_schema.role_table_grants where table_name = 'heartbeats' and grantee in ('anon', 'authenticated')`)).rows;
+  assert.equal(hb.length, 0, "heartbeats is service_role only");
+});
+
 describe("a manager can't touch another team (the core rule)", () => {
   test("can't add to another team's lineup", () =>
     denied(db, user(ALICE), `insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '0002', 1, 'QB-ARI')`));
@@ -204,6 +217,18 @@ describe("commissioner", () => {
     assert.equal((await rows(db, user(CAROL), `select id from public.transactions`)).length, 0, "uninvolved manager doesn't");
     await db.exec(`update public.transactions set status = 'approved' where type = 'trade'`);
     assert.equal((await rows(db, user(CAROL), `select id from public.transactions`)).length, 1);
+  });
+});
+
+describe("keep-alive status (commissioner banner)", () => {
+  test("only the commissioner sees heartbeat times; managers get null; anon can't call it", async () => {
+    await db.exec(`insert into public.heartbeats (name, at) values ('cloudflare-cron', now() - interval '4 days'), ('nightly', now() - interval '1 hour')`);
+    const [c] = await rows(db, user(COMMISH), `select public.keepalive_status() as s`);
+    const s = (c as { s: { heartbeats: { name: string }[] } }).s;
+    assert.deepEqual(s.heartbeats.map(h => h.name), ["nightly", "cloudflare-cron"], "newest first");
+    const [m] = await rows(db, user(ALICE), `select public.keepalive_status() as s`);
+    assert.equal((m as { s: unknown }).s, null);
+    await denied(db, anon, `select public.keepalive_status()`, /permission denied/);
   });
 });
 

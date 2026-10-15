@@ -66,10 +66,13 @@ jobs:
           THROUGH_WEEK: ${{ inputs.through_week }}
         run: node scripts/finalize.mts $SEASON $THROUGH_WEEK
 
-      # Free-tier Supabase projects pause after ~7 days without activity. Touch the
-      # database every night (including the off-season) so it stays awake.
+      # Free-tier Supabase projects pause after ~7 days without activity. The PRIMARY
+      # keep-alive is the Cloudflare Worker cron (workers/keepalive, heartbeat
+      # "cloudflare-cron"), which GitHub's 60-day schedule shutoff can't stop. This
+      # step is a BACKUP ("nightly") and also warns here if the Worker's heartbeat
+      # is missing or more than 3 days old.
       # Needs repository variable SUPABASE_URL and secret SUPABASE_SERVICE_ROLE_KEY.
-      - name: Keep Supabase awake
+      - name: Keep Supabase awake (backup) and check the Worker heartbeat
         if: always()
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
@@ -90,6 +93,22 @@ jobs:
             -d "{\"name\":\"nightly\",\"at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}")
           echo "Supabase heartbeat: HTTP $code"
           case "$code" in 2*) ;; *) echo "::error::Supabase heartbeat failed (HTTP $code)"; exit 1;; esac
+
+          # Is the primary (Cloudflare Worker) keep-alive still running?
+          cf=$(curl -sS "$SUPABASE_URL/rest/v1/heartbeats?name=eq.cloudflare-cron&select=at" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" "${auth[@]}" | node -e '
+              let s = ""; process.stdin.on("data", d => s += d).on("end", () => {
+                try { const r = JSON.parse(s); console.log(Array.isArray(r) && r[0] ? r[0].at : ""); } catch { console.log(""); }
+              })')
+          if [ -z "$cf" ]; then
+            echo "::warning::The Cloudflare keep-alive Worker has never written a heartbeat. Deploy workers/keepalive (see CLAUDE.md)."
+          else
+            age_h=$(( ( $(date -u +%s) - $(date -u -d "$cf" +%s) ) / 3600 ))
+            echo "Cloudflare keep-alive last ran $age_h hours ago ($cf)."
+            if [ "$age_h" -gt 72 ]; then
+              echo "::warning::The Cloudflare keep-alive heartbeat is $age_h hours old (over 3 days). Check the b5-keepalive Worker."
+            fi
+          fi
 
       - name: Save league data
         working-directory: league-store

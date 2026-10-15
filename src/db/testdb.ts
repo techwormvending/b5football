@@ -30,6 +30,14 @@ const AUTH_STUB = `
     ), '')::uuid
   $$;
   grant execute on function auth.uid() to anon, authenticated, service_role;
+
+  -- Supabase's default privileges (as found on the hosted project, 2026-10-15): new tables,
+  -- sequences and functions in public are granted to anon and authenticated automatically,
+  -- even with "auto-expose new tables" off. Mirror them so tests catch over-broad access.
+  grant usage on schema public to anon, authenticated, service_role;
+  alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+  alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
+  alter default privileges in schema public grant execute on functions to anon, authenticated, service_role;
 `;
 
 export function migrationFiles(): string[] {
