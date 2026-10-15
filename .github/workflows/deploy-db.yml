@@ -1,0 +1,91 @@
+# Apply the repo's Supabase migrations (supabase/migrations/) to the live project.
+# Manual only: Actions tab > "Deploy database migrations" > Run workflow.
+#   confirm = (blank)  dry run only: lists the migrations that would be applied
+#                      and shows their SQL in the run summary.
+#   confirm = apply    dry run first, then applies them.
+#
+# Needs (repository settings > Secrets and variables > Actions):
+#   variable SUPABASE_PROJECT_REF
+#   secret   SUPABASE_ACCESS_TOKEN   personal access token scoped to project b5ffl
+#                                    (Project read, Database read/write). EXPIRES: see CLAUDE.md.
+#   secret   SUPABASE_DB_PASSWORD    database password
+# No secret is printed: GitHub masks secrets in logs.
+
+name: Deploy database migrations
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "apply" to apply the migrations. Anything else = dry run only.'
+        required: false
+        default: ""
+
+concurrency:
+  group: deploy-db
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Check configuration
+        run: |
+          missing=""
+          [ -n "$PROJECT_REF" ] || missing="$missing variable:SUPABASE_PROJECT_REF"
+          [ -n "$SUPABASE_ACCESS_TOKEN" ] || missing="$missing secret:SUPABASE_ACCESS_TOKEN"
+          [ -n "$SUPABASE_DB_PASSWORD" ] || missing="$missing secret:SUPABASE_DB_PASSWORD"
+          if [ -n "$missing" ]; then echo "::error::Missing:$missing"; exit 1; fi
+
+      - name: Link project
+        run: npx supabase link --project-ref "$PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Migration status (local vs live)
+        run: npx supabase migration list --linked --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Dry run (planned changes)
+        run: |
+          set -o pipefail
+          npx supabase db push --linked --dry-run --password "$SUPABASE_DB_PASSWORD" 2>&1 | tee dry-run.txt
+          {
+            echo "## Planned database changes"
+            echo
+            echo '```'
+            cat dry-run.txt
+            echo '```'
+            for f in $(grep -oE '[0-9]{14}_[A-Za-z0-9_]+\.sql' dry-run.txt | sort -u); do
+              echo
+              echo "### supabase/migrations/$f"
+              echo
+              echo '```sql'
+              cat "supabase/migrations/$f"
+              echo '```'
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Apply migrations
+        if: ${{ inputs.confirm == 'apply' }}
+        run: |
+          npx supabase db push --linked --password "$SUPABASE_DB_PASSWORD"
+          npx supabase migration list --linked --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Dry run only
+        if: ${{ inputs.confirm != 'apply' }}
+        run: echo "Dry run only. Re-run with confirm = apply to apply the migrations listed in the summary."
