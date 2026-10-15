@@ -223,3 +223,22 @@ ul.checks li::before { content: "▸"; position: absolute; left: 6px; color: var
   background: var(--red); color: #fff; font: 600 14px/1.4 var(--body);
   padding: 10px 16px; text-align: center; border-bottom: 3px solid var(--gold);
 }
+
+/* Account and commissioner screens (account.js) */
+.acct-form { display: grid; gap: 12px; max-width: 460px; }
+.acct-form label { display: grid; gap: 4px; font: 500 13px var(--head); letter-spacing: .1em; text-transform: uppercase; color: var(--chalk-dim); }
+.acct-form label.acct-check { display: flex; align-items: center; gap: 8px; font: 400 14px var(--body); letter-spacing: 0; text-transform: none; }
+.acct-form input[type=email], .acct-form input:not([type]), .acct-form select {
+  font: 16px var(--body); color: var(--chalk); background: var(--ink-deep);
+  border: 1px solid var(--card-line); border-radius: 6px; padding: 9px 10px; width: 100%; }
+.acct-form .btn, .acct-card .btn, .cm-actions .btn { cursor: pointer; }
+.acct-card { display: grid; gap: 14px; max-width: 520px; }
+.acct-card p { margin: 0; }
+.acct-msg { margin: 0 0 12px; font-size: 14px; padding: 8px 10px; border-radius: 6px; }
+.acct-msg.ok { background: rgba(63, 174, 106, .18); color: #9be3b5; }
+.acct-msg.err { background: rgba(210, 69, 47, .2); color: #ffb3a6; }
+#acctRoot .card + .card { margin-top: 16px; }
+.cm-table td, .cm-table th { padding: 8px 6px; font-size: 14px; vertical-align: middle; }
+.cm-actions { white-space: nowrap; display: flex; gap: 6px; }
+.cm-actions .btn { padding: 6px 10px; font-size: 12px; }
+.nav a[hidden] { display: none; }

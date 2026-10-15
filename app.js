@@ -215,7 +215,11 @@
 
     lineups() {
       return `<div id="lineups"><section><h2>Lineups</h2><p class="muted">Loading…</p></section></div>`;
-    }
+    },
+
+    // Rendered by account.js (sign-in, commissioner screen)
+    account() { return `<div id="acctRoot"></div>`; },
+    commish() { return `<div id="acctRoot"></div>`; }
   };
 
   // ---- Lineups ----------------------------------------------------------
@@ -452,6 +456,7 @@
     nav.classList.remove("open");
     if (page === "home") startClock();
     if (page === "lineups") luStart();
+    if ((page === "account" || page === "commish") && window.B5Account) window.B5Account.start(page, document.getElementById("acctRoot"));
     window.scrollTo(0, 0);
   }
   window.addEventListener("hashchange", route);
