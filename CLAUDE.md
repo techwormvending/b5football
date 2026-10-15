@@ -1,0 +1,133 @@
+# Bridgeville 5 Fantasy Site
+
+## Goal
+This site **replaces MyFantasyLeague (MFL) entirely.** When finished, the B5 FFL (12 teams, head-to-head, since 2000) runs end to end on this site: draft, rosters, lineups, waivers, trades, live scoring, standings, playoffs and history. Nothing links to, embeds or depends on MFL.
+
+Do not drift back to "runs alongside MFL." Don't add links to MFL, MFL branding, or new MFL dependencies. Every feature is built on our own data and our own stats feed.
+
+## Timeline
+- **2026 season (now):** MFL stays live through the 2026 playoffs because we're mid-season. The site is being built out in parallel.
+- **Before MFL is cancelled:** run a one-time import of all league history from MFL (see Migration). After that import, MFL is never referenced again.
+- **Target:** run the **2027 draft and season fully on this site.**
+
+## Requirements (MFL feature parity)
+- **Accounts:** 12 managers plus a commissioner role. The commissioner can edit anything, reverse transactions and override scores.
+- **Draft:** snake order, pick timer, a big-screen board for an in-person draft, commissioner pick entry, and a remote/phone option. Results populate rosters.
+- **Rosters:** 18 players. 9 starters: QB, 2 RB, 3 WR, TE, K, DEF. **No flex.** Each player locks at his own game's kickoff. Lineups must be easy to set from a phone.
+- **Waivers:** first-come, first-served for now, but configurable (e.g. priority order or FAAB later).
+- **Trades:** propose, accept, commissioner review.
+- **Schedule:** H2H weeks 1–14, playoffs weeks 15–17. Two divisions, Black and Gold.
+- **Live scoring** from a real NFL stats feed (see Scoring). Commissioner can override.
+- **Standings and playoffs** computed by the site.
+- **History:** every season since 2000.
+- **Notifications** (email/SMS) for trades, waivers and lineup reminders.
+
+## Scoring engine (built and verified)
+- Code: `src/scoring/` (`rules.ts` = the B5 rule set, `engine.ts` = `scoreStatLine(position, statLine)`, `types.ts`). Pure TypeScript, provider-agnostic, returns a total plus a per-rule breakdown. Rules are data, so they're configurable.
+- **`src/scoring/rules.ts` is the source of truth.** It was copied rule for rule from MFL's `TYPE=rules` export (2025 and 2026 rules are identical). The `scoring` block in `league-data.js` is only a display summary; keep it in sync.
+- Tests: `npm test` (Node's built-in runner, TypeScript run natively by Node 24). `npm run typecheck` runs `tsc`. There are hand-calculated tests for every position and boundary, plus real games with MFL's official scores as the expected totals.
+- **Verified against MFL's official scores** through the nflverse adapter: 2025 weeks 1–17 and 2026 weeks 1–5, **10,030/10,030 player and defense games matched exactly.**
+
+Rules, as MFL actually scores them (not standard PPR):
+- **TDs pay by length** (yards of the scoring play). Passing TD: 0–30 = 6, 31–50 = 8, 51–75 = 10, 76+ = 12. Rushing TD: 0–10 = 6, 11–20 = 7, 21–30 = 8, 31–50 = 10, 51+ = 12. Receiving TDs use the passing scale for QB/RB/WR and the rushing scale for TE. Needs **play-by-play with play distance**.
+- **Receptions:** 0.5 for RB and WR, 1 for TE, **0 for QB**.
+- **Total yards = passing + rushing + receiving** (MFL "yards from scrimmage"), tiered by position. The top tier **continues from the tier below**; it doesn't restart from zero:
+  - QB: 50–99 = 1, 100–149 = 2, 150–199 = 3, then **5 at 200, +2 per full 50** (250 = 7, 300 = 9).
+  - RB: 25–49 = 2, 50–74 = 4, 75–99 = 6, then 8 at 100, +2 per full 25.
+  - WR: 25–49 = 1, 50–74 = 2, 75–99 = 4, then 6 at 100, +2 per full 25.
+  - TE: 1–24 = 1, 25–49 = 2, 50–74 = 4, then 6 at 75, +2 per full 25.
+  - Negative totals score 0.
+- **Misc offense:** INT thrown −1. 2-pt pass, rush or catch 2. RB/WR/TE: punt, kick and INT return TDs and fumble-recovery TDs 6 each. QBs only get the fumble-recovery TDs.
+- **Kicker:** FG 1–30 = 3, 31–59 = 0.1 × yards (3.1 at 31), 60+ = 10. Extra point 1. Any TD by the kicker 6. INT thrown −1.
+- **Defense:** INT 2, fumble recovery 2 (defense or special teams), sack 1, safety 2, blocked FG or punt 1. Punt, kick, INT and fumble return TDs and blocked-kick TDs 6 each. Defensive 2-pt return 2. **Net** passing yards allowed (after sacks): 1–149 = 6, 150–174 = 3, 175–199 = 1. Rushing yards allowed 0–99 = 6. No offensive (pass/rush) TDs allowed 8. Opponent held scoreless 2 (MFL code `OPPOPS`, confirmed by 2025 shutouts).
+- **Quirks kept on purpose** because MFL does them: 0 or negative net passing yards allowed scores 0, not 6. Negative rushing yards allowed scores 0. The engine refuses to score a defense when the allowed-stats are missing, since a missing value read as 0 would award shutout points.
+- Stat corrections from the feed must re-score past weeks.
+
+## Stats ingest (`src/ingest/`)
+Decision (final, 2026-10-14):
+- **Live scoring: ESPN's public JSON endpoints** (unofficial and undocumented; they can change or break without notice). Use the scoreboard to find in-progress games, and the per-game summary / play-by-play for player stats and every scoring play with its yardage.
+- **Final scoring: nflverse** (nflfastR play-by-play + player stats) is the **system of record**. It updates nightly in season.
+
+Build rules:
+1. Two adapter interfaces: `LiveStatsSource` (ESPN) and `FinalStatsSource` (nflverse). Both produce the provider-neutral model in `types.ts` (`GameData`). The scoring engine never sees raw provider JSON, so either source can be swapped.
+2. Our engine computes all fantasy points from play-level data (TDs pay by length). **Never use a provider's fantasy points.**
+3. Player IDs: ESPN and nflverse IDs differ. Build a crosswalk table (nflverse's ID map includes ESPN IDs). **Flag unmatched players for commissioner review; never guess.**
+4. ESPN polling: only during live game windows, every ~30–60 s, with backoff and caching. If ESPN errors or changes shape, show "live scoring delayed" and keep the last good numbers. **Never crash matchups.**
+5. Finalization: a nightly job pulls nflverse, rescores the week and overwrites live numbers. Log every live-vs-final difference for the commissioner. A week is marked "final" only after the commissioner confirms, or by auto-finalize Tuesday night (configurable). Re-run on later nflverse updates to pick up NFL stat corrections until the week is locked.
+6. The commissioner can override any player's stat line or score, with an audit log.
+7. Tests: hand-calculated scoring-engine lines including a 52-yd TD reception, a 12-yd TE TD, a 47-yd FG, QB 210 total yards, and a defense allowing 160 pass yds.
+
+What exists:
+- `statlines.ts` is the ONLY place that turns `GameData` into engine `StatLine`s and decides which TD credits what (e.g. kick return TD -> returner + his team's DEF; own-fumble recovery TD -> player only). Team codes normalize through `teams.ts` (unknown codes throw). `http.ts` = request spacing, retry/backoff, disk cache.
+- **nflverse** (`nflverse.ts`): verified 100% vs MFL's official scores (10,030/10,030). Lessons baked in: nflverse's `return_touchdown` misses blocked-kick TDs, kickoff recoveries and INT-then-fumble TDs, so non-offensive TDs are classified by scoring team vs `posteam`. On kickoffs `posteam` is the RECEIVING team. Fumble recoveries are counted per fumble slot, with a fallback for chains longer than nflverse's two slots (not touchbacks). Net passing yards = passing yards + sack yards.
+- **ESPN** (`espn.ts`, `espnLiveSource()` = `LiveStatsSource`): verified against nflverse: **2026 weeks 1–5, 1,865/1,865 player and defense games scored identically; full 2025 season (weeks 1–17), 6,040/6,041.** The one 2025 miss is a player with no crosswalk entry, correctly flagged for review. (`scripts/verify-espn.mts <season> <weeks...>`). Every rule below came from a real mismatch. How it works and why:
+  - Per game: the site **summary** (`site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=<id>`) gives header/status, box score (player yards, receptions, INTs thrown, XPs) and team stats (`netPassingYards`, `rushingYards`, `sacksYardsLost` "3-22", `interceptions`). The **core plays** feed (`sports.core.api.espn.com/v2/sports/football/leagues/nfl/events/<id>/competitions/<id>/plays?limit=1000`) gives every play with **participants by ESPN athlete ID** (passer, receiver, rusher, scorer, kicker, punter, returner, recoverer, patPasser, patScorer, ...), `statYardage`, `scoreValue`, `pointAfterAttempt`. Scoreboard: `.../scoreboard?dates=<season>&seasontype=2&week=<w>`.
+  - **Scoring is driven by the summary's `scoringPlays`** (reliable scoring team and running score), joined to core plays by `id` for participants and yardage. The core plays' running score can lag a play behind; don't use it.
+  - TD length and FG distance = `statYardage`. Two-point conversions are on the TD play: `pointAfterAttempt` "Two Point Pass/Rush", players `patPasser` / `patScorer`. **`value` is what the try was worth, NOT success** (failed tries can show 2). A try succeeded only if "ATTEMPT SUCCEEDS" appears in the offense's part of the text (before "DEFENSIVE TWO-POINT") or the summary entry is worth 8. Defensive 2-pt returns = the other team scored 2 on the same summary entry. XPs come from the box score.
+  - **Participants beat labels:** ESPN labelled a bobbled-but-caught TD pass "Fumble Recovery (Own)". Passer present + receiver = scorer means a passing TD. Defensive TD kinds come from scoring team vs offense, returner = scorer, and "BLOCKED" in text. **A listed scorer must be on the scoring team** (ESPN has named the blocked kicker as the scorer of a blocked-FG return). If the scorer role is missing or wrong, use the player the summary text names, only from that play's participants on the scoring team (e.g. "George Holani Recovered Kickoff in End Zone" lists him as "other").
+  - Opponent fumble recoveries: NFL text capitalizes "RECOVERED by TEAM-" only for opponent recoveries (lowercase = own). ESPN sometimes replaces the text with a short summary. Only then (no official "recovered by TEAM-" / "and recovers at" wording) fall back: labels "(Opponent)" / "Opp Fumble" are trusted, with the recoverer's team (their "fumbler" role is often the pass rusher). A generic "Fumble Return" label counts only if fumbler and recoverer are on different teams. Official text beats labels: an own-fumble TD was labelled "Fumble Return Touchdown", and a sack safety listed the rusher as "fumbler". Skip "NULLIFIED" / "No Play" plays. After "REVERSED." only the trailing text counts.
+  - On kicks ESPN's play `team` is the receiving team. Blocked FG/punt: on a blocked kick returned for a TD the blocker is the scoring team (the listed "kicker" can be the scoring team's PAT kicker); otherwise the opponent of the punter's (punts) or kicker's (FGs) box-score team. Short summaries ("Blocked Kick Recovered by ...") count by play type, but official text wins: ESPN labelled a missed, returned FG "Blocked Field Goal". Blocked PATs aren't blocked FGs.
+  - **Never throws:** scoreboard or game failures, and shape changes, return the last good data with `delayed: true` plus `errors`. Live games are always re-fetched; finished games are disk-cached. Scheduled games make no detail requests. The polling scheduler (live windows only, 30–60 s) is not built yet.
+- **Crosswalk** (`crosswalk.ts`): ESPN athlete ID -> nflverse GSIS ID (our canonical player ID) from nflverse `players.csv` (`espn_id`), cached 24 h. ESPN IDs claimed by two players are treated as unmatched. `toCanonical(game, crosswalk)` rewrites refs; unmatched players keep their ESPN identity, are returned as `UnmatchedPlayer` for the commissioner's review queue, and are never name-matched. All 524 fantasy-relevant ESPN athletes in 2026 weeks 1–5 mapped. In 2025 one (Chris Manhertz, ESPN 2531358) had no entry and was flagged, as designed.
+- Earlier spike (`scripts/spike-espn-vs-nflverse.mts`): ESPN and nflverse agree on all 411 TDs in 2026 weeks 1–5 (scorer and yardage).
+- `scripts/bakeoff.mts <provider> <season> <weeks...>` compares a source's scores to MFL's official scores (2026 only). Caches live in `.cache/`, MFL answer keys in `.bakeoff/` (gitignored).
+
+## Live scoring and finalization (`src/league/`)
+Build rules 4, 5 and 6 are implemented.
+- **Scores** (`scores.ts`): `scoreWeek()` turns a week's `GameData` (canonical player refs) into a `WeekSnapshot`: every fantasy player (by nflverse position via the crosswalk) and team defense, with stat line and points. Players are keyed `nflverse:<gsis>`, games `AWAY@HOME` (ESPN and nflverse game IDs differ). Unmatched/non-fantasy players are never scored. `mergeLive()` carries games a delayed snapshot lacks from the previous one (last good numbers survive restarts). `diffSnapshots()` lists point and stat changes.
+- **Store** (`store.ts`): `ScoreStore` interface; `jsonFileStore(dir)` implements it until Postgres exists (swap the implementation, keep the interface). `live/<s>-w<w>.json` is written only by the poller; `weeks/<s>-w<w>.json` (status, final snapshot, diff log) only by the finalizer and commissioner tools; plus `review.json` (unmatched players) and `audit.jsonl`. Writes are atomic (temp file + rename).
+- **Live poller** (`livePoller.ts`, `scripts/live-poller.mts`): current week from ESPN's default scoreboard. It polls only in live windows (a game in progress, or a kickoff within 10 min, including late starts), every 30–60 s with jitter. Errors back off exponentially (cap 5 min). Otherwise it sleeps until 10 min before the next kickoff, at most 6 h. It never throws, never writes over a final week, and queues unmatched players for review.
+- **Finalizer** (`finalizer.ts`, `scripts/finalize.mts`, run nightly): rescores every unlocked week from nflverse and overwrites live. Logged diffs: `live_vs_final` for games new to nflverse (vs the live numbers; a note if no live numbers were recorded), and `correction` for games already finalized (NFL stat corrections). Week status: `live` -> `pending_review` (nflverse in) -> `final` (locked). Locking is by commissioner confirm, or auto-finalize (default Tue 11 PM ET after the week's last game, from live kickoffs or nflverse game dates; `AUTO_FINALIZE=off` or `<weekday>@<hour>`). Never while a scheduled game is missing from nflverse. Confirm refuses while games are missing unless forced. Reopen needs a reason. Both are audited, and auto-finalize is audited as `system`.
+- **Overrides** (`overrides.ts`, rule 6): the commissioner can override any player's or defense's stat line (`stats`: replaces only the given fields, `null` removes one; points recomputed by the engine) or pin the score (`points`, beats a stats override; latest wins). Overrides are stored per week in `overrides/<s>-w<w>.json`, separate from live and final, and **applied at read time**, so nightly re-runs and stat corrections never erase them. Stored final numbers stay raw. Removal deactivates (history kept). Add and remove require a reason and are audited, with target, values and week status. They work on locked weeks too (the commissioner can edit anything). An override can credit a player the source lacks (e.g. one flagged as unmatched), but never a non-fantasy position. Nightly diff entries under an active override carry `overriddenBy`, so the commissioner can recheck them.
+- `weekScores(store, season, week, crosswalk)` = what matchups show: final snapshot once nflverse has the week, otherwise live (with `liveDelayed`), **with active overrides applied**. Overridden entries carry `override: { ids, type, source }` (the source's points and stats).
+- Player names in snapshots are full names from nflverse's player table (play-by-play only has "J.Williams").
+- **Commissioner CLI** (`scripts/commish.mts`): `status`, `diffs`, `confirm [--force]`, `reopen "<reason>"`, `review`, `audit`, `scores`, `find`, `override ... stats '<json>' | points <n> "<reason>"`, `overrides`, `unoverride`. Targets are a player name (refuses to pick between several matches), `nflverse:<gsis>`, or `DEF:<TEAM>`. Stand-in until the web admin with auth exists. The actor is `B5_ACTOR` or the OS user.
+- Data dir `B5_DATA` (default `data/league`, gitignored). Tests use temp dirs; never test against real data.
+
+## Hosting and deployment (decided 2026-10-15; supersedes the hosting/stack bullets below where they differ)
+- **Domain `b5football.win`, DNS on Cloudflare.**
+- **Front end: GitHub Pages from this repo** (`main` branch, repo root). `CNAME` contains `b5football.win`; `.nojekyll` makes Pages serve files as-is. The apex serves the site, `www` redirects to it (GitHub does this when the apex is the custom domain and `www` points at Pages), HTTPS enforced.
+  - Cloudflare DNS records: apex `A` 185.199.108.153 / .109.153 / .110.153 / .111.153; apex `AAAA` 2606:50c0:8000::153 / 8001::153 / 8002::153 / 8003::153; `CNAME www -> <github-user>.github.io`. **All DNS-only (grey cloud) until GitHub has issued the Pages certificate and "Enforce HTTPS" is ticked.** Proxying earlier blocks certificate issuance. If the proxy is turned on later, Cloudflare SSL mode must be Full (strict). Remove any other apex/www records; no wildcard records.
+- **Backend: NOT CHOSEN YET.** GitHub Pages is static only, so auth, database, transactions, live updates and the live scheduler need a backend. Candidates under comparison: **Cloudflare Workers + D1 (+ Durable Objects)** vs **Supabase** (Postgres, Auth, Realtime, Edge Functions, pg_cron). **Don't build backend pieces until the commissioner picks.** (Note: D1 is SQLite, which would change the earlier "plain Postgres" decision.)
+- **Nightly nflverse finalization: GitHub Actions scheduled workflow** `.github/workflows/finalize.yml` (daily 09:17 UTC, plus manual runs with season/week inputs). **Interim storage:** the league data folder (`B5_DATA`) lives on the **`league-data` branch**, never `main`, so Pages doesn't serve it. Each run checks it out as a worktree, finalizes and commits it back. That branch is public. Repository variable `AUTO_FINALIZE` overrides the auto-lock time. Once the backend exists, the workflow writes there instead, with credentials from Actions secrets. GitHub disables scheduled workflows in public repos after 60 days without repository activity; re-enable before the season.
+- **Live ESPN polling (30–60 s) can't run on Actions** (5-minute minimum cron, frequent delays). It runs in the backend's scheduler, or client-side. **CORS tested 2026-10-15:** ESPN's scoreboard, summary and core plays endpoints all return `Access-Control-Allow-Origin: *` and were fetched successfully from a browser page. But their preflight (OPTIONS) returns 403, so **browser requests must be "simple" GETs with no custom headers** (`http.ts` sets a User-Agent header, which is fine in Node but must not be used in a browser build). Client-side polling is therefore possible; the backend-vs-client split is part of the backend decision.
+- **The repo is public:** no secrets in code or committed files. Credentials go in **GitHub Actions secrets** (workflows) and **backend environment variables**. Never commit `.env` files, API keys, the Supabase service-role key or Cloudflare API tokens. `data/`, `.cache/` and `.bakeoff/` are gitignored. `.gitattributes` keeps LF line endings.
+- The old `server/server.js` lineup server can't run on Pages. On the live site the Lineups page shows its "server isn't reachable" note until the backend replaces it.
+
+## Architecture (decided 2026-10-14)
+The commissioner (an IT director, deploying to a new domain they're registering) chose:
+- **Stack:** one Node + TypeScript codebase. It runs the web app, the API and a background worker (stats ingest, scoring, waivers, lineup reminders, other scheduled jobs). Data is in **Postgres**. Live scores are pushed to browsers (server-sent events or WebSockets). Logins are magic-link email (no passwords), with a commissioner role.
+- **Hosting:** superseded 2026-10-15: GitHub Pages front end + a backend still to be chosen (see Hosting and deployment above). Originally a managed host with managed Postgres (Render or Fly.io class).
+- **Front end:** a light framework with a build step (e.g. Preact or Svelte) is acceptable for the draft board, live scoreboard and phone lineup screens. Keep the current look.
+- **Stats sources (final decision, 2026-10-14; replaces the BALLDONTLIE / MySportsFeeds bake-off, whose adapters were deleted):** ESPN for live, nflverse for final. See Stats ingest above.
+- **Notifications:** email (Amazon SES or Postmark/Resend, with SPF/DKIM/DMARC on the new domain) plus web push. SMS is deferred unless push falls short.
+- **Provider-agnostic core:** providers feed a normalized stat line into the scoring engine. The engine never talks to a provider directly.
+
+## Current state (as of 2026-10-14)
+- Static front end: `index.html`, `style.css`, `app.js`, `league-data.js` (`window.LEAGUE`). Hash routing (`#home`, `#lineups`, `#schedule`, `#teams`, `#history`, `#rules`, `#traditions`).
+- `server/server.js`: a small Node lineup server (no deps) with JSON storage in `data/` and team PINs (`server/pins.js`). It's a stopgap. Expect it to be replaced or absorbed by whatever architecture is chosen.
+- **Temporary MFL dependencies, 2026 only. Remove them before 2027:**
+  - `scripts/refresh-mfl.js` copies standings, rosters and the schedule from MFL into the `@mfl-begin` / `@mfl-end` blocks of `league-data.js`. Don't hand-edit inside those blocks.
+  - `server/server.js` gets NFL kickoff times from MFL's `nflSchedule` export.
+  - `scripts/bakeoff.mts` scores a provider's weeks and compares every player and defense to MFL's official scores (answer-key files documented in its header). Delete it after the bake-off and migration.
+  - Roster entries are `[name, pos, nflTeam, acquired, mflPlayerId]`, and franchise IDs (`0001`–`0012`) are MFL's. Keep them for the import, then map players to the new stats provider's IDs.
+  - Team logos are still hotlinked from MFL and third-party sites. Self-host them as part of the migration.
+- Lineup server testing: `DATA_DIR=<tmp>` points it at throwaway data, and `B5_FAKE_NOW=<ISO time>` fakes the clock. Never test against the real `data/`.
+
+## Conventions
+- **Look:** keep the current black and Steelers-gold theme (CSS variables at the top of `style.css`: `--ink` / `--ink-deep` black, `--gold` #FFB612, `--chalk` off-white), Oswald headings + Inter body, and the scoreboard countdown on the home page.
+- The site name is "Bridgeville 5 Fantasy Site" (short: "B5").
+- Escape all data fields with `esc()` in `app.js`. The only exception is announcement `body`, which is commissioner-authored HTML on purpose.
+- Must work at phone width (390px). Nav collapses to a menu toggle below 760px.
+- Times are US Eastern.
+- Keep dependencies minimal and justified.
+
+## Migration (one-time, before cancelling MFL)
+- MFL league ID **22689**, host `www45.myfantasyleague.com` (`TYPE=players` and `nflSchedule` exports go to `api.myfantasyleague.com`). Most historical exports need the commissioner logged in.
+- Import for every season: standings, champions, playoff results, franchise names and transactions, via MFL's export API.
+- **2000–2002 aren't on MFL.** They're at `intergrow.com/b5/finalstandings<year>.htm`.
+- Self-host every team logo.
+- After the import, delete `scripts/refresh-mfl.js`, the `@mfl` markers and every other MFL reference.
+
+## Known TODOs
+Manager names, traditions and bylaws text, trade deadline date, and the 2000-present history (from the migration).
