@@ -5,8 +5,8 @@
    NEVER put the secret / service_role key here or anywhere in this repo.
    Server-side jobs read it from the GitHub Actions secret SUPABASE_SERVICE_ROLE_KEY. */
 window.B5_SUPABASE = {
-  // TODO: replace with the real project URL (Supabase dashboard > Project Settings > Data API).
-  url: "https://<your-ref>.supabase.co",
+  // Project "b5ffl" (Supabase dashboard > Data API > API URL, without /rest/v1/).
+  url: "https://kngwdttpbpezlvjrkrrg.supabase.co",
   publishableKey: "sb_publishable_R3WkEHEDPyxtLW8sWRUfEA_JuhNvgNg"
 };
 
