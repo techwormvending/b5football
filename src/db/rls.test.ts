@@ -1,0 +1,216 @@
+/* RLS tests: run the real migrations in Postgres (PGlite) and act as anonymous
+   visitors, managers, the commissioner and server jobs, the way Supabase's
+   Data API does (role + JWT claims). Each test gets a fresh database. */
+
+import { test, describe, beforeEach } from "node:test";
+import assert from "node:assert/strict";
+import type { PGlite, Transaction } from "@electric-sql/pglite";
+import { as, freshDb, type Who } from "./testdb.ts";
+
+const COMMISH = "00000000-0000-0000-0000-00000000000c";
+const ALICE = "00000000-0000-0000-0000-00000000000a";   // manages team 0001
+const BOB = "00000000-0000-0000-0000-00000000000b";     // manages team 0002
+const anon: Who = { role: "anon" };
+const service: Who = { role: "service_role" };
+const user = (uid: string): Who => ({ role: "authenticated", uid });
+const S = 2026, W = 6;
+
+/** Seed as the migration owner (bypasses RLS), like the commissioner setting up a season. */
+async function seed(db: PGlite) {
+  await db.exec(`
+    insert into auth.users (id, email, raw_user_meta_data) values
+      ('${COMMISH}', 'commish@example.com', '{"display_name":"Commish"}'),
+      ('${ALICE}', 'alice@example.com', '{}'),
+      ('${BOB}', 'bob@example.com', '{}');
+    update public.profiles set is_commissioner = true where id = '${COMMISH}';
+    insert into public.teams (id, name, division) values ('0001', 'NSFW', 'Black'), ('0002', 'Stealers', 'Gold');
+    insert into public.team_managers values ('0001', '${ALICE}'), ('0002', '${BOB}');
+    insert into public.nfl_players (id, name, position, nfl_team) values
+      ('QB-DET', 'Jared Goff', 'QB', 'DET'),        -- game later this week
+      ('QB-KC', 'Patrick Mahomes', 'QB', 'KC'),     -- game already kicked off
+      ('RB-DET', 'Jahmyr Gibbs', 'RB', 'DET'),
+      ('QB-ARI', 'Kyler Murray', 'QB', 'ARI'),
+      ('QB-FA', 'Free Agent', 'QB', 'DET');
+    insert into public.nfl_games (season, week, game_key, home, away, kickoff) values
+      (${S}, ${W}, 'DET@ARI', 'ARI', 'DET', now() + interval '2 days'),
+      (${S}, ${W}, 'KC@LV', 'LV', 'KC', now() - interval '1 hour');
+    insert into public.roster_entries (season, team_id, player_id) values
+      (${S}, '0001', 'QB-DET'), (${S}, '0001', 'QB-KC'), (${S}, '0001', 'RB-DET'), (${S}, '0002', 'QB-ARI');
+    insert into public.lineup_slots (season, week, team_id, slot, player_id) values
+      (${S}, ${W}, '0002', 0, 'QB-ARI'),          -- Bob's QB (game not started)
+      (${S}, ${W}, '0001', 1, 'RB-DET');
+    insert into public.transactions (season, team_id, type, players_in, created_by) values
+      (${S}, '0002', 'add', '{QB-FA}', '${BOB}');  -- Bob's pending pickup (id 1)
+    insert into public.standings (season, team_id, wins) values (${S}, '0001', 4), (${S}, '0002', 2);
+    insert into public.player_scores (season, week, player_id, points, source) values (${S}, ${W}, 'QB-DET', 21.5, 'live');
+    insert into public.announcements (title, published_at) values ('Live', now() - interval '1 day'), ('Draft', null);
+    insert into public.score_overrides (season, week, target_key, type, points, reason) values (${S}, ${W}, 'DEF:ARI', 'points', 0, 'test');
+    insert into public.audit_log (actor_label, action) values ('system', 'seed');
+  `);
+}
+
+const rows = async (db: PGlite, who: Who, sql: string, params: unknown[] = []) =>
+  (await as(db, who, tx => tx.query(sql, params))).rows;
+const affected = async (db: PGlite, who: Who, sql: string, params: unknown[] = []) =>
+  (await as(db, who, tx => tx.query(sql, params))).affectedRows ?? 0;
+const denied = (db: PGlite, who: Who, sql: string, re: RegExp = /row-level security|permission denied|only the commissioner|locked|not on team|cannot play|must be pending/i) =>
+  assert.rejects(as(db, who, (tx: Transaction) => tx.query(sql)), re);
+
+let db: PGlite;
+beforeEach(async () => { db = await freshDb(); await seed(db); });
+
+describe("every table is protected", () => {
+  test("RLS is enabled on every public table, and every table but heartbeats has policies", async () => {
+    const t = (await db.query<{ relname: string; rls: boolean; policies: number }>(`
+      select c.relname, c.relrowsecurity as rls,
+             (select count(*)::int from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname) as policies
+      from pg_class c join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'public' and c.relkind = 'r'`)).rows;
+    assert.ok(t.length >= 17);
+    for (const r of t) {
+      assert.equal(r.rls, true, `${r.relname} must have RLS enabled`);
+      if (r.relname !== "heartbeats") assert.ok(r.policies > 0, `${r.relname} needs explicit policies`);
+    }
+  });
+});
+
+describe("a manager can't touch another team (the core rule)", () => {
+  test("can't add to another team's lineup", () =>
+    denied(db, user(ALICE), `insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '0002', 1, 'QB-ARI')`));
+
+  test("can't change or delete another team's lineup (no rows match)", async () => {
+    assert.equal(await affected(db, user(ALICE), `update public.lineup_slots set player_id = 'QB-DET' where team_id = '0002'`), 0);
+    assert.equal(await affected(db, user(ALICE), `delete from public.lineup_slots where team_id = '0002'`), 0);
+    const [r] = (await db.query<{ player_id: string }>(`select player_id from public.lineup_slots where team_id = '0002' and slot = 0`)).rows;
+    assert.equal(r!.player_id, "QB-ARI", "Bob's lineup untouched");
+  });
+
+  test("can't move his own lineup row onto another team", () =>
+    denied(db, user(ALICE), `update public.lineup_slots set team_id = '0002' where team_id = '0001' and slot = 1`));
+
+  test("can't see another team's lineup before kickoff", async () => {
+    assert.deepEqual(await rows(db, user(ALICE), `select player_id from public.lineup_slots where team_id = '0002'`), []);
+  });
+
+  test("can't create a transaction for another team", () =>
+    denied(db, user(ALICE), `insert into public.transactions (season, team_id, type, players_in) values (${S}, '0002', 'drop', '{}')`));
+
+  test("can't edit, cancel or delete another team's transaction", async () => {
+    assert.equal(await affected(db, user(ALICE), `update public.transactions set status = 'cancelled' where id = 1`), 0);
+    assert.equal(await affected(db, user(ALICE), `delete from public.transactions where id = 1`), 0);
+    const [r] = (await db.query<{ status: string }>(`select status from public.transactions where id = 1`)).rows;
+    assert.equal(r!.status, "pending");
+  });
+
+  test("can't edit another manager's profile", async () => {
+    assert.equal(await affected(db, user(ALICE), `update public.profiles set display_name = 'hacked' where id = '${BOB}'`), 0);
+  });
+});
+
+describe("a manager's own team", () => {
+  test("can set his own lineup", async () => {
+    assert.equal(await affected(db, user(ALICE), `insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '0001', 0, 'QB-DET')`), 1);
+    const [r] = (await db.query<{ set_by: string }>(`select set_by from public.lineup_slots where team_id = '0001' and slot = 0`)).rows;
+    assert.equal(r!.set_by, ALICE);
+  });
+
+  test("lineup rules: roster, slot position and kickoff lock are enforced", async () => {
+    await denied(db, user(ALICE), `insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '0001', 0, 'QB-FA')`, /not on team/);
+    await denied(db, user(ALICE), `insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '0001', 2, 'QB-DET')`, /cannot play the RB slot/);
+    await denied(db, user(ALICE), `insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '0001', 0, 'QB-KC')`, /locked/);
+  });
+
+  test("a started player can't be benched", async () => {
+    await db.exec(`insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '0001', 0, 'QB-KC')`);
+    await denied(db, user(ALICE), `delete from public.lineup_slots where team_id = '0001' and slot = 0`, /locked/);
+    await denied(db, user(ALICE), `update public.lineup_slots set player_id = 'QB-DET' where team_id = '0001' and slot = 0`, /locked/);
+  });
+
+  test("other teams' players become visible once their game kicks off", async () => {
+    await db.exec(`update public.nfl_games set kickoff = now() - interval '5 minutes' where game_key = 'DET@ARI'`);
+    assert.deepEqual(await rows(db, user(ALICE), `select player_id from public.lineup_slots where team_id = '0002'`), [{ player_id: "QB-ARI" }]);
+  });
+
+  test("transactions: create pending, edit and cancel his own; never approve", async () => {
+    assert.equal(await affected(db, user(ALICE), `insert into public.transactions (season, team_id, type, players_in) values (${S}, '0001', 'add', '{QB-FA}')`), 1);
+    const [t] = (await db.query<{ id: number; created_by: string }>(`select id, created_by from public.transactions where team_id = '0001'`)).rows;
+    assert.equal(t!.created_by, ALICE);
+    await denied(db, user(ALICE), `insert into public.transactions (season, team_id, type, status) values (${S}, '0001', 'drop', 'approved')`, /must be pending/);
+    await denied(db, user(ALICE), `update public.transactions set status = 'approved' where id = ${t!.id}`, /only the commissioner/i);
+    await denied(db, user(ALICE), `update public.transactions set decided_by = '${ALICE}' where id = ${t!.id}`, /only be changed by the commissioner/);
+    assert.equal(await affected(db, user(ALICE), `update public.transactions set note = 'changed my mind' where id = ${t!.id}`), 1);
+    assert.equal(await affected(db, user(ALICE), `update public.transactions set status = 'cancelled' where id = ${t!.id}`), 1);
+    assert.equal(await affected(db, user(ALICE), `update public.transactions set status = 'pending' where id = ${t!.id}`), 0, "a cancelled one is no longer editable");
+    assert.equal(await affected(db, user(ALICE), `delete from public.transactions where id = ${t!.id}`), 0, "managers cancel, they don't delete");
+  });
+
+  test("can rename himself but can't make himself commissioner", async () => {
+    assert.equal(await affected(db, user(ALICE), `update public.profiles set display_name = 'Alice' where id = '${ALICE}'`), 1);
+    await denied(db, user(ALICE), `update public.profiles set is_commissioner = true where id = '${ALICE}'`, /Only the commissioner/);
+  });
+
+  test("can't write league data or read commissioner tables", async () => {
+    assert.equal(await affected(db, user(ALICE), `update public.standings set wins = 99`), 0);
+    await denied(db, user(ALICE), `insert into public.standings (season, team_id) values (2027, '0001')`);
+    await denied(db, user(ALICE), `insert into public.team_managers values ('0002', '${ALICE}')`);
+    await denied(db, user(ALICE), `insert into public.roster_entries (season, team_id, player_id) values (${S}, '0001', 'QB-FA')`);
+    assert.deepEqual(await rows(db, user(ALICE), `select * from public.score_overrides`), []);
+    assert.deepEqual(await rows(db, user(ALICE), `select * from public.audit_log`), []);
+    assert.deepEqual(await rows(db, user(ALICE), `select * from public.review_queue`), []);
+    await denied(db, user(ALICE), `insert into public.audit_log (action) values ('fake')`);
+  });
+});
+
+describe("anonymous visitors", () => {
+  test("read public data: teams, rosters, standings, scores, published announcements", async () => {
+    assert.equal((await rows(db, anon, `select * from public.teams`)).length, 2);
+    assert.equal((await rows(db, anon, `select * from public.roster_entries`)).length, 4);
+    assert.equal((await rows(db, anon, `select * from public.standings`)).length, 2);
+    assert.equal((await rows(db, anon, `select * from public.player_scores`)).length, 1);
+    assert.deepEqual(await rows(db, anon, `select title from public.announcements`), [{ title: "Live" }]);
+  });
+
+  test("can't read private data", async () => {
+    for (const t of ["profiles", "team_managers", "lineup_slots", "transactions", "score_overrides", "audit_log", "review_queue", "heartbeats"]) {
+      await denied(db, anon, `select * from public.${t}`, /permission denied/);
+    }
+  });
+
+  test("can't write anything", async () => {
+    await denied(db, anon, `insert into public.teams (id, name, division) values ('0003', 'X', 'Black')`, /permission denied/);
+    await denied(db, anon, `update public.standings set wins = 0`, /permission denied/);
+    await denied(db, anon, `insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '0001', 0, 'QB-DET')`, /permission denied/);
+  });
+});
+
+describe("commissioner", () => {
+  test("can do everything: other teams' lineups (even locked), decide transactions, league data, overrides, audit", async () => {
+    assert.equal(await affected(db, user(COMMISH), `update public.lineup_slots set player_id = 'QB-ARI' where team_id = '0002' and slot = 0`), 1);
+    assert.equal(await affected(db, user(COMMISH), `insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '0001', 0, 'QB-KC')`), 1, "lock doesn't apply");
+    assert.equal(await affected(db, user(COMMISH), `update public.transactions set status = 'approved', decided_by = '${COMMISH}', decided_at = now() where id = 1`), 1);
+    assert.equal(await affected(db, user(COMMISH), `update public.standings set wins = 5 where team_id = '0001'`), 1);
+    assert.equal(await affected(db, user(COMMISH), `insert into public.score_overrides (season, week, target_key, type, points, reason) values (${S}, ${W}, 'DEF:PHI', 'points', 10, 'Forfeit')`), 1);
+    assert.equal((await rows(db, user(COMMISH), `select * from public.audit_log`)).length, 1);
+    assert.deepEqual(await rows(db, user(COMMISH), `select title from public.announcements order by id`), [{ title: "Live" }, { title: "Draft" }]);
+    assert.equal(await affected(db, user(COMMISH), `update public.profiles set is_commissioner = true where id = '${BOB}'`), 1);
+  });
+
+  test("an approved trade is visible league-wide; pending ones only to the teams involved", async () => {
+    await db.exec(`insert into public.transactions (season, team_id, type, partner_team_id, status) values (${S}, '0002', 'trade', '0001', 'pending')`);
+    await db.exec(`insert into public.teams (id, name, division) values ('0003', 'Third', 'Gold')`);
+    const CAROL = "00000000-0000-0000-0000-0000000000cc";
+    await db.exec(`insert into auth.users (id, email) values ('${CAROL}', 'carol@example.com'); insert into public.team_managers values ('0003', '${CAROL}')`);
+    assert.equal((await rows(db, user(ALICE), `select id from public.transactions where type = 'trade'`)).length, 1, "partner sees it");
+    assert.equal((await rows(db, user(CAROL), `select id from public.transactions`)).length, 0, "uninvolved manager doesn't");
+    await db.exec(`update public.transactions set status = 'approved' where type = 'trade'`);
+    assert.equal((await rows(db, user(CAROL), `select id from public.transactions`)).length, 1);
+  });
+});
+
+describe("server jobs (service_role)", () => {
+  test("bypass RLS and can touch the heartbeat; nobody else can", async () => {
+    assert.equal(await affected(db, service, `insert into public.heartbeats (name) values ('nightly') on conflict (name) do update set at = now()`), 1);
+    assert.equal(await affected(db, service, `update public.standings set wins = 1`), 2);
+    await denied(db, user(COMMISH), `select * from public.heartbeats`, /permission denied/);
+  });
+});

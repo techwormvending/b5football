@@ -41,6 +41,9 @@ node scripts/verify-espn.mts 2026 1 2 3 4 5
 ```
 `bakeoff.mts` compares a source's scores with MFL's official scores (`--fetch-mfl` downloads them into `.bakeoff/`). The spike compares ESPN's and nflverse's touchdowns, with yardage, for one game. `verify-espn.mts` scores every player and defense from ESPN (live adapter) and nflverse and lists any difference.
 
+## Database (Supabase)
+Schema changes are migrations in `supabase/migrations/`; never edit tables in the dashboard. `npm test` includes RLS tests that run the migrations in an in-process Postgres (no Docker needed) and check that managers can only change their own team. The service_role key lives only in the GitHub Actions secret `SUPABASE_SERVICE_ROLE_KEY`, and the project URL in the Actions variable `SUPABASE_URL`.
+
 ## Live scoring and weekly finalization
 - **Live poller** (keep it running in season, e.g. as a service): `node scripts/live-poller.mts`. It polls ESPN only while games are on (every 30–60 s) and otherwise sleeps until shortly before the next kickoff. `--once` does a single poll.
 - **Nightly finalization** (schedule daily, e.g. 4 AM ET): `node scripts/finalize.mts`. It pulls nflverse (the official record), overwrites live scores, logs every live-vs-final difference and stat correction, and auto-locks each week Tuesday 11 PM ET (`AUTO_FINALIZE=off` to require the commissioner).

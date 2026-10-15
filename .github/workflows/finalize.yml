@@ -66,6 +66,31 @@ jobs:
           THROUGH_WEEK: ${{ inputs.through_week }}
         run: node scripts/finalize.mts $SEASON $THROUGH_WEEK
 
+      # Free-tier Supabase projects pause after ~7 days without activity. Touch the
+      # database every night (including the off-season) so it stays awake.
+      # Needs repository variable SUPABASE_URL and secret SUPABASE_SERVICE_ROLE_KEY.
+      - name: Keep Supabase awake
+        if: always()
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "::warning::SUPABASE_URL variable or SUPABASE_SERVICE_ROLE_KEY secret not set; skipping heartbeat."
+            exit 0
+          fi
+          # Legacy service_role keys are JWTs (eyJ...) and also go in Authorization;
+          # new sb_secret_ keys go in apikey only.
+          auth=()
+          case "$SUPABASE_SERVICE_ROLE_KEY" in eyJ*) auth=(-H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY");; esac
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$SUPABASE_URL/rest/v1/heartbeats?on_conflict=name" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" "${auth[@]}" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: resolution=merge-duplicates,return=minimal" \
+            -d "{\"name\":\"nightly\",\"at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}")
+          echo "Supabase heartbeat: HTTP $code"
+          case "$code" in 2*) ;; *) echo "::error::Supabase heartbeat failed (HTTP $code)"; exit 1;; esac
+
       - name: Save league data
         working-directory: league-store
         run: |

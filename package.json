@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
     "@types/node": "24.10.1",
+    "supabase": "2.119.0",
     "typescript": "5.9.3"
   }
 }
