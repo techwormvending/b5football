@@ -57,6 +57,7 @@ jobs:
           fi
 
       - name: Finalize
+        id: finalize
         env:
           B5_DATA: league-store/league
           B5_ACTOR: github-actions
@@ -82,6 +83,8 @@ jobs:
             echo "::warning::SUPABASE_URL variable or SUPABASE_SERVICE_ROLE_KEY secret not set; skipping heartbeat."
             exit 0
           fi
+          # Accept the variable with or without the dashboard's "/rest/v1/" suffix.
+          SUPABASE_URL="${SUPABASE_URL%/}"; SUPABASE_URL="${SUPABASE_URL%/rest/v1}"; SUPABASE_URL="${SUPABASE_URL%/}"
           # Legacy service_role keys are JWTs (eyJ...) and also go in Authorization;
           # new sb_secret_ keys go in apikey only.
           auth=()
@@ -110,7 +113,9 @@ jobs:
             fi
           fi
 
+      # Save whenever finalization worked, even if the heartbeat step failed.
       - name: Save league data
+        if: ${{ always() && steps.finalize.outcome == 'success' }}
         working-directory: league-store
         run: |
           git config user.name "github-actions[bot]"

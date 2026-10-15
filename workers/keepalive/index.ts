@@ -28,7 +28,9 @@ export async function beat(env: Env, fetchImpl: typeof fetch = fetch, now: Date 
   // Legacy service_role keys are JWTs and also go in Authorization; new sb_secret_ keys don't.
   if (key.startsWith("eyJ")) headers.Authorization = `Bearer ${key}`;
   try {
-    const res = await fetchImpl(`${env.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/heartbeats?on_conflict=name`, {
+    // Accept the URL with or without the dashboard's "/rest/v1/" suffix.
+    const base = env.SUPABASE_URL.replace(/\/+$/, "").replace(/\/rest\/v1$/, "");
+    const res = await fetchImpl(`${base}/rest/v1/heartbeats?on_conflict=name`, {
       method: "POST",
       headers,
       body: JSON.stringify({ name: HEARTBEAT_NAME, at: now.toISOString() })

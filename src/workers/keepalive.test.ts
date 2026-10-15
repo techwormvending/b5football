@@ -26,6 +26,12 @@ describe("keep-alive Worker", () => {
     assert.deepEqual(JSON.parse(calls[0]!.init.body as string), { name: HEARTBEAT_NAME, at: "2026-10-15T18:13:00.000Z" });
   });
 
+  test("accepts the URL with the dashboard's /rest/v1/ suffix (the GitHub variable was set that way)", async () => {
+    const { f, calls } = fakeFetch();
+    await beat({ SUPABASE_URL: "https://ref.supabase.co/rest/v1/", SUPABASE_SERVICE_ROLE_KEY: "sb_secret_testtesttest" }, f);
+    assert.equal(calls[0]!.url, "https://ref.supabase.co/rest/v1/heartbeats?on_conflict=name");
+  });
+
   test("legacy JWT service_role keys also go in Authorization", async () => {
     const { f, calls } = fakeFetch();
     await beat(env("eyJhbGciOi.test.sig"), f);
