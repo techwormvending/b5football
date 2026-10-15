@@ -16,6 +16,7 @@ const AUTH_STUB = `
   create role anon nologin noinherit;
   create role authenticated nologin noinherit;
   create role service_role nologin noinherit bypassrls;
+  create role supabase_auth_admin nologin noinherit;   -- runs Auth hooks
   create schema auth;
   grant usage on schema auth to anon, authenticated, service_role;
   create table auth.users (

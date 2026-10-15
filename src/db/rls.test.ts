@@ -232,6 +232,64 @@ describe("keep-alive status (commissioner banner)", () => {
   });
 });
 
+describe("invite-only accounts", () => {
+  const hook = (email: string) =>
+    db.query<{ r: unknown }>(`select public.hook_before_user_created($1::jsonb) as r`, [JSON.stringify({ user: { email }, metadata: {} })]).then(x => x.rows[0]!.r);
+
+  test("the sign-up hook allows invited emails (any case) and rejects everyone else", async () => {
+    await db.exec(`insert into public.invites (email, team_id) values ('newguy@example.com', '0002')`);
+    assert.deepEqual(await hook("NewGuy@Example.com "), {});
+    assert.deepEqual(await hook("stranger@example.com"), { error: { http_code: 403, message: "The B5 league is invite-only. Ask the commissioner for an invite." } });
+    assert.deepEqual(await hook(""), { error: { http_code: 403, message: "The B5 league is invite-only. Ask the commissioner for an invite." } });
+  });
+
+  test("only Supabase Auth can run the hook", async () => {
+    await denied(db, anon, `select public.hook_before_user_created('{}'::jsonb)`, /permission denied/);
+    await denied(db, user(COMMISH), `select public.hook_before_user_created('{}'::jsonb)`, /permission denied/);
+    const r = await db.transaction(async tx => { await tx.exec("set local role supabase_auth_admin"); return tx.query(`select public.hook_before_user_created('{"user":{"email":"x@y.z"}}'::jsonb) as r`); });
+    assert.equal((r.rows[0] as { r: { error: { http_code: number } } }).r.error.http_code, 403);
+  });
+
+  test("first sign-in applies the invite: team assignment, commissioner flag, accepted", async () => {
+    assert.equal(await affected(db, user(COMMISH), `insert into public.invites (email, team_id) values ('newguy@example.com', '0002')`), 1);
+    assert.equal(await affected(db, user(COMMISH), `insert into public.invites (email, is_commissioner) values ('cocommish@example.com', true)`), 1);
+    const NEW = "00000000-0000-0000-0000-0000000000ee", CO = "00000000-0000-0000-0000-0000000000ef";
+    await db.exec(`insert into auth.users (id, email) values ('${NEW}', 'NewGuy@example.com'), ('${CO}', 'cocommish@example.com')`);
+    assert.deepEqual((await db.query(`select team_id from public.team_managers where user_id = '${NEW}'`)).rows, [{ team_id: "0002" }]);
+    const inv = (await db.query<{ user_id: string; accepted_at: unknown }>(`select user_id, accepted_at from public.invites where email = 'newguy@example.com'`)).rows[0]!;
+    assert.equal(inv.user_id, NEW);
+    assert.ok(inv.accepted_at);
+    assert.equal((await db.query<{ c: boolean }>(`select is_commissioner as c from public.profiles where id = '${CO}'`)).rows[0]!.c, true);
+    // The new manager can now set Bob's team's lineup (co-manager of 0002)
+    assert.equal(await affected(db, user(NEW), `update public.lineup_slots set week = ${W} where team_id = '0002'`), 1);
+  });
+
+  test("invites are commissioner-only; emails must be lower-case and valid", async () => {
+    await db.exec(`insert into public.invites (email) values ('someone@example.com')`);
+    assert.deepEqual(await rows(db, user(ALICE), `select * from public.invites`), []);
+    await denied(db, user(ALICE), `insert into public.invites (email) values ('friend@example.com')`);
+    await denied(db, anon, `select * from public.invites`, /permission denied/);
+    await denied(db, user(COMMISH), `insert into public.invites (email) values ('Mixed@Example.com')`, /check constraint/);
+    await denied(db, user(COMMISH), `insert into public.invites (email) values ('not-an-email')`, /check constraint/);
+  });
+
+  test("an account that got past the hook (no invite, no team) sees only public data and its own profile", async () => {
+    const GHOST = "00000000-0000-0000-0000-0000000000dd";
+    await db.exec(`insert into auth.users (id, email) values ('${GHOST}', 'ghost@example.com');
+      update public.transactions set status = 'approved' where id = 1;
+      update public.nfl_games set kickoff = now() - interval '5 minutes'`);
+    assert.deepEqual(await rows(db, user(GHOST), `select id from public.profiles`), [{ id: GHOST }]);
+    assert.deepEqual(await rows(db, user(GHOST), `select * from public.team_managers`), []);
+    assert.deepEqual(await rows(db, user(GHOST), `select id from public.transactions`), [], "decided transactions are members-only");
+    assert.deepEqual(await rows(db, user(GHOST), `select * from public.lineup_slots`), [], "kicked-off lineups are members-only");
+    assert.equal((await rows(db, user(GHOST), `select * from public.teams`)).length, 2, "public data still readable");
+    assert.equal(await affected(db, user(GHOST), `update public.profiles set is_commissioner = false where id = '${ALICE}'`), 0);
+    // A real member still sees the decided transaction and kicked-off lineups
+    assert.equal((await rows(db, user(ALICE), `select id from public.transactions where id = 1`)).length, 1);
+    assert.equal((await rows(db, user(ALICE), `select * from public.lineup_slots where team_id = '0002'`)).length, 1);
+  });
+});
+
 describe("server jobs (service_role)", () => {
   test("bypass RLS and can touch the heartbeat; nobody else can", async () => {
     assert.equal(await affected(db, service, `insert into public.heartbeats (name) values ('nightly') on conflict (name) do update set at = now()`), 1);
