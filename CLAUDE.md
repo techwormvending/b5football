@@ -168,6 +168,7 @@ The commissioner (an IT director, deploying to a new domain they're registering)
 - Must work at phone width (390px). Nav collapses to a menu toggle below 760px.
 - Times are US Eastern.
 - Keep dependencies minimal and justified.
+- **Cache busting:** every script and `style.css` in `index.html` carries `?v=<version>`. Bump it when the file changes, or browsers keep the old copy for up to 10 minutes (GitHub Pages caching) and new pages break against old scripts.
 
 ## Migration (one-time, before cancelling MFL)
 - MFL league ID **22689**, host `www45.myfantasyleague.com` (`TYPE=players` and `nflSchedule` exports go to `api.myfantasyleague.com`). Most historical exports need the commissioner logged in.
