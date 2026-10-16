@@ -65,7 +65,7 @@
   const currentWeek = () => (sched.weeks.find(w => !w.games.length || !w.games.every(played)) || sched.weeks[sched.weeks.length - 1] || {}).week;
   let schedWeek = null;
 
-  function gameCard(g) {
+  function gameCard(g, week) {
     const [aId, aPts, hId, hPts] = g;
     const a = teamById(aId) || { name: aId }, h = teamById(hId) || { name: hId };
     const done = played(g);
@@ -75,10 +75,51 @@
         <span class="g-pts">${done ? Number(pts).toFixed(1) : "–"}</span>
       </div>`;
     const divGame = a.division && a.division === h.division;
-    return `<div class="card game">
+    const round = roundName(week);
+    return `<a class="card game" href="#matchup/${esc(week)}/${esc(aId)}-${esc(hId)}">
       ${side(a, aPts, hPts)}${side(h, hPts, aPts)}
-      <div class="g-meta muted">${done ? "Final" : "Upcoming"}${divGame ? ` · ${esc(divName(a.division))} division game` : ""}</div>
-    </div>`;
+      <div class="g-meta muted">${done ? "Final" : "Upcoming"}${round ? ` · ${esc(round)}` : divGame ? ` · ${esc(divName(a.division))} division game` : ""}</div>
+    </a>`;
+  }
+
+  // Playoffs: LEAGUE.playoffs (8 teams; quarterfinals week 15, semifinals 16, championship 17).
+  const PO = L.playoffs || { teams: 0, rounds: [] };
+  const roundName = (week) => ((PO.rounds || []).find(r => r.week === week) || {}).name || "";
+
+  // Bracket placeholder until the matchups are set. Seeds 1-8, standard pairing (1v8, 4v5, 3v6, 2v7).
+  function bracket(week) {
+    const r = PO.rounds || [];
+    if (PO.teams !== 8 || r.length !== 3) return `<div class="card muted">Playoffs. Matchups are set after week ${esc(sched.regularSeasonWeeks)}.</div>`;
+    const slot = (t) => `<div class="br-team">${esc(t)}</div>`;
+    const game = (x, y) => `<div class="br-game">${slot(x)}${slot(y)}</div>`;
+    const col = (rd, games) => `<div class="br-col${rd.week === week ? " now" : ""}">
+        <div class="br-head">${esc(rd.name)}<span>Week ${esc(rd.week)}</span></div>${games}</div>`;
+    return `<div class="card">
+        <div class="bracket">
+          ${col(r[0], game("Seed 1", "Seed 8") + game("Seed 4", "Seed 5") + game("Seed 3", "Seed 6") + game("Seed 2", "Seed 7"))}
+          ${col(r[1], game("Winner 1/8", "Winner 4/5") + game("Winner 3/6", "Winner 2/7"))}
+          ${col(r[2], game("Winner SF 1", "Winner SF 2"))}
+        </div>
+        <p class="muted small">${esc(PO.teams)} teams make the playoffs. Seeding: ${esc(PO.seeding || "TBD")}. Matchups are set after week ${esc(sched.regularSeasonWeeks)}.</p>
+      </div>`;
+  }
+
+  function matchupPage(week, aId, hId) {
+    const w = sched.weeks.find(x => x.week === week);
+    const g = w && w.games.find(x => x[0] === aId && x[2] === hId);
+    const back = `<p><a href="#schedule" data-back-week="${esc(week)}">← Week ${esc(week)} schedule</a></p>`;
+    if (!g) return `<section><h2>Matchup</h2>${back}<div class="card muted">That matchup isn't on the schedule.</div></section>`;
+    const done = played(g), round = roundName(week);
+    const lineup = (t) => `<div class="card">
+        <div class="team">${logoHtml(t, "logo sm")}<h3>${esc(t.name)}</h3></div>
+        <ul class="mu-slots">${(L.lineupSlots || []).map(s => `<li><span class="pos pos-${esc(s)}">${esc(s)}</span><span class="muted">–</span><span class="muted">–</span></li>`).join("")}</ul>
+      </div>`;
+    const a = teamById(aId) || { name: aId }, h = teamById(hId) || { name: hId };
+    return `<section><h2>Week ${esc(week)}${round ? " · " + esc(round) : ""}</h2>${back}
+        <div class="grid games">${gameCard(g, week).replace(/^<a /, "<div ").replace(/<\/a>$/, "</div>")}</div>
+        <p class="muted small mu-note">${done ? "Final team scores." : "Upcoming."} Starting lineups and player-by-player points show here once lineups and live scoring run on this site (${esc(L.lineupsFrom || "")} season).</p>
+        <div class="grid mu-cols">${lineup(a)}${lineup(h)}</div>
+      </section>`;
   }
 
   const pages = {
@@ -88,14 +129,15 @@
       const wk = schedWeek ?? cur;
       const w = sched.weeks.find(x => x.week === wk) || sched.weeks[0];
       const isPlayoff = w.week > (sched.regularSeasonWeeks || 99);
-      const chips = sched.weeks.map(x => `<button class="wk${x.week === w.week ? " active" : ""}${x.week === cur ? " now" : ""}" data-week="${x.week}">${x.week}</button>`).join("");
+      const round = roundName(w.week);
+      const chips = sched.weeks.map(x => `<button aria-label="Week ${x.week}${roundName(x.week) ? ", " + esc(roundName(x.week)) : ""}" class="wk${x.week > (sched.regularSeasonWeeks || 99) ? " po" : ""}${x.week === w.week ? " active" : ""}${x.week === cur ? " now" : ""}" data-week="${x.week}">${x.week}</button>`).join("");
       const body = w.games.length
-        ? `<div class="grid games">${w.games.map(gameCard).join("")}</div>`
-        : `<div class="card muted">${isPlayoff ? "Playoffs. Matchups are set after week " + esc(sched.regularSeasonWeeks) + "." : "No games this week."}</div>`;
+        ? `<div class="grid games">${w.games.map(g => gameCard(g, w.week)).join("")}</div>`
+        : isPlayoff ? bracket(w.week) : `<div class="card muted">No games this week.</div>`;
       return `<section>
           <h2>Schedule</h2>
           <div class="weeks" role="tablist" aria-label="Week">${chips}</div>
-          <h3 class="wk-title">Week ${esc(w.week)}${isPlayoff ? " · Playoffs" : ""}${w.week === cur ? ` <span class="tag">This week</span>` : ""}</h3>
+          <h3 class="wk-title">Week ${esc(w.week)}${isPlayoff ? " · Playoffs" + (round ? ": " + esc(round) : "") : ""}${w.week === cur ? ` <span class="tag">This week</span>` : ""}</h3>
           ${body}
           <p class="muted small">Schedule as of ${fmtDate(sched.asOf)}</p>
         </section>`;
@@ -240,11 +282,13 @@
   function route() {
     const raw = (location.hash || "#home").slice(1);
     const key = raw === "lineups" ? "myteam" : raw;   // old links
-    const page = pages[key] ? key : "home";
+    const mu = /^matchup\/(\d+)\/(\w+)-(\w+)$/.exec(key);
+    const page = mu ? "matchup" : pages[key] ? key : "home";
     clearInterval(timer);
-    view.innerHTML = pages[page]();
+    view.innerHTML = mu ? matchupPage(Number(mu[1]), mu[2], mu[3]) : pages[page]();
     document.querySelectorAll(".nav a[href^='#']").forEach(a =>
-      a.classList.toggle("active", a.getAttribute("href") === "#" + page));
+      a.classList.toggle("active", a.getAttribute("href") === "#" + (mu ? "schedule" : page)));
+    if (page === "schedule") centerWeek();
     nav.classList.remove("open");
     if (page === "home") startClock();
     if (page === "myteam" && window.B5MyTeam) window.B5MyTeam.start(document.getElementById("mtRoot"));
@@ -258,8 +302,17 @@
     if (!b) return;
     schedWeek = Number(b.dataset.week);
     view.innerHTML = pages.schedule();
-    const active = view.querySelector(".wk.active");
-    if (active) active.scrollIntoView({ block: "nearest", inline: "center" });
+    centerWeek();
   });
+  // "Back to week N" from a matchup opens the schedule on that week.
+  view.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-back-week]");
+    if (b) schedWeek = Number(b.dataset.backWeek);
+  });
+  // Scroll the week strip (not the page) so the selected week is centered.
+  function centerWeek() {
+    const strip = view.querySelector(".weeks"), active = view.querySelector(".wk.active");
+    if (strip && active) strip.scrollLeft = active.offsetLeft - strip.offsetLeft - (strip.clientWidth - active.offsetWidth) / 2;
+  }
   route();
 })();

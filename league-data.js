@@ -523,6 +523,16 @@ window.LEAGUE = {
   roster: "9 starters: QB, 2 RB, 3 WR, TE, K, DEF (no flex). 18-man roster.",
   // Starting lineup slots, in order. Must match the database (private.slot_position).
   lineupSlots: ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "K", "DEF"],
+  // Playoff bracket (from the league's bracket settings: 8 teams, 4 games in week 15).
+  playoffs: {
+    teams: 8,
+    seeding: "TBD (commissioner)",
+    rounds: [
+      { week: 15, name: "Quarterfinals" },
+      { week: 16, name: "Semifinals" },
+      { week: 17, name: "Championship" }
+    ]
+  },
   // First season managers set lineups on My Team (Supabase). Before that, My Team shows the roster and a note.
   lineupsFrom: 2027,
 
