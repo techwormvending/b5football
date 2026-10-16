@@ -1,0 +1,334 @@
+{
+ "season": 2026,
+ "week": 6,
+ "status": "pending_review",
+ "missingGames": [],
+ "diffLog": [
+  {
+   "at": "2026-10-16T13:57:17.459Z",
+   "kind": "live_vs_final",
+   "entries": [],
+   "note": "no live numbers were recorded for SEA@DEN"
+  }
+ ],
+ "updatedAt": "2026-10-16T13:57:17.459Z",
+ "final": {
+  "season": 2026,
+  "week": 6,
+  "source": "final",
+  "computedAt": "2026-10-16T13:57:17.459Z",
+  "delayed": false,
+  "errors": [],
+  "games": [
+   {
+    "gameKey": "SEA@DEN",
+    "sourceGameId": "2026_06_SEA_DEN",
+    "home": "DEN",
+    "away": "SEA",
+    "homeScore": 17,
+    "awayScore": 14,
+    "status": "final",
+    "gameDate": "2026-10-15"
+   }
+  ],
+  "players": {
+   "nflverse:00-0034869": {
+    "key": "nflverse:00-0034869",
+    "name": "Sam Darnold",
+    "position": "QB",
+    "team": "SEA",
+    "gameKey": "SEA@DEN",
+    "points": 7,
+    "stats": {
+     "passYds": 278,
+     "rushYds": 19,
+     "interceptionsThrown": 2,
+     "twoPtPasses": 1
+    }
+   },
+   "nflverse:00-0038543": {
+    "key": "nflverse:00-0038543",
+    "name": "Jaxon Smith-Njigba",
+    "position": "WR",
+    "team": "SEA",
+    "gameKey": "SEA@DEN",
+    "points": 14,
+    "stats": {
+     "recYds": 134,
+     "receptions": 12
+    }
+   },
+   "nflverse:00-0038797": {
+    "key": "nflverse:00-0038797",
+    "name": "Emanuel Wilson",
+    "position": "RB",
+    "team": "SEA",
+    "gameKey": "SEA@DEN",
+    "points": 4,
+    "stats": {
+     "rushYds": 52
+    }
+   },
+   "nflverse:00-0033908": {
+    "key": "nflverse:00-0033908",
+    "name": "Cooper Kupp",
+    "position": "WR",
+    "team": "SEA",
+    "gameKey": "SEA@DEN",
+    "points": 4.5,
+    "stats": {
+     "recYds": 50,
+     "receptions": 5
+    }
+   },
+   "nflverse:00-0037545": {
+    "key": "nflverse:00-0037545",
+    "name": "Rashid Shaheed",
+    "position": "WR",
+    "team": "SEA",
+    "gameKey": "SEA@DEN",
+    "points": 6.5,
+    "stats": {
+     "rushYds": 2,
+     "recYds": 66,
+     "receptions": 5,
+     "twoPtReceptions": 1
+    }
+   },
+   "nflverse:00-0036158": {
+    "key": "nflverse:00-0036158",
+    "name": "J.K. Dobbins",
+    "position": "RB",
+    "team": "DEN",
+    "gameKey": "SEA@DEN",
+    "points": 9.5,
+    "stats": {
+     "rushYds": 41,
+     "recYds": 5,
+     "receptions": 3,
+     "rushTdLengths": [
+      4
+     ]
+    }
+   },
+   "nflverse:00-0039732": {
+    "key": "nflverse:00-0039732",
+    "name": "Bo Nix",
+    "position": "QB",
+    "team": "DEN",
+    "gameKey": "SEA@DEN",
+    "points": 2,
+    "stats": {
+     "passYds": 107,
+     "rushYds": 2
+    }
+   },
+   "nflverse:00-0036613": {
+    "key": "nflverse:00-0036613",
+    "name": "Jaylen Waddle",
+    "position": "WR",
+    "team": "DEN",
+    "gameKey": "SEA@DEN",
+    "points": 2,
+    "stats": {
+     "recYds": 24,
+     "receptions": 4
+    }
+   },
+   "nflverse:00-0037745": {
+    "key": "nflverse:00-0037745",
+    "name": "Velus Jones Jr.",
+    "position": "RB",
+    "team": "SEA",
+    "gameKey": "SEA@DEN",
+    "points": 0.5,
+    "stats": {
+     "rushYds": 20,
+     "recYds": -1,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0033576": {
+    "key": "nflverse:00-0033576",
+    "name": "Eric Saubert",
+    "position": "TE",
+    "team": "SEA",
+    "gameKey": "SEA@DEN",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0040730": {
+    "key": "nflverse:00-0040730",
+    "name": "RJ Harvey",
+    "position": "RB",
+    "team": "DEN",
+    "gameKey": "SEA@DEN",
+    "points": 11.5,
+    "stats": {
+     "rushYds": 25,
+     "recYds": 31,
+     "receptions": 3,
+     "rushTdLengths": [
+      1
+     ]
+    }
+   },
+   "nflverse:00-0038976": {
+    "key": "nflverse:00-0038976",
+    "name": "Marvin Mims Jr.",
+    "position": "WR",
+    "team": "DEN",
+    "gameKey": "SEA@DEN",
+    "points": 1,
+    "stats": {
+     "recYds": 13,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0037085": {
+    "key": "nflverse:00-0037085",
+    "name": "Tyler Badie",
+    "position": "RB",
+    "team": "DEN",
+    "gameKey": "SEA@DEN",
+    "points": 0,
+    "stats": {
+     "rushYds": 6
+    }
+   },
+   "nflverse:00-0033881": {
+    "key": "nflverse:00-0033881",
+    "name": "Evan Engram",
+    "position": "TE",
+    "team": "DEN",
+    "gameKey": "SEA@DEN",
+    "points": 3,
+    "stats": {
+     "recYds": 13,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0034348": {
+    "key": "nflverse:00-0034348",
+    "name": "Courtland Sutton",
+    "position": "WR",
+    "team": "DEN",
+    "gameKey": "SEA@DEN",
+    "points": 1,
+    "stats": {
+     "recYds": 19,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0039868": {
+    "key": "nflverse:00-0039868",
+    "name": "Troy Franklin",
+    "position": "WR",
+    "team": "DEN",
+    "gameKey": "SEA@DEN",
+    "points": 0.5,
+    "stats": {
+     "recYds": 2,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0040648": {
+    "key": "nflverse:00-0040648",
+    "name": "Tory Horton",
+    "position": "WR",
+    "team": "SEA",
+    "gameKey": "SEA@DEN",
+    "points": 0.5,
+    "stats": {
+     "recYds": 13,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0039793": {
+    "key": "nflverse:00-0039793",
+    "name": "AJ Barner",
+    "position": "TE",
+    "team": "SEA",
+    "gameKey": "SEA@DEN",
+    "points": 4,
+    "stats": {
+     "recYds": 16,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0039299": {
+    "key": "nflverse:00-0039299",
+    "name": "George Holani",
+    "position": "RB",
+    "team": "SEA",
+    "gameKey": "SEA@DEN",
+    "points": 6,
+    "stats": {
+     "rushYds": 20,
+     "rushTdLengths": [
+      1
+     ]
+    }
+   },
+   "nflverse:00-0031492": {
+    "key": "nflverse:00-0031492",
+    "name": "Jason Myers",
+    "position": "K",
+    "team": "SEA",
+    "gameKey": "SEA@DEN",
+    "points": 8.9,
+    "stats": {
+     "fgMadeLengths": [
+      55,
+      34
+     ]
+    }
+   },
+   "nflverse:00-0032569": {
+    "key": "nflverse:00-0032569",
+    "name": "Wil Lutz",
+    "position": "K",
+    "team": "DEN",
+    "gameKey": "SEA@DEN",
+    "points": 7.3,
+    "stats": {
+     "extraPoints": 2,
+     "fgMadeLengths": [
+      53
+     ]
+    }
+   }
+  },
+  "defenses": {
+   "DEN": {
+    "team": "DEN",
+    "gameKey": "SEA@DEN",
+    "points": 11,
+    "stats": {
+     "opponentPoints": 14,
+     "offensiveTdsAllowed": 1,
+     "passYdsAllowed": 240,
+     "rushYdsAllowed": 113,
+     "sacks": 5,
+     "interceptions": 2,
+     "fumbleRecoveries": 1
+    }
+   },
+   "SEA": {
+    "team": "SEA",
+    "gameKey": "SEA@DEN",
+    "points": 14,
+    "stats": {
+     "opponentPoints": 17,
+     "offensiveTdsAllowed": 2,
+     "passYdsAllowed": 94,
+     "rushYdsAllowed": 74,
+     "sacks": 2
+    }
+   }
+  },
+  "unmatched": [],
+  "warnings": []
+ },
+ "autoFinalizeAt": "2026-10-21T03:00:00.000Z"
+}
