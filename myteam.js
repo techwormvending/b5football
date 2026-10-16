@@ -98,11 +98,14 @@
   var acq = function (a) { return /^Waiv/.test(a) ? "Waivers" : a ? "Pick " + a : ""; };
   var msgHtml = function (m) { return m ? '<p class="acct-msg ' + (m.err ? "err" : "ok") + '">' + esc(m.err || m.ok) + "</p>" : ""; };
 
+  // Teams this account manages (the default view). The commissioner can also view any
+  // other team (picker), his own team(s) listed first.
+  var ownTeams = function () { return st.me ? st.me.teams.map(function (t) { return t.team_id; }) : []; };
+  var isCommish = function () { return !!(st.me && st.me.profile && st.me.profile.is_commissioner); };
   function myTeams() {
-    var me = st.me;
-    if (!me) return [];
-    if (me.profile && me.profile.is_commissioner) return (L.teams || []).map(function (t) { return t.id; });
-    return me.teams.map(function (t) { return t.team_id; });
+    var own = ownTeams();
+    if (!isCommish()) return own;
+    return own.concat((L.teams || []).map(function (t) { return t.id; }).filter(function (id) { return own.indexOf(id) < 0; }));
   }
 
   function headerHtml(t) {
@@ -110,8 +113,10 @@
     var picker = ids.length > 1
       ? '<label class="mt-pick">Team <select data-mt="team">' + ids.map(function (id) {
           var x = teamById(id) || { name: id };
-          return '<option value="' + esc(id) + '"' + (id === t.id ? " selected" : "") + ">" + esc(x.name) + "</option>";
-        }).join("") + "</select></label>"
+          return '<option value="' + esc(id) + '"' + (id === t.id ? " selected" : "") + ">" + esc(x.name) +
+            (ownTeams().indexOf(id) >= 0 && isCommish() ? " (your team)" : "") + "</option>";
+        }).join("") + "</select></label>" +
+        (isCommish() && ownTeams().indexOf(t.id) < 0 ? '<p class="tag mt-viewing">Viewing as commissioner</p>' : "")
       : "";
     var line = r ? r.w + "-" + r.l + (r.t ? "-" + r.t : "") : "";
     return '<div class="card mt-head">' + logoHtml(t) +

@@ -335,6 +335,86 @@ describe("save_lineup (the My Team page's Save button)", () => {
   });
 });
 
+describe("commissioner who also manages a team (Mac Daddies, 0011)", () => {
+  const MINE = "0011";
+  const audit = () => db.query<{ action: string; actor: string | null }>(`select action, actor from public.audit_log where action like 'own_team:%' order by id`).then(r => r.rows);
+  beforeEach(async () => {
+    await db.exec(`
+      insert into public.teams (id, name, division) values ('${MINE}', 'Mac Daddies', 'Gold');
+      insert into public.team_managers values ('${MINE}', '${COMMISH}');
+      insert into public.nfl_players (id, name, position, nfl_team) values
+        ('QB-LV', 'Geno Smith', 'QB', 'LV'),          -- KC@LV already kicked off: locked
+        ('RB-ARI', 'James Conner', 'RB', 'ARI');      -- DET@ARI later this week
+      insert into public.roster_entries (season, team_id, player_id) values (${S}, '${MINE}', 'QB-LV'), (${S}, '${MINE}', 'RB-ARI');
+      insert into public.standings (season, team_id, wins) values (${S}, '${MINE}', 3);`);
+  });
+
+  test("his own lineup follows every manager rule: kickoff lock, roster, position", async () => {
+    await denied(db, user(COMMISH), `insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '${MINE}', 0, 'QB-LV')`, /locked/);
+    await denied(db, user(COMMISH), `insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '${MINE}', 0, 'QB-DET')`, /not on team/);
+    await denied(db, user(COMMISH), `insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '${MINE}', 0, 'RB-ARI')`, /cannot play the QB slot/);
+    await assert.rejects(as(db, user(COMMISH), tx => tx.query(`select public.save_lineup(${S}, ${W}, '${MINE}', array['QB-LV',null,null,null,null,null,null,null,null])`)), /locked/);
+    // A starter whose game has kicked off can't be benched, even by the commissioner
+    await db.exec(`insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '${MINE}', 0, 'QB-LV')`);
+    await denied(db, user(COMMISH), `delete from public.lineup_slots where team_id = '${MINE}' and slot = 0`, /locked/);
+    await denied(db, user(COMMISH), `update public.lineup_slots set player_id = 'RB-ARI', slot = 1 where team_id = '${MINE}' and slot = 0`, /locked/);
+    // Normal moves before kickoff work, and aren't logged (that's just managing his team)
+    assert.equal(await affected(db, user(COMMISH), `insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '${MINE}', 1, 'RB-ARI')`), 1);
+    assert.deepEqual(await audit(), []);
+  });
+
+  test("he can't move a player from another team's lineup onto his own to dodge the rules", () =>
+    denied(db, user(COMMISH), `update public.lineup_slots set team_id = '${MINE}' where team_id = '0002' and slot = 0`, /not on team/));
+
+  test("other teams' lineups: commissioner powers still apply (even locked players), not logged", async () => {
+    assert.equal(await affected(db, user(COMMISH), `insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '0001', 0, 'QB-KC')`), 1);
+    assert.deepEqual(await audit(), []);
+  });
+
+  test("own-team transactions start as pending; deciding one is allowed but logged", async () => {
+    await denied(db, user(COMMISH), `insert into public.transactions (season, team_id, type, players_in, status) values (${S}, '${MINE}', 'add', '{QB-FA}', 'processed')`, /start as pending/);
+    await denied(db, user(COMMISH), `insert into public.transactions (season, team_id, type, partner_team_id, status) values (${S}, '0002', 'trade', '${MINE}', 'approved')`, /start as pending/);
+    await as(db, user(COMMISH), tx => tx.query(`insert into public.transactions (season, team_id, type, players_in) values (${S}, '${MINE}', 'add', '{QB-FA}')`));
+    await as(db, user(COMMISH), tx => tx.query(`update public.transactions set note = 'changed my mind' where team_id = '${MINE}'`));
+    assert.deepEqual(await audit(), [], "creating and editing his own pending request is a manager action");
+    await as(db, user(COMMISH), tx => tx.query(`update public.transactions set status = 'approved', decided_by = '${COMMISH}', decided_at = now() where team_id = '${MINE}'`));
+    await as(db, user(COMMISH), tx => tx.query(`update public.transactions set status = 'approved' where id = 1`));   // Bob's, not his team
+    assert.deepEqual((await audit()).map(a => a.action), ["own_team:transactions:update"]);
+    assert.equal((await audit())[0]!.actor, COMMISH);
+  });
+
+  test("roster, standings, matchup and score-override changes on his team are logged; other teams' aren't", async () => {
+    const c = (sql: string) => as(db, user(COMMISH), tx => tx.query(sql));
+    await c(`insert into public.roster_entries (season, team_id, player_id) values (${S}, '${MINE}', 'QB-FA')`);
+    await c(`update public.standings set wins = 4 where team_id = '${MINE}'`);
+    await c(`insert into public.matchups (season, week, home_team, away_team, home_score) values (${S}, ${W}, '0001', '${MINE}', 100)`);
+    await c(`insert into public.score_overrides (season, week, target_key, type, points, reason) values (${S}, ${W}, 'nflverse:RB-ARI', 'points', 30, 'test')`);
+    await c(`delete from public.roster_entries where team_id = '${MINE}' and player_id = 'QB-FA'`);
+    // Other teams: no entries
+    await c(`update public.standings set wins = 9 where team_id = '0001'`);
+    await c(`insert into public.score_overrides (season, week, target_key, type, points, reason) values (${S}, ${W}, 'nflverse:QB-DET', 'points', 1, 'test')`);
+    assert.deepEqual((await audit()).map(a => a.action), [
+      "own_team:roster_entries:insert", "own_team:standings:update", "own_team:matchups:insert",
+      "own_team:score_overrides:insert", "own_team:roster_entries:delete"]);
+    const [m] = (await db.query<{ season: number; week: number; details: { new: { away_team: string } } }>(
+      `select season, week, details from public.audit_log where action = 'own_team:matchups:insert'`)).rows;
+    assert.equal(m!.details.new.away_team, MINE);
+    assert.equal(m!.week, W);
+  });
+
+  test("assigning or removing himself as a team's manager is logged; assigning others isn't", async () => {
+    await as(db, user(COMMISH), tx => tx.query(`insert into public.team_managers values ('0002', '${COMMISH}')`));
+    await as(db, user(COMMISH), tx => tx.query(`delete from public.team_managers where team_id = '0002' and user_id = '${COMMISH}'`));
+    await as(db, user(COMMISH), tx => tx.query(`insert into public.team_managers values ('0002', '${ALICE}')`));
+    assert.deepEqual((await audit()).map(a => a.action), ["own_team:team_managers:insert", "own_team:team_managers:delete"]);
+  });
+
+  test("server jobs touching his team aren't logged as commissioner actions", async () => {
+    await as(db, service, tx => tx.query(`update public.standings set wins = 5 where team_id = '${MINE}'`));
+    assert.deepEqual(await audit(), []);
+  });
+});
+
 describe("server jobs (service_role)", () => {
   test("bypass RLS and can touch the heartbeat; nobody else can", async () => {
     assert.equal(await affected(db, service, `insert into public.heartbeats (name) values ('nightly') on conflict (name) do update set at = now()`), 1);

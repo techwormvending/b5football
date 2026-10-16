@@ -107,7 +107,7 @@
   }
 
   // ---- #commish ------------------------------------------------------------
-  var cm = { teams: [], invites: [], managers: [], keep: null, msg: null };
+  var cm = { teams: [], invites: [], managers: [], accounts: [], keep: null, msg: null };
 
   function loadCommish() {
     var s = me.session;
@@ -115,9 +115,18 @@
       A.api(cfg, s, "teams?select=id,name,division&order=id", {}, f),
       A.api(cfg, s, "invites?select=email,team_id,is_commissioner,invited_at,accepted_at&order=invited_at", {}, f),
       A.api(cfg, s, "team_managers?select=team_id,user_id,profiles(display_name)&order=team_id", {}, f),
-      A.api(cfg, s, "rpc/keepalive_status", { method: "POST", body: "{}" }, f)
+      A.api(cfg, s, "rpc/keepalive_status", { method: "POST", body: "{}" }, f),
+      A.api(cfg, s, "profiles?select=id,display_name,is_commissioner&order=display_name", {}, f),
+      A.api(cfg, s, "invites?select=email,user_id&user_id=not.is.null", {}, f)
     ]).then(function (r) {
       cm.teams = r[0].data || []; cm.invites = r[1].data || []; cm.managers = r[2].data || []; cm.keep = r[3].ok ? r[3].data : null;
+      // Signed-up accounts, labelled with their invite email (the commissioner's own account included).
+      var emails = {};
+      (r[5].data || []).forEach(function (i) { emails[i.user_id] = i.email; });
+      if (me.session.user.email) emails[me.session.user.id] = me.session.user.email;
+      cm.accounts = (r[4].data || []).map(function (p) {
+        return { id: p.id, label: (p.display_name || "(no name)") + (emails[p.id] ? " (" + emails[p.id] + ")" : "") + (p.id === me.session.user.id ? " · you" : "") };
+      });
       var bad = r.filter(function (x) { return !x.ok; });
       if (bad.length) cm.msg = { err: "Some data didn't load: " + bad[0].error };
     });
@@ -155,6 +164,17 @@
           '<button class="btn ghost" type="button" data-cm="remove-invite" data-email="' + esc(i.email) + '">Remove</button></td></tr>';
       }).join("") + "</tbody></table></div>" : '<p class="muted">No invites yet.</p>';
 
+    var assign = cm.teams.length && cm.accounts.length
+      ? '<form class="acct-form cm-assign" data-cm="assign">' +
+        '<label>Account<select name="user_id" required><option value="">Pick an account</option>' + cm.accounts.map(function (a) {
+          return '<option value="' + esc(a.id) + '">' + esc(a.label) + "</option>";
+        }).join("") + "</select></label>" +
+        '<label>Team<select name="team_id" required><option value="">Pick a team</option>' + cm.teams.map(function (t) {
+          return '<option value="' + esc(t.id) + '">' + esc(t.name) + "</option>";
+        }).join("") + "</select></label>" +
+        '<button class="btn" type="submit">Assign team</button>' +
+        '<p class="muted small">Works for your own account too. As a team\'s manager you follow the same lineup rules as everyone else; commissioner changes that touch your team are written to the audit log.</p></form>'
+      : "";
     var mgrs = cm.managers.length ? '<ul class="checks">' + cm.managers.map(function (x) {
       return "<li>" + esc(teamName(x.team_id)) + ": " + esc((x.profiles && x.profiles.display_name) || x.user_id) +
         ' <button class="linkish" type="button" data-cm="unassign" data-team="' + esc(x.team_id) + '" data-user="' + esc(x.user_id) + '">remove from team</button></li>';
@@ -171,7 +191,7 @@
       '<p class="muted small">Only invited emails can create an account. Their team and role are applied when they first sign in. ' +
       "Removing an invite stops new sign-ups; to cut off someone who already joined, also remove them from their team.</p></div>" +
       '<div class="card"><h3>Invites</h3>' + invites + "</div>" +
-      '<div class="card"><h3>Team managers</h3>' + mgrs + "</div></section>";
+      '<div class="card"><h3>Team managers</h3>' + mgrs + assign + "</div></section>";
   }
 
   function startCommish(root) {
@@ -186,6 +206,16 @@
     var act = function (p) { return p.then(function (r) { cm.msg = r && r.ok === false ? { err: r.error } : (r && r.msgOk ? { ok: r.msgOk } : cm.msg); return redraw(); }); };
 
     root.addEventListener("submit", function (e) {
+      var af = e.target.closest("[data-cm='assign']");
+      if (af) {
+        e.preventDefault();
+        var ad = new FormData(af), row = { team_id: ad.get("team_id"), user_id: ad.get("user_id") };
+        act(A.api(cfg, me.session, "team_managers", { method: "POST", body: JSON.stringify(row), headers: { Prefer: "return=minimal" } }, f).then(function (r) {
+          if (!r.ok) return { ok: false, error: /duplicate|unique/i.test(r.error) ? "That account already manages " + teamName(row.team_id) + "." : r.error };
+          return { msgOk: "Assigned to " + teamName(row.team_id) + "." };
+        }).then(function (r) { return load().then(function () { refreshNav(); return r; }); }));
+        return;
+      }
       var form = e.target.closest("[data-cm='invite']");
       if (!form) return;
       e.preventDefault();
