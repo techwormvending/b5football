@@ -5,7 +5,7 @@
    (Supabase custom SMTP via Resend, sender noreply@b5football.win). The link
    returns to this site with tokens in the URL fragment (#access_token=...).
    This script runs BEFORE app.js, saves the session and replaces the fragment
-   with a normal route, so the hash router never sees the tokens.
+   with a normal route (#myteam, or #account if the link failed), so the hash router never sees the tokens.
 
    The league is invite-only: Supabase's "Before User Created" hook rejects
    emails that aren't in public.invites (see supabase/migrations).
@@ -166,9 +166,10 @@
       if (!r) return;
       if (r.session) saveSession(window.B5_SUPABASE, store, r.session);
       root.B5AuthNotice = r.error ? { error: r.error } : { signedIn: true };
-      var url = window.location.pathname + window.location.search + "#account";
+      // Signed in: land on My Team. A failed link goes to #account, which explains and offers a new one.
+      var url = window.location.pathname + window.location.search + (r.error ? "#account" : "#myteam");
       if (window.history && window.history.replaceState) window.history.replaceState(null, "", url);
-      else window.location.hash = "#account";
+      else window.location.hash = r.error ? "#account" : "#myteam";
     };
     consume();
     window.addEventListener("hashchange", consume);

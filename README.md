@@ -1,32 +1,26 @@
 # Bridgeville 5 Fantasy Site
 
-A static site plus a small Node server for weekly lineups. No build step and no installs (Node 18+).
+A static site (GitHub Pages) with Supabase for accounts and lineups. No build step.
 
-- **With the server** (`node server/server.js`, then open http://localhost:8737): everything works, including Lineups.
-- **Static only** (any web host, or opening `index.html` from disk): every page works except Lineups, which shows a "server isn't reachable" note.
+- **Local preview:** `node scripts/serve.js`, then open http://localhost:8737.
+- Sign-in, My Team and the commissioner screen talk to Supabase directly from the browser.
 
 | File | Purpose |
 |---|---|
 | `league-data.js` | **All content.** Edit this; nothing else needs touching for routine updates. |
-| `app.js` | Renders pages from the data. Hash routing (`#home`, `#lineups`, `#schedule`, `#teams`, `#history`, `#rules`, `#traditions`). |
+| `app.js` | Renders pages from the data. Hash routing (`#home`, `#myteam`, `#schedule`, `#teams`, `#history`, `#rules`, `#traditions`, `#account`, `#commish`). |
+| `auth.js`, `account.js` | Magic-link sign-in, the account page and the commissioner screen. |
+| `myteam.js` | My Team: team, record, roster and (from 2027) the weekly lineup. |
 | `style.css` | Theme. Colors are CSS variables at the top of the file. |
 | `index.html` | Shell + nav. |
 | `scripts/refresh-mfl.js` | Re-pulls standings, rosters and schedule/scores from MFL into `league-data.js`. |
-| `server/server.js` | Serves the site and the lineup API. Saves lineups to `data/lineups.json`. |
-| `server/pins.js` | Creates/resets lineup PINs (stored hashed in `data/pins.json`). |
 
 ## Lineups
-Owners set their starting lineup each week on the Lineups page with a team PIN. Lineups are saved on our server, **not** in MFL, so the commissioner enters them into MFL for scoring (Lineups page → Commissioner → "Show all lineups").
+Managers sign in and land on **My Team**. Lineups open there for the **2027 season** (`lineupsFrom` in `league-data.js`); until then the page shows the team, record and roster.
 
-- **One-time setup:** `node server/pins.js` prints a 6-digit PIN for every team and an 8-digit commissioner PIN. They're shown once. Send each owner theirs.
-- **Reset a PIN:** `node server/pins.js 0005` (team ID), `node server/pins.js commish`, or `--all`.
-- **Locks:** each player locks at his NFL game's kickoff (times pulled from MFL). Locked starters can't be benched; locked bench players can't be started. The commissioner PIN can edit any team.
-- **No lineup set:** last week's lineup carries over, minus anyone no longer on the roster.
-- **Privacy:** other teams' starters stay hidden until each player's game kicks off.
-- **Rosters** come from `league-data.js`, so run the MFL refresh after waivers/trades so owners see their new players.
-- **Back up `data/`.** It holds every saved lineup and the PIN hashes.
-
-Hosting: the server needs a Node host (Render, Railway, Fly.io, a VPS, etc.). Set `HOST=0.0.0.0` and `PORT` as the host requires. `data/` must be on persistent disk.
+- Lineups are saved in Supabase (`lineup_slots`) through `save_lineup()`. The database enforces the rules: own team only, player on the roster, right position, and each player locks at his game's kickoff. The commissioner can edit any team.
+- No lineup saved yet: last week's is shown as a draft to confirm.
+- Kickoff times and NFL players come from nflverse, loaded nightly by `scripts/sync-nfl.mts` (part of the nightly workflow).
 
 ## Scoring engine
 `src/scoring/` holds the B5 scoring engine (TypeScript). Run its tests with `npm test` and type-check with `npm run typecheck` (first run `npm install`). It matches MFL's official scores exactly for 2026 weeks 1–5.

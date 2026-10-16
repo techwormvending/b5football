@@ -4,7 +4,7 @@
     {
       "name": "site",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["server/server.js"],
+      "runtimeArgs": ["scripts/serve.js"],
       "port": 8737
     }
   ]

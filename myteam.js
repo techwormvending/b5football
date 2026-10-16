@@ -1,0 +1,290 @@
+/* My Team (#myteam): where a signed-in manager lands. Shows the team, logo,
+   record and roster, and the weekly lineup editor once lineups are open
+   (LEAGUE.lineupsFrom, the 2027 season). Until then it shows the roster from
+   the site's current data and a note that lineups open for 2027.
+
+   Lineups live in Supabase (public.lineup_slots), saved in one call through
+   public.save_lineup(). The database enforces the rules (own team only, player
+   on the roster, right position, each player locked at his game's kickoff); the
+   page only mirrors them so managers see locks before they hit Save.
+
+   Uses auth.js (B5Auth) and account.js (B5Account.load for who is signed in).
+   All data is escaped before it goes into HTML. */
+(function (root) {
+  "use strict";
+  var WEEK_GRACE_MS = 5 * 3600 * 1000;   // a week stays current until 5 h after its last kickoff
+  var POS_ORDER = ["QB", "RB", "WR", "TE", "K", "DEF"];
+
+  var esc = function (s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  };
+  var posRank = function (p) { var i = POS_ORDER.indexOf(p); return i < 0 ? 99 : i; };
+  var byPos = function (a, b) { return posRank(a.pos) - posRank(b.pos); };   // stable: keeps order within a position
+
+  // ---- Pure helpers (tested in src/workers/myteam.test.ts) -------------------
+  function lineupsOpen(L) { return !!(L && L.lineupsFrom && Number(L.season) >= Number(L.lineupsFrom)); }
+
+  /** Record, points and standings place from LEAGUE.standings. Null if the team isn't listed. */
+  function recordFor(L, teamId) {
+    var rows = (L.standings && L.standings.rows) || [];
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      if (r[0] === teamId) return { w: r[1], l: r[2], t: r[3], pf: r[4], pa: r[5], rank: i + 1, of: rows.length };
+    }
+    return null;
+  }
+
+  // The site's 2026 rosters still use MFL's team codes; show the standard ones.
+  var NFL_CODES = { GBP: "GB", JAC: "JAX", KCC: "KC", LVR: "LV", NEP: "NE", NOS: "NO", SFO: "SF", TBB: "TB" };
+
+  /** The site's current roster for a team (LEAGUE.rosters), grouped QB RB WR TE K DEF. */
+  function leagueRoster(L, teamId) {
+    var ps = (L.rosters && L.rosters.teams && L.rosters.teams[teamId]) || [];
+    return ps.map(function (p) { return { name: p[0], pos: p[1], nfl: NFL_CODES[p[2]] || p[2], acquired: p[3] || "" }; }).sort(byPos);
+  }
+
+  /** Current lineup week: the first week whose last kickoff was less than 5 h ago. games: [{week, kickoff}]. */
+  function pickWeek(games, now) {
+    var last = {};
+    games.forEach(function (g) {
+      var k = Date.parse(g.kickoff);
+      if (!isNaN(k) && (last[g.week] == null || k > last[g.week])) last[g.week] = k;
+    });
+    var weeks = Object.keys(last).map(Number).sort(function (a, b) { return a - b; });
+    for (var i = 0; i < weeks.length; i++) if (last[weeks[i]] + WEEK_GRACE_MS > now) return weeks[i];
+    return null;
+  }
+
+  /** Starters to show: this week's saved slots, else last week's carried over (unsaved). */
+  function draftFrom(slots, prevSlots, prevWeek) {
+    var d = [null, null, null, null, null, null, null, null, null];
+    var src = slots && slots.length ? slots : prevSlots || [];
+    src.forEach(function (s) { if (s.slot >= 0 && s.slot < 9) d[s.slot] = s.player_id; });
+    return { draft: d, saved: !!(slots && slots.length), carried: !(slots && slots.length) && src.length ? prevWeek : null };
+  }
+
+  /** Kickoff (ms) of a team's game in the given week's games, or null (bye). */
+  function kickoffFor(weekGames, nflTeam) {
+    for (var i = 0; i < weekGames.length; i++) {
+      var g = weekGames[i];
+      if (g.home === nflTeam || g.away === nflTeam) return Date.parse(g.kickoff);
+    }
+    return null;
+  }
+
+  // ---- Page --------------------------------------------------------------------
+  var L = root.LEAGUE || {}, cfg = root.B5_SUPABASE, A = root.B5Auth;
+  var storage = null;
+  try { storage = root.localStorage; } catch (e) { storage = null; }
+  var f = function (u, i) { return root.fetch(u, i); };   // looked up per call (tests can stub it)
+  var st = { me: null, teamId: null, lu: null, msg: null };
+
+  var teamById = function (id) { for (var i = 0; i < (L.teams || []).length; i++) if (L.teams[i].id === id) return L.teams[i]; return null; };
+  var divName = function (id) { var d = (L.divisions || []).filter(function (x) { return x.id === id; })[0]; return d ? d.name : ""; };
+  var initials = function (name) {
+    return String(name || "").split(/\s+/).filter(function (w) { return w && !/^the$/i.test(w); }).slice(0, 2)
+      .map(function (w) { return w[0]; }).join("").toUpperCase();
+  };
+  var logoHtml = function (t) {
+    return t.logo
+      ? '<img class="logo" src="' + esc(t.logo) + '" alt="" onerror="this.outerHTML=\'<div class=&quot;logo&quot;>' + esc(initials(t.name)) + '</div>\'">'
+      : '<div class="logo">' + esc(initials(t.name)) + "</div>";
+  };
+  var fmtDate = function (d) { return d ? new Date(d + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : ""; };
+  var fmtKick = function (ms) { return new Date(ms).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" }); };
+  var ordinal = function (n) { var s = ["th", "st", "nd", "rd"], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
+  var acq = function (a) { return /^Waiv/.test(a) ? "Waivers" : a ? "Pick " + a : ""; };
+  var msgHtml = function (m) { return m ? '<p class="acct-msg ' + (m.err ? "err" : "ok") + '">' + esc(m.err || m.ok) + "</p>" : ""; };
+
+  function myTeams() {
+    var me = st.me;
+    if (!me) return [];
+    if (me.profile && me.profile.is_commissioner) return (L.teams || []).map(function (t) { return t.id; });
+    return me.teams.map(function (t) { return t.team_id; });
+  }
+
+  function headerHtml(t) {
+    var r = recordFor(L, t.id), ids = myTeams();
+    var picker = ids.length > 1
+      ? '<label class="mt-pick">Team <select data-mt="team">' + ids.map(function (id) {
+          var x = teamById(id) || { name: id };
+          return '<option value="' + esc(id) + '"' + (id === t.id ? " selected" : "") + ">" + esc(x.name) + "</option>";
+        }).join("") + "</select></label>"
+      : "";
+    var line = r ? r.w + "-" + r.l + (r.t ? "-" + r.t : "") : "";
+    return '<div class="card mt-head">' + logoHtml(t) +
+      '<div class="mt-title"><h2>' + esc(t.name) + "</h2>" +
+      '<div class="muted">' + esc(divName(t.division) ? divName(t.division) + " Division" : "") +
+      (t.manager && t.manager !== "TBD" ? " · " + esc(t.manager) : "") + "</div></div>" + picker +
+      (r ? '<div class="mt-stats"><div><b>' + esc(line) + "</b><span>Record</span></div>" +
+        "<div><b>" + esc(ordinal(r.rank)) + "</b><span>of " + esc(r.of) + "</span></div>" +
+        "<div><b>" + esc(Number(r.pf).toFixed(1)) + "</b><span>PF</span></div>" +
+        "<div><b>" + esc(Number(r.pa).toFixed(1)) + "</b><span>PA</span></div></div>" : "") +
+      (L.standings && L.standings.asOf ? '<div class="muted small mt-asof">' + "Standings as of " + esc(fmtDate(L.standings.asOf)) + "</div>" : "") +
+      "</div>";
+  }
+
+  function rosterHtml(players, note) {
+    if (!players.length) return '<div class="card"><h3>Roster</h3><p class="muted">No players on this roster yet.</p></div>';
+    return '<div class="card"><h3>Roster (' + players.length + ")</h3>" +
+      '<ul class="mt-roster">' + players.map(function (p) {
+        return '<li><span class="pos pos-' + esc(p.pos) + '">' + esc(p.pos) + '</span><span class="pname">' + esc(p.name) +
+          '</span><span class="muted nfl">' + esc(p.nfl || "FA") + (p.acquired ? " · " + esc(acq(p.acquired)) : "") + "</span></li>";
+      }).join("") + "</ul>" + (note ? '<p class="muted small">' + esc(note) + "</p>" : "") + "</div>";
+  }
+
+  function closedHtml() {
+    return '<div class="card mt-soon"><h3>Lineups open for the ' + esc(L.lineupsFrom) + " season</h3>" +
+      "<p>Starting with the " + esc(L.lineupsFrom) + " draft, you'll set your weekly lineup right here, from your phone. " +
+      "Each player locks at his own game's kickoff.</p>" +
+      '<p class="muted">For the rest of ' + esc(L.season) + ", set your lineup the way you do now.</p></div>";
+  }
+
+  // ---- Lineup editor (open seasons) ----------------------------------------------
+  function luInfo(p) {
+    var lu = st.lu, k = p ? kickoffFor(lu.weekGames, p.nfl) : null;
+    if (!p) return { text: "", locked: false, bye: false };
+    if (k == null) return { text: "Bye", locked: false, bye: true };
+    var g = lu.weekGames.filter(function (x) { return x.home === p.nfl || x.away === p.nfl; })[0];
+    var opp = g.home === p.nfl ? "vs " + g.away : "@ " + g.home;
+    return { text: opp + " · " + fmtKick(k), locked: Date.now() >= k, bye: false };
+  }
+
+  function editorHtml() {
+    var lu = st.lu;
+    if (lu.error) return '<div class="card"><h3>Lineup</h3><p class="acct-msg err">' + esc(lu.error) + "</p></div>";
+    if (lu.week == null) return '<div class="card"><h3>Lineup</h3><p class="muted">No games left on the ' + esc(L.season) + " schedule.</p></div>";
+    var slots = L.lineupSlots || ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "K", "DEF"];
+    var byId = {};
+    lu.roster.forEach(function (p) { byId[p.id] = p; });
+    var used = {};
+    lu.draft.forEach(function (id) { if (id) used[id] = true; });
+    var rows = slots.map(function (pos, i) {
+      var cur = byId[lu.draft[i]], gi = luInfo(cur), lockedHere = !!(cur && gi.locked && lu.savedIds[cur.id] === i);
+      var opts = lu.roster.filter(function (p) { return p.pos === pos && (p.id === lu.draft[i] || !used[p.id]); }).map(function (p) {
+        var g = luInfo(p), sel = p.id === lu.draft[i];
+        return '<option value="' + esc(p.id) + '"' + (sel ? " selected" : "") + (g.locked && !sel ? " disabled" : "") + ">" +
+          esc(p.name) + " (" + esc(p.nfl || "FA") + ")" + (g.locked ? " 🔒" : g.bye ? " · BYE" : "") + "</option>";
+      }).join("");
+      return '<div class="lu-row' + (lockedHere ? " locked" : "") + '"><span class="pos pos-' + esc(pos) + '">' + esc(pos) + "</span>" +
+        '<div class="lu-pick"><select data-slot="' + i + '"' + (lockedHere ? " disabled" : "") + ' aria-label="' + esc(pos) + " slot " + (i + 1) + '">' +
+        '<option value="">Empty</option>' + opts + "</select>" +
+        '<span class="muted lu-game">' + (cur ? (lockedHere ? "🔒 " : "") + esc(gi.bye ? "⚠ Bye week" : gi.text) : "") + "</span></div></div>";
+    }).join("");
+    var empty = lu.draft.filter(function (x) { return !x; }).length;
+    var status = lu.saved ? "Saved." : lu.carried ? "Carried over from week " + lu.carried + ". Save to confirm it." : "Not set yet.";
+    var first = lu.weekGames.length ? Math.min.apply(null, lu.weekGames.map(function (g) { return Date.parse(g.kickoff); })) : null;
+    return '<div class="card lu-edit"><h3>Week ' + esc(lu.week) + " lineup</h3>" +
+      '<p class="muted small lu-status">' + esc(status) + " " +
+      esc(first && Date.now() < first ? "First game " + fmtKick(first) + " ET. Each player locks at his own kickoff." : "Players lock at their own kickoff.") + "</p>" +
+      rows + '<div class="lu-actions"><button class="btn" data-mt="save" type="button">Save lineup</button>' +
+      (empty ? '<span class="muted small">' + empty + " empty slot" + (empty > 1 ? "s" : "") + "</span>" : "") + "</div>" +
+      msgHtml(lu.msg) + "</div>";
+  }
+
+  function loadLineup(teamId) {
+    var s = st.me.session, season = Number(L.season);
+    var api = function (p) { return A.api(cfg, s, p, {}, f); };
+    return api("nfl_games?season=eq." + season + "&select=week,home,away,kickoff&order=kickoff").then(function (g) {
+      if (!g.ok) throw new Error(g.error);
+      var games = g.data || [], week = pickWeek(games, Date.now());
+      var base = "&season=eq." + season + "&team_id=eq." + encodeURIComponent(teamId);
+      return Promise.all([
+        api("roster_entries?select=player_id,acquired,nfl_players(name,position,nfl_team)" + base),
+        week == null ? Promise.resolve({ ok: true, data: [] }) : api("lineup_slots?select=slot,player_id&week=eq." + week + base),
+        week == null || week < 2 ? Promise.resolve({ ok: true, data: [] }) : api("lineup_slots?select=slot,player_id&week=eq." + (week - 1) + base)
+      ]).then(function (r) {
+        var bad = r.filter(function (x) { return !x.ok; })[0];
+        if (bad) throw new Error(bad.error);
+        var d = draftFrom(r[1].data, r[2].data, week - 1), savedIds = {};
+        (r[1].data || []).forEach(function (x) { savedIds[x.player_id] = x.slot; });
+        st.lu = {
+          week: week, weekGames: games.filter(function (x) { return x.week === week; }),
+          roster: (r[0].data || []).map(function (x) {
+            var p = x.nfl_players || {};
+            return { id: x.player_id, name: p.name || x.player_id, pos: p.position, nfl: p.nfl_team, acquired: x.acquired || "" };
+          }).sort(byPos),
+          draft: d.draft, saved: d.saved, carried: d.carried, savedIds: savedIds, msg: st.lu && st.lu.keepMsg || null
+        };
+      });
+    }).catch(function (e) { st.lu = { error: "Couldn't load your lineup: " + e.message }; });
+  }
+
+  function render(rootEl) {
+    var notice = root.B5AuthNotice && root.B5AuthNotice.signedIn ? { ok: "You're signed in." } : null;
+    if (notice) root.B5AuthNotice = null;
+    if (!(cfg && cfg.configured && A)) { rootEl.innerHTML = '<section><h2>My Team</h2><div class="card"><p>Sign-in isn\'t set up yet.</p></div></section>'; return; }
+    if (!st.me) {
+      rootEl.innerHTML = '<section><h2>My Team</h2><div class="card"><p>Managers: <a href="#account">sign in</a> to see your team' +
+        (lineupsOpen(L) ? " and set your lineup" : "") + ".</p></div></section>";
+      return;
+    }
+    var t = teamById(st.teamId);
+    if (!t && !st.me.profile) {   // the account lookup failed (network, expired session): don't claim "no team"
+      rootEl.innerHTML = '<section><h2>My Team</h2>' + msgHtml(notice) + '<div class="card"><p class="acct-msg err">Couldn\'t load your team. Reload the page to try again.</p></div></section>';
+      return;
+    }
+    if (!t) {
+      rootEl.innerHTML = '<section><h2>My Team</h2>' + msgHtml(notice) + '<div class="card"><p>You\'re not assigned to a team yet. Ask the commissioner.</p></div></section>';
+      return;
+    }
+    var open = lineupsOpen(L);
+    var rosterNote = L.rosters && L.rosters.asOf ? "As of " + fmtDate(L.rosters.asOf) + (L.rosters.week ? " (week " + L.rosters.week + ")" : "") + "." : "";
+    rootEl.innerHTML = '<section class="mt">' + msgHtml(notice || st.msg) + headerHtml(t) +
+      '<div class="mt-cols"><div>' + (open ? editorHtml() : closedHtml()) + "</div><div>" +
+      (open ? rosterHtml(st.lu && st.lu.roster || [], "") : rosterHtml(leagueRoster(L, t.id), rosterNote)) + "</div></div></section>";
+    st.msg = null;
+  }
+
+  function show(rootEl) {
+    if (!lineupsOpen(L) || !st.me || !teamById(st.teamId)) { render(rootEl); return Promise.resolve(); }
+    return loadLineup(st.teamId).then(function () { render(rootEl); });
+  }
+
+  var bound = null;
+  function start(rootEl) {
+    rootEl.innerHTML = '<section><h2>My Team</h2><p class="muted">Loading…</p></section>';
+    var load = root.B5Account ? root.B5Account.load() : Promise.resolve(null);
+    load.then(function (me) {
+      st.me = me;
+      if (root.B5Account) root.B5Account.refreshNav();
+      var ids = myTeams();
+      if (ids.indexOf(st.teamId) < 0) st.teamId = me && me.teams.length ? me.teams[0].team_id : ids[0] || null;
+      return show(rootEl);
+    }, function () { rootEl.innerHTML = '<section><h2>My Team</h2><p class="acct-msg err">Couldn\'t load your account.</p></section>'; });
+
+    if (bound === rootEl) return;
+    bound = rootEl;
+    rootEl.addEventListener("change", function (e) {
+      var pick = e.target.closest("[data-mt='team']");
+      if (pick) { st.teamId = pick.value; st.lu = null; show(rootEl); return; }
+      var sel = e.target.closest("select[data-slot]");
+      if (sel && st.lu) { st.lu.draft[Number(sel.dataset.slot)] = sel.value || null; st.lu.msg = null; render(rootEl); }
+    });
+    rootEl.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-mt='save']");
+      if (!b || !st.lu) return;
+      b.disabled = true;
+      A.current(cfg, { storage: storage, fetchImpl: f, now: Date.now() }).then(function (s) {
+        if (!s) throw new Error("You've been signed out. Sign in again.");
+        st.me.session = s;
+        return A.api(cfg, s, "rpc/save_lineup", { method: "POST", body: JSON.stringify({
+          p_season: Number(L.season), p_week: st.lu.week, p_team: st.teamId, p_players: st.lu.draft
+        }) }, f);
+      }).then(function (r) {
+        if (!r.ok) throw new Error(r.error);
+        st.lu.keepMsg = { ok: "Lineup saved " + fmtKick(Date.now()) + " ET." };
+        return loadLineup(st.teamId);
+      }).catch(function (err) {
+        // The database names players by ID; show names.
+        var text = String(err.message || "");
+        (st.lu.roster || []).forEach(function (p) { text = text.split(p.id).join(p.name); });
+        st.lu.msg = { err: "Not saved: " + text };
+      }).then(function () { render(rootEl); });
+    });
+  }
+
+  root.B5MyTeam = { start: start, lineupsOpen: lineupsOpen, recordFor: recordFor, leagueRoster: leagueRoster, pickWeek: pickWeek, draftFrom: draftFrom, kickoffFor: kickoffFor };
+})(typeof globalThis !== "undefined" ? globalThis : this);

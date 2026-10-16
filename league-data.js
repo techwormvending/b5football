@@ -28,7 +28,7 @@ window.LEAGUE = {
       date: "2026-10-14",
       title: "Welcome to the B5 Fantasy Site",
       tag: "Commish",
-      body: `<p>This is our home base now. Set your weekly lineup here on the <a href="#lineups">Lineups</a> page.
+      body: `<p>This is our home base now. Sign in to see your team on the <a href="#myteam">My Team</a> page. Lineups move here for the 2027 season.
              Everything else (trash talk, history, rules) lives here too.</p>
              <p>And yes, GIFs finally work.</p>`,
       image: "" // optional: direct URL to a .gif/.jpg/.png, shown full-width
@@ -521,8 +521,10 @@ window.LEAGUE = {
   ],
 
   roster: "9 starters: QB, 2 RB, 3 WR, TE, K, DEF (no flex). 18-man roster.",
-  // Starting lineup slots, in order. Used by the Lineups page and the lineup server.
+  // Starting lineup slots, in order. Must match the database (private.slot_position).
   lineupSlots: ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "K", "DEF"],
+  // First season managers set lineups on My Team (Supabase). Before that, My Team shows the roster and a note.
+  lineupsFrom: 2027,
 
   bylaws: [
     "Two divisions, Black and Gold. Head-to-head, weeks 1–14 regular season, playoffs through week 17.",

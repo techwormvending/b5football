@@ -67,6 +67,20 @@ jobs:
           THROUGH_WEEK: ${{ inputs.through_week }}
         run: node scripts/finalize.mts $SEASON $THROUGH_WEEK
 
+      # NFL players and schedule (kickoff times) for lineups: the database locks each
+      # player at his game's kickoff from public.nfl_games. Independent of finalization.
+      - name: Sync NFL players and schedule to Supabase
+        if: always()
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "::warning::SUPABASE_URL variable or SUPABASE_SERVICE_ROLE_KEY secret not set; skipping NFL sync."
+            exit 0
+          fi
+          node scripts/sync-nfl.mts
+
       # Free-tier Supabase projects pause after ~7 days without activity. The PRIMARY
       # keep-alive is the Cloudflare Worker cron (workers/keepalive, heartbeat
       # "cloudflare-cron"), which GitHub's 60-day schedule shutoff can't stop. This

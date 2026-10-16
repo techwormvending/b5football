@@ -290,6 +290,51 @@ describe("invite-only accounts", () => {
   });
 });
 
+describe("save_lineup (the My Team page's Save button)", () => {
+  // Alice's starters: QB slot 0, RB slots 1-2, WR slots 3-5.
+  const save = (who: Who, team: string, players: (string | null)[]) =>
+    as(db, who, tx => tx.query<{ slot: number; player_id: string }>(
+      `select slot, player_id from public.save_lineup($1, $2, $3, $4::text[])`, [S, W, team, players])).then(r => r.rows);
+  const lineup = (...p: (string | null)[]) => [...p, ...Array(9 - p.length).fill(null)];
+  beforeEach(async () => {
+    await db.exec(`
+      insert into public.nfl_players (id, name, position, nfl_team) values ('WR-DET', 'Amon-Ra St. Brown', 'WR', 'DET'), ('WR-KC', 'Rashee Rice', 'WR', 'KC');
+      insert into public.roster_entries (season, team_id, player_id) values (${S}, '0001', 'WR-DET'), (${S}, '0001', 'WR-KC');`);
+  });
+
+  test("saves a whole lineup, empties slots, and swaps two players between slots", async () => {
+    assert.deepEqual(await save(user(ALICE), "0001", lineup("QB-DET", null, "RB-DET", "WR-DET")),
+      [{ slot: 0, player_id: "QB-DET" }, { slot: 2, player_id: "RB-DET" }, { slot: 3, player_id: "WR-DET" }]);
+    await db.exec(`update public.nfl_games set kickoff = now() + interval '1 day' where game_key = 'KC@LV'`);
+    await save(user(ALICE), "0001", lineup("QB-DET", null, "RB-DET", "WR-DET", "WR-KC"));
+    assert.deepEqual(await save(user(ALICE), "0001", lineup("QB-DET", null, "RB-DET", "WR-KC", "WR-DET")),
+      [{ slot: 0, player_id: "QB-DET" }, { slot: 2, player_id: "RB-DET" }, { slot: 3, player_id: "WR-KC" }, { slot: 4, player_id: "WR-DET" }]);
+  });
+
+  test("a kicked-off starter stays put while the rest changes; moving him or starting one fails and saves nothing", async () => {
+    await db.exec(`insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '0001', 0, 'QB-KC')`);
+    assert.deepEqual((await save(user(ALICE), "0001", lineup("QB-KC", "RB-DET", null, "WR-DET"))).map(r => r.player_id), ["QB-KC", "RB-DET", "WR-DET"]);
+    await assert.rejects(save(user(ALICE), "0001", lineup("QB-DET", "RB-DET")), /locked/);
+    await assert.rejects(save(user(ALICE), "0001", lineup("QB-KC", "RB-DET", null, "WR-KC")), /locked/);
+    assert.deepEqual((await rows(db, user(ALICE), `select player_id from public.lineup_slots where team_id = '0001' order by slot`)).map(r => (r as { player_id: string }).player_id),
+      ["QB-KC", "RB-DET", "WR-DET"], "a refused save changes nothing");
+  });
+
+  test("roster, position, duplicate and slot-count rules", async () => {
+    await assert.rejects(save(user(ALICE), "0001", lineup("QB-FA")), /not on team/);
+    await assert.rejects(save(user(ALICE), "0001", lineup(null, "QB-DET")), /cannot play the RB slot/);
+    await assert.rejects(save(user(ALICE), "0001", lineup(null, null, null, "WR-DET", "WR-DET")), /only start once/);
+    await assert.rejects(save(user(ALICE), "0001", ["QB-DET"]), /9 slots/);
+  });
+
+  test("only your own team; the commissioner can set any team, even locked players; anon can't call it", async () => {
+    await assert.rejects(save(user(BOB), "0001", lineup("QB-DET")), /own team/);
+    assert.equal((await rows(db, user(ALICE), `select * from public.lineup_slots where team_id = '0001' and slot = 0`)).length, 0);
+    assert.deepEqual((await save(user(COMMISH), "0001", lineup("QB-KC"))).map(r => r.player_id), ["QB-KC"]);
+    await assert.rejects(save(anon, "0001", lineup("QB-DET")), /permission denied/);
+  });
+});
+
 describe("server jobs (service_role)", () => {
   test("bypass RLS and can touch the heartbeat; nobody else can", async () => {
     assert.equal(await affected(db, service, `insert into public.heartbeats (name) values ('nightly') on conflict (name) do update set at = now()`), 1);
