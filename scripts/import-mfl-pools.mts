@@ -11,5 +11,5 @@ const url = process.env.SUPABASE_URL, serviceKey = process.env.SUPABASE_SERVICE_
 if (!url || !serviceKey) { console.error("Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY."); process.exit(1); }
 const season = Number(process.argv[2]) || 2026;
 const r = await syncMflPools({ url, serviceKey }, season, "22689");
-console.log(`MFL pools ${season}: ${r.survivor} survivor picks, ${r.confidence} confidence picks imported; ${r.keptCommissionerFixes} commissioner fix(es) kept.`);
+console.log(`MFL Survivor ${season}: ${r.survivor} picks mirrored; ${r.keptSitePicks} site pick(s) kept. (Confidence comes from the weekly official import.)`);
 for (const p of r.problems) console.log(`  PROBLEM ${p}`);

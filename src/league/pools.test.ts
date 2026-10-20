@@ -163,3 +163,17 @@ describe("pools in the payout refresh", () => {
     assert.deepEqual(awards.map(a => [a.kind, a.team_id, a.amount]), [["survivor", "0002", 200]]);
   });
 });
+
+test("test mode: the standings and Pick'em scoring query excludes TEST picks", async () => {
+  const { refreshPayouts } = await import("./payoutsSync.ts");
+  const urls: string[] = [];
+  const f = (async (u: string, init: RequestInit = {}) => {
+    urls.push(decodeURIComponent(u));
+    if (init.method === "POST") return new Response(null, { status: 204 });
+    if (u.includes("season_settings")) return new Response(JSON.stringify([{ season: 2026, team_count: 1, buy_in: "0", website_fee: "0", empire_contribution: "0", empire_carry_in: "0", empire_defending_team: null,
+      prizes: {}, pools: { mode: "test", confidence: { start_week: 1, end_week: 17 } } }]));
+    return new Response("[]");
+  }) as unknown as typeof fetch;
+  await refreshPayouts({ url: "https://x.supabase.co", serviceKey: "k" }, 2026, f);
+  assert.ok(urls.some(u => u.includes("confidence_picks?season=eq.2026&source=neq.test")), "test picks never count");
+});

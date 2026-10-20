@@ -119,9 +119,11 @@
       A.api(cfg, s, "rpc/keepalive_status", { method: "POST", body: "{}" }, f),
       A.api(cfg, s, "profiles?select=id,display_name,is_commissioner&order=display_name", {}, f),
       A.api(cfg, s, "invites?select=email,user_id&user_id=not.is.null", {}, f),
+      A.api(cfg, s, "pool_imports?season=eq." + Number(L.season) + "&select=week,status,source,attempts,attempted_at,succeeded_at,picks,teams,replaced_test,message,compare,triggered_by&order=week.desc", {}, f),
       A.api(cfg, s, "shadow_results?season=eq." + Number(L.season) + "&select=week,team_id,mfl_score,our_score,matched,details&order=week,team_id", {}, f)
     ]).then(function (r) {
-      cm.shadow = (r[6] && r[6].ok && r[6].data) || [];
+      cm.poolImports = (r[6] && r[6].ok && r[6].data) || [];
+      cm.shadow = (r[7] && r[7].ok && r[7].data) || [];
       cm.teams = r[0].data || []; cm.invites = r[1].data || []; cm.managers = r[2].data || []; cm.keep = r[3].ok ? r[3].data : null;
       // Signed-up accounts, labelled with their invite email (the commissioner's own account included).
       var emails = {};
@@ -185,7 +187,7 @@
         ' <button class="linkish" type="button" data-cm="unassign" data-team="' + esc(x.team_id) + '" data-user="' + esc(x.user_id) + '">remove from team</button></li>';
     }).join("") + "</ul>" : '<p class="muted">No managers have joined yet.</p>';
 
-    root.innerHTML = "<section><h2>Commissioner</h2>" + m + '<div class="card"><h3>Payouts</h3><p>Fees, payouts, manual awards, overrides and CSV export: <a href="#commish-payouts">open the payout tools</a>.</p></div>' + keep + shadow +
+    root.innerHTML = "<section><h2>Commissioner</h2>" + m + poolImportHtml(cm.poolImports || []) + '<div class="card"><h3>Payouts</h3><p>Fees, payouts, manual awards, overrides and CSV export: <a href="#commish-payouts">open the payout tools</a>.</p></div>' + keep + shadow +
       '<div class="card"><h3>Invite a manager</h3>' + seedTeams +
       '<form class="acct-form" data-cm="invite">' +
       '<label>Email<input name="email" type="email" autocomplete="off" required></label>' +
@@ -197,6 +199,23 @@
       "Removing an invite stops new sign-ups; to cut off someone who already joined, also remove them from their team.</p></div>" +
       '<div class="card"><h3>Invites</h3>' + invites + "</div>" +
       '<div class="card"><h3>Team managers</h3>' + mgrs + assign + "</div></section>";
+  }
+
+  // Confidence Pool official import (2026 test mode): one row per week, newest first.
+  function poolImportHtml(rows) {
+    var latest = rows.slice().sort(function (a, b) { return Date.parse(b.attempted_at) - Date.parse(a.attempted_at); })[0];
+    var warn = latest && latest.status === "failed"
+      ? '<p class="acct-msg err"><b>Import failed</b> for week ' + esc(latest.week) + " (" + esc(et(latest.attempted_at)) + "): " + esc(latest.message) + ". The test picks were kept; it retries every hour today.</p>" : "";
+    var list = rows.length ? '<ul class="checks">' + rows.map(function (x) {
+      var c = x.compare || {}, mm = c.mismatches || [];
+      return "<li><b>Week " + esc(x.week) + "</b>: " + (x.status === "ok" ? '<span class="tag">Imported</span> ' : '<span class="tag cm-bad">Failed</span> ') + esc(et(x.succeeded_at || x.attempted_at)) +
+        (x.attempts > 1 ? " (" + esc(x.attempts) + " attempts)" : "") + '<br><span class="muted small">' + esc(x.message || "") + "</span>" +
+        (mm.length ? "<ul>" + mm.map(function (z) { return "<li>" + esc(teamName(z.team_id)) + " " + esc(z.what) + " total: ours " + esc(z.ours) + ", MFL " + esc(z.mfl) + "</li>"; }).join("") + "</ul>" : "") + "</li>";
+    }).join("") + "</ul>" : '<p class="muted">No imports yet.</p>';
+    return '<div class="card"><h3>Confidence Pool: official MFL import</h3>' + warn +
+      '<p class="muted small">Tuesdays 6:00 AM ET the official MFL picks replace the TEST picks for the week that just finished; then our totals are checked against MFL\'s results.</p>' +
+      '<form class="po-inline" data-cm="pool-import"><label>Week <input name="week" type="number" min="1" max="18" placeholder="latest"></label>' +
+      '<button class="btn" type="submit">Run import now</button></form>' + list + "</div>";
   }
 
   // Shadow mode (2026): our engine's team totals vs MFL's, per week, with every difference explained.
@@ -242,6 +261,17 @@
     var act = function (p) { return p.then(function (r) { cm.msg = r && r.ok === false ? { err: r.error } : (r && r.msgOk ? { ok: r.msgOk } : cm.msg); return redraw(); }); };
 
     root.addEventListener("submit", function (e) {
+      var pf = e.target.closest("[data-cm='pool-import']");
+      if (pf) {
+        e.preventDefault();
+        var wk = new FormData(pf).get("week");
+        act(A.api(cfg, me.session, "rpc/run_pool_import", { method: "POST", body: JSON.stringify(wk ? { p_week: Number(wk) } : {}) }, f).then(function (r) {
+          if (!r.ok) return r;
+          setTimeout(function () { if (location.hash === "#commish") redraw(); }, 20000);   // results land in about 10-20 s
+          return { msgOk: (r.data || "Import requested") + ". Results appear here in a few seconds." };
+        }));
+        return;
+      }
       var af = e.target.closest("[data-cm='assign']");
       if (af) {
         e.preventDefault();

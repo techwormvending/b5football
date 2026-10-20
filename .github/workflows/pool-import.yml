@@ -1,0 +1,39 @@
+# Run the official Confidence Pool import for chosen weeks (2026 test mode; MFL is official).
+# Manual only: Actions > "Import official pool picks" > Run workflow. Used for the weeks 1-6
+# backfill; the weekly run is scheduled in the database (Tuesdays 6:00 AM ET).
+# No MFL credentials: MFL's pool export and results page are public.
+name: Import official pool picks
+
+on:
+  workflow_dispatch:
+    inputs:
+      season:
+        description: Season
+        default: "2026"
+      weeks:
+        description: Weeks (space-separated)
+        default: "1 2 3 4 5 6"
+
+permissions:
+  contents: read
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Import
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SEASON: ${{ inputs.season }}
+          WEEKS: ${{ inputs.weeks }}
+        run: |
+          node scripts/pool-import.mts "$SEASON" $WEEKS | tee import.txt
+          { echo '### Official pool import'; echo '```'; cat import.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

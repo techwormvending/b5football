@@ -9,6 +9,7 @@
    No secret is stored in the repo. */
 
 import { runLive, type LiveDeps } from "./liveRun.ts";
+import { runPoolImport } from "../league/poolImport.ts";
 import { sbBase, sbHeaders, type SbConfig } from "../league/supabaseRest.ts";
 
 export interface EdgeEnv { SUPABASE_URL?: string; SUPABASE_SERVICE_ROLE_KEY?: string; MFL_LEAGUE?: string }
@@ -31,8 +32,16 @@ export async function handle(req: Request, env: EdgeEnv, fetchImpl: typeof fetch
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return json({ error: "not configured" }, 500);
   const sb: SbConfig = { url: env.SUPABASE_URL, serviceKey: env.SUPABASE_SERVICE_ROLE_KEY };
   let nonce = "";
-  try { nonce = String(((await req.json()) as { nonce?: unknown }).nonce ?? ""); } catch { /* no body */ }
+  let body: { nonce?: unknown; job?: unknown; season?: unknown; week?: unknown; by?: unknown } = {};
+  try { body = (await req.json()) as typeof body; nonce = String(body.nonce ?? ""); } catch { /* no body */ }
   if (!nonce || !(await consumeNonce(sb, nonce, fetchImpl, now()))) return json({ error: "unauthorized" }, 401);
+  // Weekly official Confidence import (pg_cron Tuesdays 6 AM ET, or the commissioner's "Run import now")
+  if (body.job === "pool_import") {
+    const season = Number(body.season), week = Number(body.week);
+    if (!season || !week) return json({ error: "season and week required" }, 400);
+    try { return json(await runPoolImport(sb, season, week, { by: String(body.by ?? "schedule"), fetchImpl, now: now() })); }
+    catch (err) { return json({ status: "failed", message: (err as Error).message }, 500); }
+  }
   const deps: LiveDeps = { fetch: fetchImpl, sb, now, log: m => console.log(m), ...(env.MFL_LEAGUE ? { mflLeague: env.MFL_LEAGUE } : {}) };
   const result = await runLive(deps);   // never throws
   return json(result);

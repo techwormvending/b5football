@@ -45,3 +45,10 @@ test("results: winner, tie (null) or pending", () => {
   assert.equal(P.result({ status: "final", home: "B", away: "A", home_score: 20, away_score: 20 }), null);
   assert.equal(P.result({ status: "in_progress", home: "B", away: "A", home_score: 7, away_score: 0 }), "pending");
 });
+
+test("test picks are scored on the page from final results (never stored or paid)", () => {
+  const T = (ctx.B5Pools as { testScore(p: unknown[], g: unknown[]): number }).testScore;
+  const games = [{ game_key: "A@B", home: "B", away: "A", status: "final", home_score: 20, away_score: 10 }, { game_key: "C@D", home: "D", away: "C", status: "final", home_score: 7, away_score: 7 },
+    { game_key: "E@F", home: "F", away: "E", status: "scheduled", home_score: null, away_score: null }];
+  assert.equal(T([{ game_key: "A@B", pick: "B", points: 3 }, { game_key: "C@D", pick: "C", points: 2 }, { game_key: "E@F", pick: "E", points: 1 }], games), 3);
+});

@@ -555,7 +555,7 @@ describe("payouts (ledger only)", () => {
 describe("pools: survivor and confidence picks", () => {
   // Week 6: DET@ARI later this week, KC@LV already kicked off (seed). Picking open for the test season.
   beforeEach(async () => {
-    await db.exec(`insert into public.season_settings (season, team_count, buy_in, prizes, pools) values (${S}, 12, 360, '{}', '{"picking_open": true}');
+    await db.exec(`insert into public.season_settings (season, team_count, buy_in, prizes, pools) values (${S}, 12, 360, '{}', '{"mode": "official"}');
       insert into public.nfl_games (season, week, game_key, home, away, kickoff) values (${S}, 7, 'DET@ARI', 'ARI', 'DET', now() + interval '9 days');`);
   });
   const sv = (who: Who, team: string, week: number, nfl: string) => as(db, who, tx => tx.query(`insert into public.survivor_picks (season, week, team_id, nfl_team) values (${S}, ${week}, '${team}', '${nfl}') on conflict (season, week, team_id) do update set nfl_team = excluded.nfl_team`));
@@ -606,20 +606,88 @@ describe("pools: survivor and confidence picks", () => {
     await denied(db, anon, `select * from public.confidence_picks`, /permission denied/);
   });
 
-  test("managers pick only for their own team, and only while picking is open (2026: MFL's picks, read-only)", async () => {
+  test("managers pick only for their own team; official mode = source site; closed = nothing", async () => {
     await assert.rejects(sv(user(ALICE), "0002", W, "DET"), /row-level security/);
-    await db.exec(`update public.season_settings set pools = '{"picking_open": false}'`);
-    await assert.rejects(sv(user(ALICE), "0001", W, "DET"), /made on MFL this season/);
-    await assert.rejects(conf(user(ALICE), "0001", [{ game_key: "DET@ARI", pick: "DET", points: 1 }]), /made on MFL this season/);
+    await sv(user(ALICE), "0001", W, "DET");
+    assert.equal(((await rows(db, user(ALICE), `select source from public.survivor_picks`))[0] as { source: string }).source, "site");
+    await db.exec(`update public.season_settings set pools = '{}'`);
+    await assert.rejects(sv(user(ALICE), "0001", 7, "ARI"), /made on MFL this season/);
+    await assert.rejects(conf(user(ALICE), "0001", [{ game_key: "DET@ARI", pick: "DET", points: 1 }]), /aren't open/);
   });
 
-  test("the commissioner can enter or fix anyone's pick (even after kickoff), audited; the MFL import isn't logged", async () => {
-    await as(db, service, tx => tx.query(`insert into public.survivor_picks (season, week, team_id, nfl_team, source) values (${S}, ${W}, '0001', 'KC', 'mfl_import')`));
+  test("test mode (2026): members enter TEST confidence picks; Survivor stays read-only", async () => {
+    await db.exec(`update public.season_settings set pools = '{"mode": "test"}'`);
+    await conf(user(ALICE), "0001", [{ game_key: "DET@ARI", pick: "DET", points: 2 }]);
+    assert.deepEqual(await rows(db, user(ALICE), `select source from public.confidence_picks where team_id = '0001'`), [{ source: "test" }]);
+    await assert.rejects(sv(user(ALICE), "0001", W, "DET"), /made on MFL this season/);
+  });
+
+  test("official MFL picks are read-only for everyone but the import; no test picks once a week has them", async () => {
+    await db.exec(`update public.season_settings set pools = '{"mode": "test"}'`);
+    await as(db, service, async tx => {
+      await tx.query(`insert into public.confidence_picks (season, week, team_id, game_key, pick, points, source) values (${S}, ${W}, '0001', 'DET@ARI', 'ARI', 1, 'mfl')`);
+      await tx.query(`insert into public.survivor_picks (season, week, team_id, nfl_team, source) values (${S}, ${W}, '0001', 'KC', 'mfl')`);
+    });
+    for (const who of [user(ALICE), user(COMMISH)]) {
+      await assert.rejects(as(db, who, tx => tx.query(`update public.confidence_picks set points = 2 where team_id = '0001'`)), /official MFL pick/);
+      await assert.rejects(as(db, who, tx => tx.query(`delete from public.survivor_picks where team_id = '0001'`)), /official MFL pick/);
+    }
+    await db.exec(`insert into public.nfl_games (season, week, game_key, home, away, kickoff) values (${S}, ${W}, 'NE@BUF', 'BUF', 'NE', now() + interval '1 day')`);
+    await assert.rejects(conf(user(ALICE), "0001", [{ game_key: "NE@BUF", pick: "NE", points: 3 }]), /official MFL picks/);
+  });
+
+  test("the commissioner can enter or fix anyone's site pick (even after kickoff), audited; server jobs aren't logged", async () => {
+    await as(db, service, tx => tx.query(`insert into public.survivor_picks (season, week, team_id, nfl_team, source) values (${S}, ${W}, '0001', 'KC', 'site')`));
     await as(db, user(COMMISH), tx => tx.query(`update public.survivor_picks set nfl_team = 'LV' where team_id = '0001'`));
     const [p] = await rows(db, user(COMMISH), `select nfl_team, source from public.survivor_picks where team_id = '0001'`);
-    assert.deepEqual(p, { nfl_team: "LV", source: "commissioner" });
+    assert.deepEqual(p, { nfl_team: "LV", source: "site" });
     const a = (await db.query<{ action: string }>(`select action from public.audit_log where action like 'pools:%'`)).rows.map(r => r.action);
     assert.deepEqual(a, ["pools:survivor_picks:update"]);
+  });
+
+  test("the weekly import replaces a week's test (and site) picks with MFL's in one call; only server jobs may", async () => {
+    await db.exec(`update public.season_settings set pools = '{"mode": "test"}'`);
+    await conf(user(ALICE), "0001", [{ game_key: "DET@ARI", pick: "DET", points: 2 }]);
+    const call = `select public.replace_week_confidence(${S}, ${W}, '[{"team_id":"0001","game_key":"DET@ARI","pick":"ARI","points":1},{"team_id":"0002","game_key":"KC@LV","pick":"KC","points":2}]') as removed`;
+    await denied(db, user(COMMISH), call, /permission denied/);
+    const [r] = (await as(db, service, tx => tx.query<{ removed: number }>(call))).rows;
+    assert.equal(r!.removed, 1, "one test pick replaced");
+    const picks = (await db.query<{ team_id: string; pick: string; source: string }>(`select team_id, pick, source from public.confidence_picks order by team_id`)).rows;
+    assert.deepEqual(picks.map(p => [p.team_id, p.pick, p.source]), [["0001", "ARI", "mfl"], ["0002", "KC", "mfl"]]);
+  });
+
+  test("Tuesday 6:00 AM ET import schedule handles EDT and EST; retries until it succeeds that day", async () => {
+    await db.exec(`update public.season_settings set pools = '{"mode": "test"}'`);
+    await db.exec(`delete from public.nfl_games; insert into public.nfl_games (season, week, game_key, home, away, kickoff) values
+      (${S}, 6, 'WAS@SF', 'SF', 'WAS', '2026-10-20T00:15:00Z'), (${S}, 7, 'NE@CHI', 'CHI', 'NE', '2026-10-23T00:15:00Z'),
+      (${S}, 14, 'A@B', 'B', 'A', '2026-12-08T01:15:00Z')`);
+    const tick = (at: string) => db.query<{ r: string }>(`select private.pool_import_tick('${at}'::timestamptz) as r`).then(x => x.rows[0]!.r);
+    assert.match(await tick("2026-10-20T09:59:00Z"), /not Tuesday 6 AM/, "5:59 AM EDT");
+    assert.equal(await tick("2026-10-20T10:00:00Z"), "requested 2026 week 6", "6:00 AM EDT = 10:00 UTC");
+    assert.match(await tick("2026-10-19T12:00:00Z"), /not Tuesday/, "Monday");
+    assert.match(await tick("2026-12-08T10:00:00Z"), /not Tuesday 6 AM/, "5:00 AM EST");
+    assert.equal(await tick("2026-12-08T11:00:00Z"), "requested 2026 week 14", "6:00 AM EST = 11:00 UTC");
+    const calls = (await db.query<{ body: { job: string; week: number; nonce: string } }>(`select body from net.calls order by id`)).rows;
+    assert.deepEqual(calls.map(c => [c.body.job, c.body.week]), [["pool_import", 6], ["pool_import", 14]]);
+    // A failed attempt is retried next hour; a success that day stops it
+    await db.exec(`insert into public.pool_imports (season, week, status, attempted_at) values (${S}, 6, 'failed', '2026-10-20T10:00:05Z')`);
+    assert.equal(await tick("2026-10-20T11:00:00Z"), "requested 2026 week 6");
+    await db.exec(`update public.pool_imports set status = 'ok', succeeded_at = '2026-10-20T11:00:30Z'`);
+    assert.equal(await tick("2026-10-20T12:00:00Z"), "already imported today");
+    await db.exec(`update public.season_settings set pools = '{"mode": "official"}'`);
+    assert.equal(await tick("2026-12-08T11:00:00Z"), "not in test mode", "2027: no MFL import");
+  });
+
+  test("Run import now: commissioner only; the import log is commissioner only", async () => {
+    await db.exec(`insert into public.nfl_games (season, week, game_key, home, away, kickoff) values (${S}, 5, 'A@B', 'B', 'A', now() - interval '2 days')`);
+    await assert.rejects(as(db, user(ALICE), tx => tx.query(`select public.run_pool_import()`)), /Only the commissioner/);
+    await denied(db, anon, `select public.run_pool_import()`, /permission denied/);
+    const [r] = await rows(db, user(COMMISH), `select public.run_pool_import(5) as r`);
+    assert.match((r as { r: string }).r, /Import requested for 2026 week 5/);
+    await as(db, service, tx => tx.query(`insert into public.pool_imports (season, week, status) values (${S}, 5, 'failed')`));
+    assert.deepEqual(await rows(db, user(ALICE), `select * from public.pool_imports`), []);
+    assert.equal((await rows(db, user(COMMISH), `select * from public.pool_imports`)).length, 1);
+    await denied(db, anon, `select * from public.pool_imports`, /permission denied/);
   });
 
   test("standings tables are public read; only the commissioner and server jobs write", async () => {

@@ -109,6 +109,7 @@ section + section { margin-top: 40px; }
 .weeks { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 18px; }
 .wk { flex: none; min-width: 40px; height: 40px; border-radius: 6px; cursor: pointer;
   font: 600 16px var(--head); color: var(--chalk); background: var(--card); border: 1px solid var(--card-line); }
+a.wk { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
 .wk:hover { border-color: var(--gold); }
 .wk.now { border-color: var(--gold); color: var(--gold); }
 .wk.active { background: var(--gold); color: var(--ink-deep); border-color: var(--gold); }
@@ -183,6 +184,8 @@ a.game:hover { border-color: var(--gold); }
 .pl-grid th { font: 600 11px/1.2 var(--head); letter-spacing: .04em; }
 .pl-win { background: rgba(63, 174, 106, .22); color: #9be3b5; }
 .pl-loss { background: rgba(210, 69, 47, .18); color: #ffb3a6; }
+.pl-test { margin: 8px 0 0; padding: 8px 10px; border-radius: 6px; background: rgba(255, 182, 18, .14); border: 1px dashed var(--gold); }
+.pl-testpick { font-style: italic; opacity: .85; }
 .pl-alive { color: #9be3b5; font-weight: 600; }
 .pl-games { display: grid; gap: 8px; }
 .pl-game { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

@@ -92,10 +92,23 @@
       }
     });
   }
-  var open = function () { return !!(st.data && st.data.pools && st.data.pools.picking_open); };
+  // season_settings.pools.mode: "test" (2026: Confidence test picks; MFL official) | "official" (site picks are real)
+  var mode = function () { return (st.data && st.data.pools && st.data.pools.mode) || "closed"; };
+  var open = function () { return st.page === "survivor" ? mode() === "official" : mode() === "test" || mode() === "official"; };
   var noteHtml = function () {
-    return open() ? "" : '<p class="muted small">MFL is official for ' + esc(season) + ": picks are mirrored from MFL, read-only here. Picking opens on this site in " + esc(season + 1) + ".</p>";
+    if (st.page === "confidence" && mode() === "test") {
+      return '<p class="pl-test"><b>TEST picks — MFL is official for ' + esc(season) + ".</b> Try picking here for the current week; every Tuesday at 6 AM ET the official MFL picks replace them for the week that just finished.</p>";
+    }
+    return mode() === "official" ? "" : '<p class="muted small">MFL is official for ' + esc(season) + ": picks are mirrored from MFL, read-only here. Picking opens on this site in " + esc(season + 1) + ".</p>";
   };
+
+  /** Points a set of picks earns from the games' final results (test picks, shown but never stored). */
+  function testScore(picks, games) {
+    return picks.reduce(function (s, p) {
+      var g = games.filter(function (x) { return x.game_key === p.game_key; })[0], r = result(g);
+      return s + (r !== "pending" && r !== null && r === p.pick ? Number(p.points) : 0);
+    }, 0);
+  }
 
   // ---- Survivor ----------------------------------------------------------------------
   function survivorHtml() {
@@ -159,8 +172,9 @@
   // ---- Confidence --------------------------------------------------------------------
   function weekChips() {
     var c = (st.data.pools || {}).confidence || { start_week: 1, end_week: 17 }, out = "";
-    for (var w = c.start_week; w <= c.end_week; w++) out += '<button class="wk' + (w === st.week ? " active" : "") + '" data-pl="week" data-week="' + w + '">' + w + "</button>";
-    return '<div class="weeks" role="tablist" aria-label="Week">' + out + "</div>";
+    // Links, not buttons: the week lives in the URL (#confidence/7), so it survives a reload and never leaves the pool.
+    for (var w = c.start_week; w <= c.end_week; w++) out += '<a class="wk' + (w === st.week ? " active" : "") + '" href="#confidence/' + w + '" aria-label="Week ' + w + '">' + w + "</a>";
+    return '<div class="weeks" aria-label="Week">' + out + "</div>";
   }
   function confidenceHtml() {
     var d = st.data, now = Date.now(), w = st.week;
@@ -169,13 +183,17 @@
 
     var editor = "";
     var mine = myTeam(), editTeam = isCommish() ? (st.editTeam || mine || (L.teams[0] || {}).id) : mine;
-    if (editTeam && (open() || isCommish()) && games.length) {
+    var officialWeek = d.cpicks.some(function (p) { return p.week === w && p.source === "mfl"; });
+    if (officialWeek && session()) {
+      editor = '<div class="card"><p class="muted">Week ' + esc(w) + " has the official MFL picks (read-only).</p></div>";
+    } else if (editTeam && (open() || isCommish()) && games.length) {
       if (!st.rows || st.rows.week !== w || st.rows.team !== editTeam) {
         st.rows = { week: w, team: editTeam, list: confidenceRows(games, d.cpicks.filter(function (p) { return p.week === w && p.team_id === editTeam; }), now) };
       }
       var free = isCommish() && editTeam !== mine;
       editor = '<div class="card"><h3>Week ' + esc(w) + " picks" + (editTeam !== mine ? ": " + esc(teamName(editTeam)) : "") + "</h3>" +
         (isCommish() ? '<label class="mt-pick">Team <select data-pl="team">' + (L.teams || []).map(function (t) { return '<option value="' + esc(t.id) + '"' + (t.id === editTeam ? " selected" : "") + ">" + esc(t.name) + (t.id === mine ? " (your team)" : "") + "</option>"; }).join("") + "</select></label>" : "") +
+        (mode() === "test" ? '<p class="pl-test small"><b>TEST picks</b> — MFL is official for ' + esc(season) + ".</p>" : "") +
         '<p class="muted small">Tap a team to pick it. ▲▼ move a game up or down (more or fewer points). Saved as you go; started games stay locked in place.</p>' +
         '<ol class="pl-conf">' + st.rows.list.map(function (r, i) {
           var lock = r.locked && !free;
@@ -187,6 +205,14 @@
 
     // Results grid (members see picks once each game kicks off; everyone sees weekly totals)
     var weekScores = {}; d.scores.filter(function (x) { return x.week === w; }).forEach(function (x) { weekScores[x.team_id] = x; });
+    // Official weeks: the stored score. A team with TEST picks this week: their test total, worked out here (never stored or paid).
+    var weekTotal = function (teamId) {
+      var mine = d.cpicks.filter(function (p) { return p.week === w && p.team_id === teamId; });
+      if (mine.length && mine.every(function (p) { return p.source === "test"; })) {
+        return testScore(mine, games) + " (test)";
+      }
+      return (weekScores[teamId] || {}).points != null ? weekScores[teamId].points : "–";
+    };
     var grid = '<div class="card"><h3>Week ' + esc(w) + " results</h3>" + (session() ? "" : '<p class="muted small"><a href="#account">Sign in</a> to see everyone\'s picks (members only).</p>') +
       '<div class="table-wrap"><table class="pl-table pl-grid"><thead><tr><th>Team</th>' + games.map(function (g) {
         var r = result(g);
@@ -198,8 +224,8 @@
           var p = d.cpicks.filter(function (x) { return x.week === w && x.team_id === t.id && x.game_key === g.game_key; })[0];
           if (!p) return '<td class="num muted">' + (started(g, now) || !session() ? "–" : "") + "</td>";
           var r = result(g), cls = r === "pending" ? "" : r === p.pick ? " pl-win" : " pl-loss";
-          return '<td class="num' + cls + '">' + esc(p.pick) + '<br><span class="small">' + esc(p.points) + "</span></td>";
-        }).join("") + '<td class="num"><b>' + esc((weekScores[t.id] || {}).points != null ? weekScores[t.id].points : "–") + "</b></td></tr>";
+          return '<td class="num' + cls + (p.source === "test" ? " pl-testpick" : "") + '"' + (p.source === "test" ? ' title="test pick"' : "") + ">" + esc(p.pick) + '<br><span class="small">' + esc(p.points) + "</span></td>";
+        }).join("") + '<td class="num"><b>' + esc(weekTotal(t.id)) + "</b></td></tr>";
       }).join("") + "</tbody></table></div></div>";
 
     var totals = {};
@@ -228,8 +254,9 @@
     });
   }
 
-  function start(page, rootEl) {
+  function start(page, rootEl, week) {
     st.page = page;
+    if (week) { st.week = Number(week); st.rows = null; }
     if (!(cfg && cfg.configured && A)) { rootEl.innerHTML = '<section><h2>Pools</h2><div class="card">Not set up yet.</div></section>'; return; }
     rootEl.innerHTML = '<section><h2>' + (page === "survivor" ? "Survivor" : "Confidence Pool") + '</h2><p class="muted">Loading…</p></section>';
     var who = root.B5Account ? root.B5Account.load().catch(function () { return null; }) : Promise.resolve(null);
@@ -239,7 +266,6 @@
     rootEl.addEventListener("click", function (e) {
       var b = e.target.closest("[data-pl]"); if (!b || b.tagName === "SELECT") return;
       var k = b.dataset.pl;
-      if (k === "week") { st.week = Number(b.dataset.week); st.rows = null; render(rootEl); return; }
       if (k === "sv") {
         var team = isCommish() ? (st.editTeam || myTeam() || L.teams[0].id) : myTeam();
         api("survivor_picks?on_conflict=season,week,team_id", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
@@ -260,5 +286,5 @@
     });
   }
 
-  root.B5Pools = { start: start, result: result, availableTeams: availableTeams, confidenceRows: confidenceRows, moveRow: moveRow };
+  root.B5Pools = { start: start, testScore: testScore, weekChipsHtml: function (cfgC, week) { st.data = st.data || { pools: { confidence: cfgC } }; st.week = week; return weekChips(); }, result: result, availableTeams: availableTeams, confidenceRows: confidenceRows, moveRow: moveRow };
 })(typeof globalThis !== "undefined" ? globalThis : this);

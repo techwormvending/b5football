@@ -59,8 +59,10 @@ export async function refreshPayouts(sb: SbConfig, season: number, fetchImpl: ty
     }
     if (P.confidence) {
       const wk = opts.liveWeek;
+      // Test mode (2026): members' TEST picks never count toward standings or Pick'em money.
+      const official = (P as { mode?: string }).mode === "test" ? "&source=neq.test" : "";
       const picks = await selectAll<ConfidencePick>(sb, "confidence_picks",
-        `season=eq.${season}${wk ? `&week=eq.${wk}` : ""}&select=week,team_id,game_key,pick,points`, fetchImpl);
+        `season=eq.${season}${wk ? `&week=eq.${wk}` : ""}${official}&select=week,team_id,game_key,pick,points`, fetchImpl);
       const range = wk ? { start_week: wk, end_week: wk } : P.confidence;
       const c = confidenceScores({ settings: { confidence: range }, teams: teamIds, picks, games });
       if (c.weekly.length) await post("confidence_scores?on_conflict=season,week,team_id", c.weekly.map(x => ({ season, ...x, updated_at: new Date(now).toISOString() })));

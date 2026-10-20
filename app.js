@@ -130,7 +130,7 @@
       const w = sched.weeks.find(x => x.week === wk) || sched.weeks[0];
       const isPlayoff = w.week > (sched.regularSeasonWeeks || 99);
       const round = roundName(w.week);
-      const chips = sched.weeks.map(x => `<button aria-label="Week ${x.week}${roundName(x.week) ? ", " + esc(roundName(x.week)) : ""}" class="wk${x.week > (sched.regularSeasonWeeks || 99) ? " po" : ""}${x.week === w.week ? " active" : ""}${x.week === cur ? " now" : ""}" data-week="${x.week}">${x.week}</button>`).join("");
+      const chips = sched.weeks.map(x => `<button aria-label="Week ${x.week}${roundName(x.week) ? ", " + esc(roundName(x.week)) : ""}" class="wk${x.week > (sched.regularSeasonWeeks || 99) ? " po" : ""}${x.week === w.week ? " active" : ""}${x.week === cur ? " now" : ""}" data-sched-week="${x.week}">${x.week}</button>`).join("");
       const body = w.games.length
         ? `<div class="grid games">${w.games.map(g => gameCard(g, w.week)).join("")}</div>`
         : isPlayoff ? bracket(w.week) : `<div class="card muted">No games this week.</div>`;
@@ -321,11 +321,14 @@
   }
 
   // ---- Router ---------------------------------------------------------
+  // Route parsing lives in route.js (window.B5Route), tested on its own.
+  let curPage = null;
+
   function route() {
-    const raw = (location.hash || "#home").slice(1);
-    const key = raw === "lineups" ? "myteam" : raw;   // old links
-    const mu = /^matchup\/(\d+)\/(\w+)-(\w+)$/.exec(key);
-    const page = mu ? "matchup" : pages[key] ? key : "home";
+    const r = window.B5Route.parse(location.hash, k => !!pages[k]);
+    const mu = r.page === "matchup" ? [null, r.week, r.away, r.home] : null;
+    const page = r.page;
+    curPage = page;
     clearInterval(timer);
     view.innerHTML = mu ? matchupPage(Number(mu[1]), mu[2], mu[3]) : pages[page]();
     document.querySelectorAll(".nav a[href^='#']").forEach(a =>
@@ -364,18 +367,18 @@
         view.querySelectorAll("[data-mgr]").forEach(el => { if (m[el.dataset.mgr]) el.textContent = m[el.dataset.mgr]; });
       }, () => {});
     }
-    if ((page === "survivor" || page === "confidence") && window.B5Pools) window.B5Pools.start(page, document.getElementById("plRoot"));
+    if ((page === "survivor" || page === "confidence") && window.B5Pools) window.B5Pools.start(page, document.getElementById("plRoot"), r.week);
     if ((page === "payouts" || page === "commish-payouts") && window.B5Payouts) window.B5Payouts.start(page === "payouts" ? "public" : "admin", document.getElementById("poRoot"));
     if (page === "myteam" && window.B5MyTeam) window.B5MyTeam.start(document.getElementById("mtRoot"));
     if ((page === "account" || page === "commish") && window.B5Account) window.B5Account.start(page, document.getElementById("acctRoot"));
     window.scrollTo(0, 0);
   }
   window.addEventListener("hashchange", route);
-  // Week picker on the schedule page
+  // Week picker on the schedule page (only there: other pages have their own week buttons)
   view.addEventListener("click", (e) => {
-    const b = e.target.closest("[data-week]");
-    if (!b) return;
-    schedWeek = Number(b.dataset.week);
+    const b = e.target.closest("[data-sched-week]");
+    if (!b || curPage !== "schedule") return;
+    schedWeek = Number(b.dataset.schedWeek);
     view.innerHTML = pages.schedule();
     centerWeek();
   });

@@ -1,7 +1,6 @@
 /* TEMPORARY (2026: MFL is official; delete with the other MFL code after the migration):
-   mirror MFL's Survivor and Confidence pool picks (league 22689) into survivor_picks and
-   confidence_picks, read-only here. Picks the commissioner fixed on this site (source
-   "commissioner") are never overwritten; imported picks that disappeared from MFL are removed.
+   map MFL's Survivor and Confidence pool exports (league 22689) to our rows, and mirror
+   the Survivor picks (syncMflPools). Confidence is imported weekly by poolImport.ts.
 
    MFL exports (public): TYPE=survivorPool -> franchise[].week[] { week, pick: "NEP" | "" };
    TYPE=pool -> poolPicks.franchise[].week[].game[] { matchup: "AWAY,HOME", pick, rank }. */
@@ -45,37 +44,24 @@ export function mflPoolRows(season: number, survivor: unknown, pool: unknown, on
   return { survivor: sv, confidence: cf, problems };
 }
 
-/** Fetch MFL's pools and write them. Returns counts and problems. Never touches commissioner fixes. */
+/** Mirror MFL's SURVIVOR picks (read-only, source "mfl"). Confidence picks are NOT mirrored here:
+    in 2026 test mode they come only from the weekly official import (poolImport.ts), so members'
+    test picks for the current week survive until that week is imported. Picks entered on this site
+    (source "site") are never overwritten; mirrored picks that disappeared from MFL are removed. */
 export async function syncMflPools(sb: SbConfig, season: number, league: string, fetchImpl: typeof fetch = fetch, onlyWeek?: number) {
-  const H = `https://www45.myfantasyleague.com/${season}/export`;
-  const getMfl = async (type: string) => {
-    const r = await fetchImpl(`${H}?TYPE=${type}&L=${league}&JSON=1`, { headers: { "User-Agent": "b5-fantasy-site/0.1 (private league)" } });
-    if (!r.ok) throw new Error(`MFL ${type}: HTTP ${r.status}`);
-    return r.json();
-  };
-  const rows = mflPoolRows(season, await getMfl("survivorPool"), await getMfl("pool"), onlyWeek);
+  const r = await fetchImpl(`https://www45.myfantasyleague.com/${season}/export?TYPE=survivorPool&L=${league}&JSON=1`, { headers: { "User-Agent": "b5-fantasy-site/0.1 (private league)" } });
+  if (!r.ok) throw new Error(`MFL survivorPool: HTTP ${r.status}`);
+  const rows = mflPoolRows(season, await r.json(), null, onlyWeek);
   const wk = onlyWeek ? `&week=eq.${onlyWeek}` : "";
-  const existingS = await selectAll<SurvivorRow & { source: string }>(sb, "survivor_picks", `season=eq.${season}${wk}&select=season,week,team_id,nfl_team,source`, fetchImpl);
-  const existingC = await selectAll<ConfidenceRow & { source: string }>(sb, "confidence_picks", `season=eq.${season}${wk}&select=season,week,team_id,game_key,pick,points,source`, fetchImpl);
-  const fixedS = new Set(existingS.filter(r => r.source === "commissioner").map(r => `${r.week}|${r.team_id}`));
-  const fixedC = new Set(existingC.filter(r => r.source === "commissioner").map(r => `${r.week}|${r.team_id}`));   // a fixed week stays as fixed
-  const sv = rows.survivor.filter(r => !fixedS.has(`${r.week}|${r.team_id}`)).map(r => ({ ...r, source: "mfl_import" }));
-  const cf = rows.confidence.filter(r => !fixedC.has(`${r.week}|${r.team_id}`)).map(r => ({ ...r, source: "mfl_import" }));
-  const post = async (table: string, onConflict: string, body: unknown[]) => {
-    if (!body.length) return;
-    const r = await fetchImpl(`${sbBase(sb)}${table}?on_conflict=${onConflict}`, { method: "POST", headers: sbHeaders(sb, { Prefer: "resolution=merge-duplicates,return=minimal" }), body: JSON.stringify(body) });
-    if (!r.ok) throw new Error(`${table}: HTTP ${r.status} ${(await r.text()).slice(0, 200)}`);
-  };
-  // Imported picks no longer on MFL (changed before kickoff, or removed): delete them first, then upsert.
-  const wantS = new Set(sv.map(r => `${r.week}|${r.team_id}|${r.nfl_team}`));
-  for (const r of existingS) if (r.source === "mfl_import" && !wantS.has(`${r.week}|${r.team_id}|${r.nfl_team}`) && !sv.some(x => x.week === r.week && x.team_id === r.team_id)) {
-    await deleteWhere(sb, "survivor_picks", `season=eq.${season}&week=eq.${r.week}&team_id=eq.${r.team_id}&source=eq.mfl_import`, fetchImpl);
+  const existing = await selectAll<SurvivorRow & { source: string }>(sb, "survivor_picks", `season=eq.${season}${wk}&select=season,week,team_id,nfl_team,source`, fetchImpl);
+  const siteSet = new Set(existing.filter(x => x.source === "site").map(x => `${x.week}|${x.team_id}`));
+  const sv = rows.survivor.filter(x => !siteSet.has(`${x.week}|${x.team_id}`)).map(x => ({ ...x, source: "mfl" }));
+  for (const x of existing) if (x.source === "mfl" && !sv.some(y => y.week === x.week && y.team_id === x.team_id)) {
+    await deleteWhere(sb, "survivor_picks", `season=eq.${season}&week=eq.${x.week}&team_id=eq.${x.team_id}&source=eq.mfl`, fetchImpl);
   }
-  const wantC = new Set(cf.map(r => `${r.week}|${r.team_id}|${r.game_key}`));
-  for (const r of existingC) if (r.source === "mfl_import" && !wantC.has(`${r.week}|${r.team_id}|${r.game_key}`)) {
-    await deleteWhere(sb, "confidence_picks", `season=eq.${season}&week=eq.${r.week}&team_id=eq.${r.team_id}&game_key=eq.${encodeURIComponent(r.game_key)}&source=eq.mfl_import`, fetchImpl);
+  if (sv.length) {
+    const p = await fetchImpl(`${sbBase(sb)}survivor_picks?on_conflict=season,week,team_id`, { method: "POST", headers: sbHeaders(sb, { Prefer: "resolution=merge-duplicates,return=minimal" }), body: JSON.stringify(sv) });
+    if (!p.ok) throw new Error(`survivor_picks: HTTP ${p.status} ${(await p.text()).slice(0, 200)}`);
   }
-  await post("survivor_picks", "season,week,team_id", sv);
-  await post("confidence_picks", "season,week,team_id,game_key", cf);
-  return { survivor: sv.length, confidence: cf.length, problems: rows.problems, keptCommissionerFixes: fixedS.size + fixedC.size };
+  return { survivor: sv.length, problems: rows.problems, keptSitePicks: siteSet.size };
 }

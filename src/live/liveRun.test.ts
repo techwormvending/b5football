@@ -191,3 +191,15 @@ test("scoreboard scores become nfl_games rows (in progress / final); unknown tea
     { season: 2026, week: 6, game_key: "WAS@SF", home: "SF", away: "WAS", kickoff: "2026-10-18T17:00:00.000Z", status: "in_progress", home_score: 10, away_score: 7 },
     { season: 2026, week: 6, game_key: "NYJ@NE", home: "NE", away: "NYJ", kickoff: "2026-10-18T17:00:00.000Z", status: "final", home_score: 26, away_score: 19 }]);
 });
+
+describe("edge handler: weekly pool import job", () => {
+  const env = { SUPABASE_URL: "https://x.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "sb_secret_t" };
+  const post = (body: unknown) => new Request("https://x.supabase.co/functions/v1/b5-live", { method: "POST", body: JSON.stringify(body) });
+  test("needs a fresh nonce like everything else, and a season and week", async () => {
+    const N = "0b4e7c1a-1111-4222-8333-944445555777";
+    const w = world({ events: [], nonces: [N] });
+    assert.equal((await handle(post({ job: "pool_import", season: 2026, week: 6 }), env, w.f, () => NOW)).status, 401);
+    assert.equal((await handle(post({ nonce: N, job: "pool_import", season: 2026 }), env, w.f, () => NOW)).status, 400);
+    assert.ok(!w.calls.some(c => c.includes("myfantasyleague")), "nothing fetched from MFL without a valid call");
+  });
+});
