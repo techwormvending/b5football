@@ -34,6 +34,7 @@ function world(opts: { events: ReturnType<typeof ev>[]; weekStatus?: string; fai
   const J = (d: unknown, status = 200) => new Response(JSON.stringify(d), { status });
   const f = (async (u: string, init: RequestInit = {}) => {
     calls.push(decodeURIComponent(u));
+    if (u.includes("espn.com") && !(init.headers as Record<string, string> | undefined)?.["User-Agent"]) return J({}, 403);   // ESPN blocks the runtime default UA
     const method = init.method ?? "GET";
     if (u.endsWith("/scoreboard")) return J({ season: { year: 2026, type: 2 }, week: { number: 7 }, events: opts.events });
     if (u.includes("/summary?event=")) return opts.failSummary ? J({}, 500) : J(summary(opts.events[0]!.competitions[0]!.status.type.state));

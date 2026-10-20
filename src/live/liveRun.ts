@@ -107,8 +107,10 @@ const inList = (ids: string[]) => encodeURIComponent(ids.map(i => `"${i.replace(
 export async function runLive(deps: LiveDeps): Promise<LiveResult> {
   const now = deps.now ?? Date.now, log = deps.log ?? (() => {});
   const res: LiveResult = { state: "idle", games: 0, failedGames: 0, players: 0, matchups: 0, mirroredLineups: 0, delayed: false, errors: [] };
+  // ESPN refuses (403) requests with the Edge runtime's default "Deno" User-Agent; send ours, as the Node adapter does.
+  const UA = { "User-Agent": "b5-fantasy-site/0.1 (private league)" };
   const getJson = async <T>(u: string, init?: RequestInit): Promise<T> => {
-    const r = await deps.fetch(u, init);
+    const r = await deps.fetch(u, { ...init, headers: { ...UA, ...((init?.headers as Record<string, string>) ?? {}) } });
     if (!r.ok) throw new Error(`${u.replace(/\?.*$/, "")}: HTTP ${r.status}`);
     return r.json() as Promise<T>;
   };
