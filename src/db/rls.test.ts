@@ -441,6 +441,16 @@ describe("shadow results (2026 comparison with MFL)", () => {
   });
 });
 
+describe("MFL player map (2026 live mirror)", () => {
+  test("server jobs write; only the commissioner reads; managers and anon can't", async () => {
+    assert.equal(await affected(db, service, `insert into public.mfl_player_map (mfl_id, player_id) values ('14802', 'QB-DET')`), 1);
+    assert.equal((await rows(db, user(COMMISH), `select * from public.mfl_player_map`)).length, 1);
+    assert.deepEqual(await rows(db, user(ALICE), `select * from public.mfl_player_map`), []);
+    await denied(db, anon, `select * from public.mfl_player_map`, /permission denied/);
+    await denied(db, user(COMMISH), `insert into public.mfl_player_map (mfl_id, player_id) values ('1', 'QB-DET')`, /permission denied/);
+  });
+});
+
 describe("server jobs (service_role)", () => {
   test("bypass RLS and can touch the heartbeat; nobody else can", async () => {
     assert.equal(await affected(db, service, `insert into public.heartbeats (name) values ('nightly') on conflict (name) do update set at = now()`), 1);

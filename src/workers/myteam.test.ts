@@ -81,3 +81,13 @@ test("database rosters group by team and position (QB RB WR TE K DEF)", () => {
   assert.deepEqual(plain(R["0011"]!.map(p => p.id)), ["00-2", "00-1", "DEF:PIT"]);
   assert.equal(R["0003"]![0]!.id, "00-3", "a player missing from nfl_players still shows (by ID)");
 });
+
+test("matchup status: no week row = not started; live (with delay note); final; awaiting sign-off", () => {
+  const T = (ctx.B5MyTeam as { statusText(s: unknown): string }).statusText;
+  assert.equal(T(null), "Not started");
+  assert.equal(T({ status: null, delayed: false }), "Not started");
+  assert.equal(T({ status: "live", delayed: false }), "Live");
+  assert.match(T({ status: "live", delayed: true }), /Live \(scoring delayed/);
+  assert.equal(T({ status: "final" }), "Final");
+  assert.equal(T({ status: "pending_review" }), "Final (awaiting commissioner sign-off)");
+});

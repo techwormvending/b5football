@@ -56,7 +56,7 @@ const idMap = mflToGsis(parseCsv(await get(IDMAP_URL, "db_playerids.csv")));
 const nfl = await selectAll<{ id: string; espn_id: string | null; name: string; nfl_team: string | null }>(cfg, "nfl_players", "select=id,espn_id,name,nfl_team");
 const known = new Set(nfl.map(p => p.id));
 
-const { entries, unmatched } = mapRosters({ season, franchises, players, idMap, known });
+const { entries, unmatched, mflIds } = mapRosters({ season, franchises, players, idMap, known });
 const total = franchises.reduce((n, f) => n + ([] as unknown[]).concat(f.player ?? []).length, 0);
 log(`MFL: ${franchises.length} teams, ${total} rostered; mapped ${entries.length}, unmatched ${unmatched.length}`);
 for (const u of unmatched) log(`  UNMATCHED ${u.franchise} MFL ${u.mflId} ${u.name} (${u.position} ${u.team}): ${u.reason}`);
@@ -79,6 +79,9 @@ log(`roster_entries: ${await upsert(cfg, "roster_entries", entries.map(e => ({ .
 const keep = entries.map(e => `"${e.player_id}"`).join(",");
 const dropped = await deleteWhere(cfg, "roster_entries", `season=eq.${season}&player_id=not.in.(${encodeURIComponent(keep)})`);
 log(`roster_entries: ${dropped} removed (no longer rostered on MFL)`);
+// MFL ID -> our ID for rostered players (the live scorer mirrors MFL starters with it).
+await upsert(cfg, "mfl_player_map", [...mflIds].map(([mfl_id, player_id]) => ({ mfl_id, player_id, updated_at: now })), "mfl_id");
+log(`mfl_player_map: ${mflIds.size} upserted`);
 
 // Review queue: open what's unmatched now, resolve what isn't any more.
 const review = [

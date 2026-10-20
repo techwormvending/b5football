@@ -41,8 +41,9 @@ export function mapRosters(input: {
   players: Map<string, MflPlayerInfo>;      // MFL TYPE=players
   idMap: Map<string, string[]>;             // mflToGsis()
   known: Set<string>;                       // nfl_players ids
-}): { entries: RosterEntryRow[]; unmatched: UnmatchedRosterPlayer[] } {
+}): { entries: RosterEntryRow[]; unmatched: UnmatchedRosterPlayer[]; mflIds: Map<string, string> } {
   const entries: RosterEntryRow[] = [], unmatched: UnmatchedRosterPlayer[] = [];
+  const mflIds = new Map<string, string>();   // MFL ID -> our player ID, for every mapped rostered player
   for (const f of input.franchises) {
     for (const p of list(f.player)) {
       const info = input.players.get(p.id);
@@ -59,7 +60,8 @@ export function mapRosters(input: {
       }
       if (!input.known.has(playerId)) { miss(`${playerId} is not in nfl_players`); continue; }
       entries.push({ season: input.season, team_id: f.id, player_id: playerId, acquired: p.drafted?.trim() || null });
+      mflIds.set(p.id, playerId);
     }
   }
-  return { entries, unmatched };
+  return { entries, unmatched, mflIds };
 }

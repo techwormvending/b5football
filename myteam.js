@@ -171,6 +171,93 @@
       '<p class="muted">For the rest of ' + esc(L.season) + ", set your lineup the way you do now.</p></div>";
   }
 
+  // ---- Week lineups with points (2026: mirrored from MFL; read-only) -------------
+  // Lineups are members-only (RLS): signed-out visitors get none. Points are public.
+  // Resolves { status: "live"|"pending_review"|"final"|null, delayed, teams: { id: [{slot, pos, name, nfl, points}] } }.
+  function weekLineups(season, week, teamIds) {
+    var session = st.me && st.me.session;
+    var get = function (p) { return A.api(cfg, session, p, {}, f); };
+    var teams = teamIds.map(function (t) { return '"' + t + '"'; }).join(",");
+    return Promise.all([
+      session ? A.current(cfg, { storage: storage, fetchImpl: f, now: Date.now() }) : Promise.resolve(null),
+      get("score_weeks?season=eq." + season + "&week=eq." + week + "&select=status,live_delayed")
+    ]).then(function (r) {
+      if (r[0]) { session = r[0]; st.me.session = r[0]; }
+      return get("lineup_slots?season=eq." + season + "&week=eq." + week + "&team_id=in.(" + encodeURIComponent(teams) + ")" +
+        "&select=team_id,slot,player_id,nfl_players(name,position,nfl_team)&order=slot").then(function (ls) {
+        var rows = (ls.ok && ls.data) || [];
+        var ids = rows.map(function (x) { return '"' + x.player_id + '"'; }).join(",");
+        var pts = ids ? get("player_scores?season=eq." + season + "&week=eq." + week + "&player_id=in.(" + encodeURIComponent(ids) + ")&select=player_id,points,source")
+          : Promise.resolve({ ok: true, data: [] });
+        return pts.then(function (p) {
+          var byId = {};
+          ((p.ok && p.data) || []).forEach(function (x) { byId[x.player_id] = Number(x.points); });
+          var out = {};
+          teamIds.forEach(function (t) { out[t] = []; });
+          rows.forEach(function (x) {
+            var n = x.nfl_players || {};
+            (out[x.team_id] = out[x.team_id] || []).push({ slot: x.slot, pos: (L.lineupSlots || [])[x.slot] || n.position, name: n.name || x.player_id,
+              nfl: n.nfl_team || "", points: byId.hasOwnProperty(x.player_id) ? byId[x.player_id] : null });
+          });
+          var sw = (r[1].ok && r[1].data && r[1].data[0]) || null;
+          return { status: sw ? sw.status : null, delayed: !!(sw && sw.live_delayed), teams: out, readable: !!session };
+        });
+      });
+    });
+  }
+
+  /** 9 slot rows (empty slots included) with points and a total. */
+  function lineupListHtml(players) {
+    var bySlot = {};
+    players.forEach(function (p) { bySlot[p.slot] = p; });
+    var total = 0;
+    var items = (L.lineupSlots || []).map(function (pos, i) {
+      var p = bySlot[i];
+      if (p && p.points != null) total += p.points;
+      return '<li><span class="pos pos-' + esc(pos) + '">' + esc(pos) + "</span>" +
+        (p ? '<span class="pname">' + esc(p.name) + ' <span class="muted nfl">' + esc(p.nfl) + "</span></span>" +
+          '<span class="mu-pts">' + (p.points == null ? "–" : esc(p.points.toFixed(1))) + "</span>"
+          : '<span class="pname muted">Empty</span><span class="mu-pts">–</span>') + "</li>";
+    }).join("");
+    return '<ul class="mu-slots">' + items + '</ul><p class="mu-total"><span>Total</span><b>' + esc((Math.round(total * 100) / 100).toFixed(1)) + "</b></p>";
+  }
+  var statusText = function (s) {
+    return !s || !s.status ? "Not started" : s.status === "live" ? "Live" + (s.delayed ? " (scoring delayed; last good numbers shown)" : "")
+      : s.status === "final" ? "Final" : "Final (awaiting commissioner sign-off)";
+  };
+
+  function shadowLineupHtml() {
+    var w = st.wk;
+    if (!w) return "";
+    if (w.error) return '<div class="card"><p class="acct-msg err">' + esc(w.error) + "</p></div>";
+    var mine = (w.data && w.data.teams[st.teamId]) || [];
+    return '<div class="card"><h3>Week ' + esc(w.week) + ' lineup <span class="tag">' + esc(statusText(w.data)) + "</span></h3>" +
+      (mine.length ? lineupListHtml(mine) : '<p class="muted">No starters for week ' + esc(w.week) + " yet.</p>") +
+      '<p class="muted small">Mirrored from MFL. <b>MFL is official for ' + esc(L.season) + "</b>: set your lineup there. Points are this site\'s, from live ESPN stats, finalized nightly by nflverse." +
+      (w.matchup ? ' <a href="#matchup/' + esc(w.week) + "/" + esc(w.matchup[0]) + "-" + esc(w.matchup[1]) + '">Open the matchup</a>' : "") + "</p></div>";
+  }
+
+  // Week to show on My Team (2026): the current week if it has starters, else the latest week that does.
+  function loadShadowWeek(teamId) {
+    var season = Number(L.season), session = st.me && st.me.session;
+    var get = function (p) { return A.api(cfg, session, p, {}, f); };
+    return Promise.all([
+      get("nfl_games?season=eq." + season + "&select=week,kickoff&order=kickoff"),
+      get("lineup_slots?season=eq." + season + "&team_id=eq." + encodeURIComponent(teamId) + "&select=week&order=week.desc&limit=1")
+    ]).then(function (r) {
+      var cur = pickWeek((r[0].ok && r[0].data) || [], Date.now());
+      var last = r[1].ok && r[1].data && r[1].data[0] ? r[1].data[0].week : null;
+      var week = cur != null && last != null && last >= cur ? cur : last != null ? last : cur;
+      if (week == null) { st.wk = null; return; }
+      return Promise.all([weekLineups(season, week, [teamId]),
+        A.api(cfg, null, "matchups?season=eq." + season + "&week=eq." + week + "&or=(home_team.eq." + teamId + ",away_team.eq." + teamId + ")&select=home_team,away_team", {}, f)])
+        .then(function (x) {
+          var m = x[1].ok && x[1].data && x[1].data[0];
+          st.wk = { week: week, data: x[0], matchup: m ? [m.away_team, m.home_team] : null };
+        });
+    }).catch(function (e) { st.wk = { error: "Couldn't load this week's lineup: " + e.message }; });
+  }
+
   // ---- Lineup editor (open seasons) ----------------------------------------------
   function luInfo(p) {
     var lu = st.lu, k = p ? kickoffFor(lu.weekGames, p.nfl) : null;
@@ -262,7 +349,7 @@
     var open = lineupsOpen(L);
     var rosterNote = L.rosters && L.rosters.asOf ? "As of " + fmtDate(L.rosters.asOf) + (L.rosters.week ? " (week " + L.rosters.week + ")" : "") + "." : "";
     rootEl.innerHTML = '<section class="mt">' + msgHtml(notice || st.msg) + headerHtml(t) +
-      '<div class="mt-cols"><div>' + (open ? editorHtml() : closedHtml()) + "</div><div>" +
+      '<div class="mt-cols"><div>' + (open ? editorHtml() : shadowLineupHtml() + closedHtml()) + "</div><div>" +
       (open ? rosterHtml(st.lu && st.lu.roster || [], "")
         : st.dbRosters ? rosterHtml(st.dbRosters[t.id] || [], "Current roster (synced nightly).")
         : rosterHtml(leagueRoster(L, t.id), rosterNote)) + "</div></div></section>";
@@ -270,6 +357,7 @@
   }
 
   function show(rootEl) {
+    if (!lineupsOpen(L) && st.me && teamById(st.teamId)) return loadShadowWeek(st.teamId).then(function () { render(rootEl); });
     if (!lineupsOpen(L) || !st.me || !teamById(st.teamId)) { render(rootEl); return Promise.resolve(); }
     return loadLineup(st.teamId).then(function () { render(rootEl); });
   }
@@ -292,7 +380,7 @@
     bound = rootEl;
     rootEl.addEventListener("change", function (e) {
       var pick = e.target.closest("[data-mt='team']");
-      if (pick) { st.teamId = pick.value; st.lu = null; show(rootEl); return; }
+      if (pick) { st.teamId = pick.value; st.lu = null; st.wk = null; show(rootEl); return; }
       var sel = e.target.closest("select[data-slot]");
       if (sel && st.lu) { st.lu.draft[Number(sel.dataset.slot)] = sel.value || null; st.lu.msg = null; render(rootEl); }
     });
@@ -319,5 +407,11 @@
     });
   }
 
-  root.B5MyTeam = { start: start, loadRosters: loadRosters, rostersFromRows: rostersFromRows, lineupsOpen: lineupsOpen, recordFor: recordFor, leagueRoster: leagueRoster, pickWeek: pickWeek, draftFrom: draftFrom, kickoffFor: kickoffFor };
+  // For the matchup page (app.js): loads the signed-in member (if any) first.
+  function matchupLineups(season, week, teamIds) {
+    var who = st.me ? Promise.resolve(st.me) : root.B5Account ? root.B5Account.load().catch(function () { return null; }) : Promise.resolve(null);
+    return who.then(function (me) { st.me = me || st.me; return weekLineups(season, week, teamIds); });
+  }
+
+  root.B5MyTeam = { start: start, matchupLineups: matchupLineups, lineupListHtml: lineupListHtml, statusText: statusText, loadRosters: loadRosters, rostersFromRows: rostersFromRows, lineupsOpen: lineupsOpen, recordFor: recordFor, leagueRoster: leagueRoster, pickWeek: pickWeek, draftFrom: draftFrom, kickoffFor: kickoffFor };
 })(typeof globalThis !== "undefined" ? globalThis : this);

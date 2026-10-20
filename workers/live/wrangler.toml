@@ -1,0 +1,20 @@
+# B5 live-scoring Worker. Deploy: GitHub Actions > "Deploy Worker" (worker = live).
+# Needs Workers Paid: a Sunday slate exceeds the Free plan's CPU limit (see index.ts).
+# Never put the service_role key in this file: the repo is public.
+
+name = "b5-live"
+main = "index.ts"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]   # shared modules import node:fs / node:path (unused at runtime here)
+workers_dev = false
+preview_urls = false
+
+[triggers]
+crons = ["* * * * *"]          # every minute; liveRun stops after one request outside game windows
+
+[vars]
+SUPABASE_URL = "https://kngwdttpbpezlvjrkrrg.supabase.co"
+MFL_LEAGUE = "22689"           # TEMPORARY 2026 shadow season: mirror MFL starters. Remove after the migration.
+
+[observability]
+enabled = true

@@ -1,21 +1,28 @@
-# Deploy the keep-alive Cloudflare Worker (workers/keepalive, "b5-keepalive").
-# Manual only: Actions > "Deploy keep-alive Worker" > Run workflow.
+# Deploy a Cloudflare Worker: workers/keepalive ("b5-keepalive") or workers/live ("b5-live").
+# Manual only: Actions > "Deploy Worker" > Run workflow > pick the worker.
+# b5-live needs Workers Paid: a Sunday slate exceeds the Free plan's CPU limit per run.
 #
 # Needs repository secrets:
 #   CLOUDFLARE_API_TOKEN   API token with ONE permission: Account > Workers Scripts > Edit
 #                          (scoped to the one account). Nothing else.
 #   CLOUDFLARE_ACCOUNT_ID  the Cloudflare account ID (dashboard > Workers & Pages, right side)
 #   SUPABASE_SERVICE_ROLE_KEY  (already set) becomes the Worker's secret, never printed.
-name: Deploy keep-alive Worker
+name: Deploy Worker
 
 on:
   workflow_dispatch:
+    inputs:
+      worker:
+        description: Which Worker
+        type: choice
+        options: [keepalive, live]
+        default: keepalive
 
 permissions:
   contents: read
 
 concurrency:
-  group: deploy-worker
+  group: deploy-worker-${{ inputs.worker }}
   cancel-in-progress: false
 
 jobs:
@@ -24,7 +31,7 @@ jobs:
     timeout-minutes: 10
     defaults:
       run:
-        working-directory: workers/keepalive
+        working-directory: workers/${{ inputs.worker }}
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -54,6 +61,7 @@ jobs:
           echo "::add-mask::$id"
           echo "CLOUDFLARE_ACCOUNT_ID=$id" >> "$GITHUB_ENV"
 
+      # The live Worker bundles shared code from src/ (wrangler/esbuild); nothing to install.
       # Deploy first (creates the Worker on the first run), then set its secret.
       - name: Deploy
         run: npx --yes wrangler@4.145.0 deploy
@@ -64,6 +72,11 @@ jobs:
       - name: Summary
         run: |
           {
-            echo "### b5-keepalive deployed"
-            echo "Cron: 06:13 and 18:13 UTC. The commissioner banner clears after the first run writes the \`cloudflare-cron\` heartbeat."
+            if [ "${{ inputs.worker }}" = keepalive ]; then
+              echo "### b5-keepalive deployed"
+              echo "Cron: 06:13 and 18:13 UTC. The commissioner banner clears after the first run writes the \`cloudflare-cron\` heartbeat."
+            else
+              echo "### b5-live deployed"
+              echo "Cron: every minute. Outside game windows each run makes one ESPN request and stops."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"

@@ -112,12 +112,12 @@
     const done = played(g), round = roundName(week);
     const lineup = (t) => `<div class="card">
         <div class="team">${logoHtml(t, "logo sm")}<h3>${esc(t.name)}</h3></div>
-        <ul class="mu-slots">${(L.lineupSlots || []).map(s => `<li><span class="pos pos-${esc(s)}">${esc(s)}</span><span class="muted">–</span><span class="muted">–</span></li>`).join("")}</ul>
+        <div data-mu-team="${esc(t.id || "")}"><p class="muted">Loading…</p></div>
       </div>`;
     const a = teamById(aId) || { name: aId }, h = teamById(hId) || { name: hId };
     return `<section><h2>Week ${esc(week)}${round ? " · " + esc(round) : ""}</h2>${back}
         <div class="grid games">${gameCard(g, week).replace(/^<a /, "<div ").replace(/<\/a>$/, "</div>")}</div>
-        <p class="muted small mu-note">${done ? "Final team scores." : "Upcoming."} Starting lineups and player-by-player points show here once lineups and live scoring run on this site (${esc(L.lineupsFrom || "")} season).</p>
+        <p class="muted small mu-note" id="muStatus">${done ? "Final" : "Upcoming"}</p>
         <div class="grid mu-cols">${lineup(a)}${lineup(h)}</div>
       </section>`;
   }
@@ -263,6 +263,41 @@
     commish() { return `<div id="acctRoot"></div>`; }
   };
 
+  // ---- Matchup detail: lineups + points; refresh every minute while live --------
+  let muTimer = null;
+  function loadMatchup(week, aId, hId) {
+    clearTimeout(muTimer);
+    if (!window.B5MyTeam || !window.B5MyTeam.matchupLineups) return;
+    const key = location.hash;
+    window.B5MyTeam.matchupLineups(Number(L.season), week, [aId, hId]).then(d => {
+      if (location.hash !== key) return;
+      const M = window.B5MyTeam;
+      let any = false;
+      for (const id of [aId, hId]) {
+        const el = view.querySelector(`[data-mu-team="${id}"]`);
+        if (!el) continue;
+        const ps = d.teams[id] || [];
+        if (ps.length) any = true;
+        el.innerHTML = ps.length ? M.lineupListHtml(ps)
+          : d.readable ? `<p class="muted">No starters for week ${esc(week)} yet.</p>`
+          : `<p class="muted"><a href="#account">Sign in</a> to see lineups (members only).</p>`;
+      }
+      // Live totals straight from player points (the schedule's numbers can be a minute behind).
+      if (any) view.querySelectorAll(".game .g-side").forEach((side, i) => {
+        const ps = d.teams[i === 0 ? aId : hId] || [];
+        const tot = ps.reduce((s, p) => s + (p.points || 0), 0);
+        const el = side.querySelector(".g-pts");
+        if (el && d.status) el.textContent = tot.toFixed(1);
+      });
+      const st = view.querySelector("#muStatus");
+      if (st) st.textContent = M.statusText(d) + (Number(L.season) < Number(L.lineupsFrom || 0) ? ` · Lineups mirrored from MFL; MFL is official for ${L.season}.` : "");
+      if (d.status === "live") muTimer = setTimeout(() => { if (location.hash === key) loadMatchup(week, aId, hId); }, 60000);
+    }, () => {
+      const st = view.querySelector("#muStatus");
+      if (st) st.textContent = "Couldn't load lineups. Reload to try again.";
+    });
+  }
+
   // ---- Countdown ------------------------------------------------------
   function startClock() {
     const el = document.getElementById("clock");
@@ -291,6 +326,7 @@
     if (page === "schedule") centerWeek();
     nav.classList.remove("open");
     if (page === "home") startClock();
+    if (mu) loadMatchup(Number(mu[1]), mu[2], mu[3]);
     if (page === "teams" && window.B5MyTeam) {
       // Current rosters from the database replace the static snapshot.
       window.B5MyTeam.loadRosters().then(db => {

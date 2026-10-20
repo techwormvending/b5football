@@ -131,6 +131,10 @@ a.game:hover { border-color: var(--gold); }
 .mu-slots li { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--card-line); }
 .mu-slots li span:nth-child(2) { flex: 1; }
 .mu-note { margin: 10px 0 0; }
+.mu-slots .pname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mu-pts { font: 700 16px var(--head); color: var(--gold); min-width: 40px; text-align: right; }
+.mu-total { display: flex; justify-content: space-between; align-items: baseline; margin: 10px 0 0; font: 500 13px var(--head); letter-spacing: .1em; text-transform: uppercase; color: var(--chalk-dim); }
+.mu-total b { font: 700 22px var(--head); color: var(--gold); letter-spacing: 0; }
 @media (max-width: 520px) { .bracket { gap: 6px; } .br-col { padding: 4px; } .br-team { font-size: 12px; padding: 5px 6px; }
   .br-head { font-size: 11px; letter-spacing: .03em; overflow-wrap: anywhere; } }
 .g-side { display: flex; align-items: center; gap: 10px; padding: 6px 0; }

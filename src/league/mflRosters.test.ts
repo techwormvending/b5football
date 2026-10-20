@@ -38,6 +38,7 @@ test("rosters map by ID only: players via the ID map, defenses by team; everythi
     { season: 2026, team_id: "0011", player_id: "DEF:NO", acquired: "Waiv" },
     { season: 2026, team_id: "0003", player_id: "DEF:CAR", acquired: null }
   ]);
+  assert.deepEqual([...r.mflIds], [["14802", "00-0036223"], ["0529", "DEF:NO"], ["0527", "DEF:CAR"]]);
   assert.deepEqual(r.unmatched.map(u => [u.franchise, u.mflId, u.name, u.reason]), [
     ["0005", "99999", "New Rookie", "no nflverse ID for this MFL player in the ID map"],
     ["0005", "88888", "Ids Twin", "MFL ID maps to several nflverse IDs (00-1, 00-2)"],
@@ -47,5 +48,6 @@ test("rosters map by ID only: players via the ID map, defenses by team; everythi
 });
 
 test("an empty franchise is fine", () => {
-  assert.deepEqual(mapRosters({ season: 2026, players, idMap, known, franchises: [{ id: "0001" }] }), { entries: [], unmatched: [] });
+  const e = mapRosters({ season: 2026, players, idMap, known, franchises: [{ id: "0001" }] });
+  assert.deepEqual([e.entries, e.unmatched, e.mflIds.size], [[], [], 0]);
 });
