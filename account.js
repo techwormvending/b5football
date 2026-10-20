@@ -75,7 +75,8 @@
       '<p><b>Email</b><br>' + esc(me.session.user.email) + "</p>" +
       '<p><b>Team</b><br>' + teams + "</p>" +
       (p.is_commissioner ? '<p><span class="tag">Commissioner</span> <a href="#commish">Open the commissioner screen</a></p>' : "") +
-      '<form class="acct-form" data-acct="name"><label>Display name<input name="display_name" maxlength="40" value="' + esc(p.display_name) + '"></label>' +
+      '<form class="acct-form" data-acct="name"><label>Display name<input name="display_name" maxlength="40" required value="' + esc(p.display_name) + '"></label>' +
+      '<p class="muted small">Shown to the league as your team\'s manager.</p>' +
       '<button class="btn ghost" type="submit">Save name</button></form>' +
       '<button class="btn ghost" type="button" data-acct="signout">Sign out</button></div></section>';
   }
@@ -159,7 +160,7 @@
     var invites = cm.invites.length ? '<div class="table-wrap"><table class="cm-table"><thead><tr><th>Email</th><th>Team</th><th>Role</th><th>Status</th><th></th></tr></thead><tbody>' +
       cm.invites.map(function (i) {
         return "<tr><td>" + esc(i.email) + "</td><td>" + esc(teamName(i.team_id)) + "</td><td>" + (i.is_commissioner ? "Commissioner" : "Manager") +
-          "</td><td>" + (i.accepted_at ? "Joined " + esc(et(i.accepted_at)) : "Invited " + esc(et(i.invited_at))) + "</td>" +
+          "</td><td>" + (i.accepted_at ? '<span class="tag">Joined</span> ' + esc(et(i.accepted_at)) : "Invited " + esc(et(i.invited_at)) + '<br><span class="muted small">Not signed in yet</span>') + "</td>" +
           '<td class="cm-actions"><button class="btn ghost" type="button" data-cm="send" data-email="' + esc(i.email) + '">Send link</button>' +
           '<button class="btn ghost" type="button" data-cm="remove-invite" data-email="' + esc(i.email) + '">Remove</button></td></tr>';
       }).join("") + "</tbody></table></div>" : '<p class="muted">No invites yet.</p>';
@@ -176,7 +177,8 @@
         '<p class="muted small">Works for your own account too. As a team\'s manager you follow the same lineup rules as everyone else; commissioner changes that touch your team are written to the audit log.</p></form>'
       : "";
     var mgrs = cm.managers.length ? '<ul class="checks">' + cm.managers.map(function (x) {
-      return "<li>" + esc(teamName(x.team_id)) + ": " + esc((x.profiles && x.profiles.display_name) || x.user_id) +
+      var who = cm.accounts.filter(function (a) { return a.id === x.user_id; })[0];
+      return "<li><b>" + esc(teamName(x.team_id)) + "</b>: " + esc(who ? who.label : (x.profiles && x.profiles.display_name) || x.user_id) +
         ' <button class="linkish" type="button" data-cm="unassign" data-team="' + esc(x.team_id) + '" data-user="' + esc(x.user_id) + '">remove from team</button></li>';
     }).join("") + "</ul>" : '<p class="muted">No managers have joined yet.</p>';
 
@@ -258,12 +260,26 @@
     });
   }
 
+  // { team_id: "Name, Name" } for signed-in league members (RLS hides managers from everyone else).
+  function managerNames() {
+    if (!me) return Promise.resolve({});
+    return A.api(cfg, me.session, "team_managers?select=team_id,profiles(display_name)", {}, f).then(function (r) {
+      var out = {};
+      (r.ok && r.data || []).forEach(function (x) {
+        var n = x.profiles && x.profiles.display_name;
+        if (n) out[x.team_id] = out[x.team_id] ? out[x.team_id] + ", " + n : n;
+      });
+      return out;
+    }, function () { return {}; });
+  }
+
   window.B5Account = {
     start: function (page, root) {
       if (page === "account") startAccount(root);
       else if (page === "commish") startCommish(root);
     },
     refreshNav: refreshNav,
+    managerNames: managerNames,
     load: load
   };
 

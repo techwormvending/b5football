@@ -1,5 +1,44 @@
 # Bridgeville 5 Fantasy Site
 
+## Roadmap to inviting the 12 managers (set 2026-10-19)
+Work in phases. Each phase is tested, pushed and (if it has migrations) deployed before the next starts. Keep this checklist current.
+
+**READY TO INVITE** = phases 0–3 done AND shadow scoring matched MFL exactly for 3 straight weeks (or every difference is explained).
+
+### Phase 0: loose ends
+- [ ] Keep-alive Worker deployed by GitHub Actions (`.github/workflows/deploy-worker.yml`; needs secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`); commissioner banner clears
+- [x] Invites show "Joined" once the invited email has signed in (incl. accounts that existed before the invite): migration `20261020014720_invite_joined`
+- [x] Team managers list shows the manager (display name / email), not the team twice
+- [x] Display name editable on Account and shown as the team's manager (My Team header; Teams page for signed-in members)
+
+### Phase 1: players and rosters in Supabase
+- [x] `nfl_players` from nflverse, nightly (1,100 incl. 32 DEF; `scripts/sync-nfl.mts`)
+- [ ] ESPN ID crosswalk stored with players; unmatched players flagged in `review_queue`
+- [ ] One-time import of the 2026 rosters (all 12 teams) from MFL into `roster_entries`, MFL IDs mapped to nflverse IDs (no name guessing; unmatched flagged)
+- [ ] My Team and Teams pages read rosters from the database
+
+### Phase 2: scoring engine and shadow mode
+- [x] Scoring engine verified player by player vs MFL (10,030/10,030)
+- [ ] Weekly player scores in Supabase (`player_scores`)
+- [ ] 2026 weeks 1–6: our team totals (MFL's starters, our scores) vs MFL's weekly results, every difference reported with the play that caused it
+- [ ] Comparison runs automatically each week (nightly workflow) and shows on the Commish page
+- [ ] Matchups, standings and the schedule computed from the database
+
+### Phase 3: lineups and live scoring
+- [x] Lineup editor on My Team (9 starters, per-player kickoff locks, phone); opens for 2027 (`LEAGUE.lineupsFrom`)
+- [ ] 2026 shadow mode: lineups mirror MFL's, read-only, labelled "MFL is official for 2026"
+- [ ] Matchup detail page: both lineups and player points
+- [ ] Live ESPN scoring during games (proposed: Cloudflare Worker, 1-minute cron, polls only in game windows, writes live scores to Supabase); finalized nightly by nflverse
+- [ ] Shadow scoring matched MFL exactly for 3 straight weeks (or every difference explained)
+
+### After invites, before the 2027 draft
+- [ ] Waivers / free agents
+- [ ] Trades with commissioner review
+- [ ] Commissioner score overrides and corrections in the web admin (today: `scripts/commish.mts`)
+- [ ] Email notifications
+- [ ] Live draft board
+- [ ] History import back to 2000
+
 ## Goal
 This site **replaces MyFantasyLeague (MFL) entirely.** When finished, the B5 FFL (12 teams, head-to-head, since 2000) runs end to end on this site: draft, rosters, lineups, waivers, trades, live scoring, standings, playoffs and history. Nothing links to, embeds or depends on MFL.
 
@@ -99,7 +138,7 @@ Build rules 4, 5 and 6 are implemented.
 - **Accounts are invite-only** (migration `20261015194906_invite_only_signup`, live 2026-10-15):
   - `public.invites` (email, optional team, optional commissioner flag) is commissioner-only.
   - `public.hook_before_user_created` is a Supabase Auth **Before User Created** hook (Postgres function; executable only by `supabase_auth_admin`). It rejects sign-ups from emails not in `invites` (HTTP 403, "The B5 league is invite-only...").
-  - On first sign-in, `private.handle_new_user` applies the invite: profile, commissioner flag, `team_managers` row, `accepted_at`.
+  - When the account is created (a magic-link request creates it before the link is clicked), `private.handle_new_user` applies the invite: profile, commissioner flag, `team_managers` row, `user_id`. **`accepted_at` = first sign-in** (`auth.users.last_sign_in_at`, via trigger `on_auth_user_sign_in`); an invite added for an existing account links it, applies its team (not the commissioner flag) and copies its first sign-in (`link_existing_user`). The Commish invites table shows Joined / "Not signed in yet" from it.
   - **Second layer, independent of the hook:** `private.is_member()` (manages a team or is commissioner). Profiles (except your own), team managers, decided transactions and kicked-off lineup slots are members-only. An account that slips past the hook sees only public data. Tests: "invite-only accounts" in `rls.test.ts`.
   - **Dashboard settings this depends on (not in migrations):**
     - Authentication > Hooks > **Before User Created** = Postgres function `public.hook_before_user_created`. Until it's enabled, the public sign-in form would create accounts for any email; the members-only layer limits what they see.
@@ -118,7 +157,7 @@ Build rules 4, 5 and 6 are implemented.
 - **Browser config: `supabase-config.js`** (loaded by `index.html` before `app.js`) sets `window.B5_SUPABASE = { url, publishableKey, configured }`. Project URL `https://kngwdttpbpezlvjrkrrg.supabase.co` (ref `kngwdttpbpezlvjrkrrg`) and the publishable key (`sb_publishable_...`) are filled in, so `configured` is true; front-end Supabase code should still check it. Verified 2026-10-15: the key is accepted (`/auth/v1/settings` 200, a wrong key gets 401), and CORS allows `https://b5football.win`. The Data API answered "table not found" because **the schema migration has not been applied to the hosted project yet**. `src/db/secrets.test.ts` (part of `npm test`) fails if a `sb_secret_` key, a service_role JWT or a private key appears in any tracked or new file.
 - **Project settings (dashboard):** Data API on, **auto-expose new tables OFF**, **automatic RLS ON**. Because tables aren't auto-exposed, every migration must `grant` table access explicitly to `anon` / `authenticated` / `service_role`.
 - **Schema = migrations in the repo** (`supabase/migrations/`, Supabase CLI `supabase@2.119.0` as a dev dependency; `supabase/config.toml`, project_id `b5ffl`). Never change the schema by clicking in the dashboard. New migration: `npx supabase migration new <name>`, with RLS tests in `src/db/rls.test.ts`.
-- **Deploying migrations: `.github/workflows/deploy-db.yml`** (manual only: Actions > "Deploy database migrations" > Run workflow). It links the project, shows local vs live migration status, and always does a **dry run first**; the run summary lists each pending migration with its SQL. It **applies only if the `confirm` input is `apply`**. Never triggered by a push. **Live as of 2026-10-15:** `20261015154738_league_schema`, `20261015162734_lock_down_default_grants`, `20261015162917_keepalive_status`, `20261015194906_invite_only_signup`, `20261016010225_save_lineup` (each dry-run checked, then applied; save_lineup live 2026-10-16, anon gets "permission denied"). `20261016015052_commissioner_own_team` (live 2026-10-16).
+- **Deploying migrations: `.github/workflows/deploy-db.yml`** (manual only: Actions > "Deploy database migrations" > Run workflow). It links the project, shows local vs live migration status, and always does a **dry run first**; the run summary lists each pending migration with its SQL. It **applies only if the `confirm` input is `apply`**. Never triggered by a push. **Live as of 2026-10-15:** `20261015154738_league_schema`, `20261015162734_lock_down_default_grants`, `20261015162917_keepalive_status`, `20261015194906_invite_only_signup`, `20261016010225_save_lineup` (each dry-run checked, then applied; save_lineup live 2026-10-16, anon gets "permission denied"). `20261016015052_commissioner_own_team` (live 2026-10-16). **Pending:** `20261020014720_invite_joined`.
 - **Supabase's default grants (found live 2026-10-15):** despite "auto-expose new tables" being off, the hosted project's default privileges gave `anon` and `authenticated` ALL on every new table and function in `public`. Anon could query private tables, and RLS returned nothing, so only one of the two intended layers worked. The `lock_down_default_grants` migration revokes those defaults and grants back exactly what the policies need. Live re-probe after applying: anon gets "permission denied" on private tables, inserts and the keep-alive function, and can read public tables. **`src/db/testdb.ts` now mirrors Supabase's default privileges**, and `rls.test.ts` fails if anon has anything but SELECT on public-data tables, or if any role but service_role can touch `heartbeats`. Every new table needs explicit grants in its migration.
 - **Security model** (`20261015154738_league_schema.sql`):
   - **RLS enabled on every table, with explicit policies** (only `heartbeats` has none: service_role only).
@@ -132,7 +171,7 @@ Build rules 4, 5 and 6 are implemented.
 - **Commish screen** also has **Assign team** (account + team -> `team_managers`), which works for the commissioner's own account. **My Team** defaults to the account's own team; only the commissioner gets the picker (own team first, "(your team)"; other teams show "Viewing as commissioner").
 - **RLS tests** (`src/db/rls.test.ts`, part of `npm test`): real migrations run in **PGlite** (Postgres in-process, no Docker; `src/db/testdb.ts` adds a stand-in for Supabase's auth schema and roles). Tests act as anon, managers, the commissioner and service_role. They cover a manager blocked from another team's lineups, transactions and profile, the lineup rules and locks, commissioner powers, and anon read-only access. A check fails if any public table lacks RLS or policies. **Verified by sabotage:** four deliberate breaches each failed the suite. Every new table or policy needs tests here.
 - **Keep-awake** (free projects pause after ~7 days idle):
-  - **Primary: Cloudflare Worker cron `workers/keepalive`** (`b5-keepalive`, twice a day at 06:13 and 18:13 UTC). It upserts heartbeat `cloudflare-cron`. GitHub's 60-day schedule shutoff can't stop it. It's in plain TypeScript with no dependencies; `workers_dev = false` (no public URL). `SUPABASE_URL` is a var in `wrangler.toml`, and `SUPABASE_SERVICE_ROLE_KEY` is a **Worker secret** (`wrangler secret put`). **Deployed by the commissioner by hand** (no Cloudflare credentials in this repo or in Actions): from `workers/keepalive/`, run `npx wrangler@4.145.0 login`, then `npx wrangler@4.145.0 secret put SUPABASE_SERVICE_ROLE_KEY`, then `npx wrangler@4.145.0 deploy`. **Not yet deployed as of 2026-10-15.** Tests: `src/workers/keepalive.test.ts`.
+  - **Primary: Cloudflare Worker cron `workers/keepalive`** (`b5-keepalive`, twice a day at 06:13 and 18:13 UTC). It upserts heartbeat `cloudflare-cron`. GitHub's 60-day schedule shutoff can't stop it. It's in plain TypeScript with no dependencies; `workers_dev = false` (no public URL). `SUPABASE_URL` is a var in `wrangler.toml`, and `SUPABASE_SERVICE_ROLE_KEY` is a **Worker secret** (`wrangler secret put`). **Deployed by GitHub Actions** (`.github/workflows/deploy-worker.yml`, manual): deploys, then sets the Worker secret from the Actions secret `SUPABASE_SERVICE_ROLE_KEY`. Needs repository secrets `CLOUDFLARE_API_TOKEN` (one permission: Account > Workers Scripts > Edit) and `CLOUDFLARE_ACCOUNT_ID`; **as of 2026-10-19 neither exists on this repo**, so it hasn't run. By hand instead: from `workers/keepalive/`, `npx wrangler@4.145.0 login`, `secret put SUPABASE_SERVICE_ROLE_KEY`, `deploy`. Tests: `src/workers/keepalive.test.ts`.
   - **Backup: the nightly GitHub workflow** upserts heartbeat `nightly` (verified live 2026-10-15: HTTP 201). The same step prints an Actions warning when `cloudflare-cron` is missing or over 72 hours old. League data is saved even if that step fails.
   - **Commissioner banner: `keepalive-check.js`** (loaded by `index.html`) shows a red banner when `cloudflare-cron` is missing or over 3 days old. It reads `public.keepalive_status()`, which returns heartbeat times **only to the commissioner** (null for managers; anon can't call it). It needs a signed-in Supabase session (supabase-js's `sb-<ref>-auth-token` in localStorage), so **it activates once site login exists**; until then nobody sees it. Tests: `src/workers/keepalive-banner.test.ts`.
 - **Lineups and My Team** (built 2026-10-15):

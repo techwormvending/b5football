@@ -79,7 +79,7 @@
   var storage = null;
   try { storage = root.localStorage; } catch (e) { storage = null; }
   var f = function (u, i) { return root.fetch(u, i); };   // looked up per call (tests can stub it)
-  var st = { me: null, teamId: null, lu: null, msg: null };
+  var st = { me: null, teamId: null, lu: null, msg: null, managers: {} };
 
   var teamById = function (id) { for (var i = 0; i < (L.teams || []).length; i++) if (L.teams[i].id === id) return L.teams[i]; return null; };
   var divName = function (id) { var d = (L.divisions || []).filter(function (x) { return x.id === id; })[0]; return d ? d.name : ""; };
@@ -122,7 +122,7 @@
     return '<div class="card mt-head">' + logoHtml(t) +
       '<div class="mt-title"><h2>' + esc(t.name) + "</h2>" +
       '<div class="muted">' + esc(divName(t.division) ? divName(t.division) + " Division" : "") +
-      (t.manager && t.manager !== "TBD" ? " · " + esc(t.manager) : "") + "</div></div>" + picker +
+      (st.managers[t.id] ? " · " + esc(st.managers[t.id]) : "") + "</div></div>" + picker +
       (r ? '<div class="mt-stats"><div><b>' + esc(line) + "</b><span>Record</span></div>" +
         "<div><b>" + esc(ordinal(r.rank)) + "</b><span>of " + esc(r.of) + "</span></div>" +
         "<div><b>" + esc(Number(r.pf).toFixed(1)) + "</b><span>PF</span></div>" +
@@ -257,7 +257,8 @@
       if (root.B5Account) root.B5Account.refreshNav();
       var ids = myTeams();
       if (ids.indexOf(st.teamId) < 0) st.teamId = me && me.teams.length ? me.teams[0].team_id : ids[0] || null;
-      return show(rootEl);
+      return (me && root.B5Account.managerNames ? root.B5Account.managerNames() : Promise.resolve({}))
+        .then(function (m) { st.managers = m; return show(rootEl); });
     }, function () { rootEl.innerHTML = '<section><h2>My Team</h2><p class="acct-msg err">Couldn\'t load your account.</p></section>'; });
 
     if (bound === rootEl) return;

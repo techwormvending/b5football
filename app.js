@@ -196,7 +196,7 @@
             ${logoHtml(t)}
             <div>
               <h3>${esc(t.name)}</h3>
-              <div class="muted">${esc(t.manager)}${r ? ` · ${r.w}-${r.l}${r.t ? "-" + r.t : ""}` : ""}</div>
+              <div class="muted"><span data-mgr="${esc(t.id)}">${esc(t.manager)}</span>${r ? ` · ${r.w}-${r.l}${r.t ? "-" + r.t : ""}` : ""}</div>
               ${t.titles ? `<div class="rings" title="${t.titles} title(s)">${"🏆".repeat(t.titles)}</div>` : ""}
             </div>
           </div>
@@ -291,6 +291,11 @@
     if (page === "schedule") centerWeek();
     nav.classList.remove("open");
     if (page === "home") startClock();
+    if (page === "teams" && window.B5Account && window.B5Account.managerNames) {
+      window.B5Account.load().then(() => window.B5Account.managerNames()).then(m => {
+        view.querySelectorAll("[data-mgr]").forEach(el => { if (m[el.dataset.mgr]) el.textContent = m[el.dataset.mgr]; });
+      }, () => {});
+    }
     if (page === "myteam" && window.B5MyTeam) window.B5MyTeam.start(document.getElementById("mtRoot"));
     if ((page === "account" || page === "commish") && window.B5Account) window.B5Account.start(page, document.getElementById("acctRoot"));
     window.scrollTo(0, 0);

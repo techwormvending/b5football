@@ -250,7 +250,7 @@ describe("invite-only accounts", () => {
     assert.equal((r.rows[0] as { r: { error: { http_code: number } } }).r.error.http_code, 403);
   });
 
-  test("first sign-in applies the invite: team assignment, commissioner flag, accepted", async () => {
+  test("account creation applies the invite (team, commissioner flag); joined only after signing in", async () => {
     assert.equal(await affected(db, user(COMMISH), `insert into public.invites (email, team_id) values ('newguy@example.com', '0002')`), 1);
     assert.equal(await affected(db, user(COMMISH), `insert into public.invites (email, is_commissioner) values ('cocommish@example.com', true)`), 1);
     const NEW = "00000000-0000-0000-0000-0000000000ee", CO = "00000000-0000-0000-0000-0000000000ef";
@@ -258,10 +258,25 @@ describe("invite-only accounts", () => {
     assert.deepEqual((await db.query(`select team_id from public.team_managers where user_id = '${NEW}'`)).rows, [{ team_id: "0002" }]);
     const inv = (await db.query<{ user_id: string; accepted_at: unknown }>(`select user_id, accepted_at from public.invites where email = 'newguy@example.com'`)).rows[0]!;
     assert.equal(inv.user_id, NEW);
-    assert.ok(inv.accepted_at);
+    assert.equal(inv.accepted_at, null, "requesting a link creates the account, but he hasn't signed in yet");
+    await db.exec(`update auth.users set last_sign_in_at = '2026-10-19T20:00:00Z' where id = '${NEW}'`);
+    await db.exec(`update auth.users set last_sign_in_at = '2026-10-20T20:00:00Z' where id = '${NEW}'`);
+    const joined = (await db.query<{ accepted_at: Date }>(`select accepted_at from public.invites where email = 'newguy@example.com'`)).rows[0]!;
+    assert.equal(joined.accepted_at.toISOString(), "2026-10-19T20:00:00.000Z", "joined = first sign-in, later sign-ins don't move it");
     assert.equal((await db.query<{ c: boolean }>(`select is_commissioner as c from public.profiles where id = '${CO}'`)).rows[0]!.c, true);
     // The new manager can now set Bob's team's lineup (co-manager of 0002)
     assert.equal(await affected(db, user(NEW), `update public.lineup_slots set week = ${W} where team_id = '0002'`), 1);
+  });
+
+  test("an invite for an account that already exists (e.g. the commissioner's) links it, shows joined, applies the team", async () => {
+    const OLD = "00000000-0000-0000-0000-0000000000dd";
+    await db.exec(`insert into auth.users (id, email, last_sign_in_at) values ('${OLD}', 'Early@Example.com', '2026-10-15T12:00:00Z')`);
+    await as(db, user(COMMISH), tx => tx.query(`insert into public.invites (email, team_id) values ('early@example.com', '0002')`));
+    const inv = (await db.query<{ user_id: string; accepted_at: Date }>(`select user_id, accepted_at from public.invites where email = 'early@example.com'`)).rows[0]!;
+    assert.equal(inv.user_id, OLD);
+    assert.equal(inv.accepted_at.toISOString(), "2026-10-15T12:00:00.000Z");
+    assert.deepEqual((await db.query(`select team_id from public.team_managers where user_id = '${OLD}'`)).rows, [{ team_id: "0002" }]);
+    assert.equal((await db.query<{ c: boolean }>(`select is_commissioner as c from public.profiles where id = '${OLD}'`)).rows[0]!.c, false);
   });
 
   test("invites are commissioner-only; emails must be lower-case and valid", async () => {
