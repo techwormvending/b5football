@@ -1,10 +1,8 @@
 {
  "season": 2026,
  "week": 6,
- "status": "live",
- "missingGames": [
-  "WAS@SF"
- ],
+ "status": "pending_review",
+ "missingGames": [],
  "diffLog": [
   {
    "at": "2026-10-16T13:57:17.459Z",
@@ -17,14 +15,20 @@
    "kind": "live_vs_final",
    "entries": [],
    "note": "no live numbers were recorded for ARI@LAR, BAL@CLE, BUF@LV, CAR@PHI, CHI@ATL, DAL@GB, HOU@JAX, LAC@KC, NO@NYG, NYJ@NE, PIT@TB, TEN@IND"
+  },
+  {
+   "at": "2026-10-20T06:43:45.460Z",
+   "kind": "live_vs_final",
+   "entries": [],
+   "note": "no live numbers were recorded for WAS@SF"
   }
  ],
- "updatedAt": "2026-10-20T03:55:15.154Z",
+ "updatedAt": "2026-10-20T06:43:45.460Z",
  "final": {
   "season": 2026,
   "week": 6,
   "source": "final",
-  "computedAt": "2026-10-20T03:55:15.154Z",
+  "computedAt": "2026-10-20T06:43:45.460Z",
   "delayed": false,
   "errors": [],
   "games": [
@@ -157,6 +161,16 @@
     "awayScore": 26,
     "status": "final",
     "gameDate": "2026-10-18"
+   },
+   {
+    "gameKey": "WAS@SF",
+    "sourceGameId": "2026_06_WAS_SF",
+    "home": "SF",
+    "away": "WAS",
+    "homeScore": 23,
+    "awayScore": 17,
+    "status": "final",
+    "gameDate": "2026-10-19"
    }
   ],
   "players": {
@@ -3732,6 +3746,294 @@
      ],
      "extraPoints": 2
     }
+   },
+   "nflverse:00-0037834": {
+    "key": "nflverse:00-0037834",
+    "name": "Brock Purdy",
+    "position": "QB",
+    "team": "SF",
+    "gameKey": "WAS@SF",
+    "points": 13,
+    "stats": {
+     "passYds": 264,
+     "rushYds": 28,
+     "passTdLengths": [
+      11
+     ]
+    }
+   },
+   "nflverse:00-0033280": {
+    "key": "nflverse:00-0033280",
+    "name": "Christian McCaffrey",
+    "position": "RB",
+    "team": "SF",
+    "gameKey": "WAS@SF",
+    "points": 24.5,
+    "stats": {
+     "rushYds": 64,
+     "recYds": 53,
+     "receptions": 9,
+     "rushTdLengths": [
+      1,
+      1
+     ]
+    }
+   },
+   "nflverse:00-0029892": {
+    "key": "nflverse:00-0029892",
+    "name": "Kyle Juszczyk",
+    "position": "RB",
+    "team": "SF",
+    "gameKey": "WAS@SF",
+    "points": 0.5,
+    "stats": {
+     "recYds": 10,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0031408": {
+    "key": "nflverse:00-0031408",
+    "name": "Mike Evans",
+    "position": "WR",
+    "team": "SF",
+    "gameKey": "WAS@SF",
+    "points": 5.5,
+    "stats": {
+     "recYds": 94,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0041052": {
+    "key": "nflverse:00-0041052",
+    "name": "Kaelon Black",
+    "position": "RB",
+    "team": "SF",
+    "gameKey": "WAS@SF",
+    "points": 2.5,
+    "stats": {
+     "rushYds": 34,
+     "recYds": 3,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0033288": {
+    "key": "nflverse:00-0033288",
+    "name": "George Kittle",
+    "position": "TE",
+    "team": "SF",
+    "gameKey": "WAS@SF",
+    "points": 16,
+    "stats": {
+     "recYds": 69,
+     "receptions": 5,
+     "recTdLengths": [
+      11
+     ]
+    }
+   },
+   "nflverse:00-0039910": {
+    "key": "nflverse:00-0039910",
+    "name": "Jayden Daniels",
+    "position": "QB",
+    "team": "WAS",
+    "gameKey": "WAS@SF",
+    "points": 21,
+    "stats": {
+     "passYds": 300,
+     "rushYds": 10,
+     "passTdLengths": [
+      1,
+      9
+     ]
+    }
+   },
+   "nflverse:00-0035659": {
+    "key": "nflverse:00-0035659",
+    "name": "Terry McLaurin",
+    "position": "WR",
+    "team": "WAS",
+    "gameKey": "WAS@SF",
+    "points": 1.5,
+    "stats": {
+     "recYds": 27,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0037256": {
+    "key": "nflverse:00-0037256",
+    "name": "Rachaad White",
+    "position": "RB",
+    "team": "WAS",
+    "gameKey": "WAS@SF",
+    "points": 12,
+    "stats": {
+     "rushYds": 27,
+     "recYds": 30,
+     "receptions": 4,
+     "recTdLengths": [
+      9
+     ]
+    }
+   },
+   "nflverse:00-0031588": {
+    "key": "nflverse:00-0031588",
+    "name": "Stefon Diggs",
+    "position": "WR",
+    "team": "WAS",
+    "gameKey": "WAS@SF",
+    "points": 10,
+    "stats": {
+     "recYds": 44,
+     "receptions": 6,
+     "recTdLengths": [
+      1
+     ]
+    }
+   },
+   "nflverse:00-0033699": {
+    "key": "nflverse:00-0033699",
+    "name": "Austin Ekeler",
+    "position": "RB",
+    "team": "WAS",
+    "gameKey": "WAS@SF",
+    "points": 1,
+    "stats": {
+     "rushYds": 3,
+     "recYds": 4,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0037809": {
+    "key": "nflverse:00-0037809",
+    "name": "Chig Okonkwo",
+    "position": "TE",
+    "team": "WAS",
+    "gameKey": "WAS@SF",
+    "points": 11,
+    "stats": {
+     "recYds": 69,
+     "receptions": 7
+    }
+   },
+   "nflverse:00-0036628": {
+    "key": "nflverse:00-0036628",
+    "name": "John Bates",
+    "position": "TE",
+    "team": "WAS",
+    "gameKey": "WAS@SF",
+    "points": 2,
+    "stats": {
+     "recYds": 4,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0040172": {
+    "key": "nflverse:00-0040172",
+    "name": "Jordan Watkins",
+    "position": "WR",
+    "team": "SF",
+    "gameKey": "WAS@SF",
+    "points": 0.5,
+    "stats": {
+     "recYds": 22,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0031236": {
+    "key": "nflverse:00-0031236",
+    "name": "Brandin Cooks",
+    "position": "WR",
+    "team": "SF",
+    "gameKey": "WAS@SF",
+    "points": 0.5,
+    "stats": {
+     "recYds": 13,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0037742": {
+    "key": "nflverse:00-0037742",
+    "name": "Treylon Burks",
+    "position": "WR",
+    "team": "WAS",
+    "gameKey": "WAS@SF",
+    "points": 4,
+    "stats": {
+     "recYds": 66,
+     "receptions": 4
+    }
+   },
+   "nflverse:00-0033955": {
+    "key": "nflverse:00-0033955",
+    "name": "Jeremy McNichols",
+    "position": "RB",
+    "team": "WAS",
+    "gameKey": "WAS@SF",
+    "points": 0,
+    "stats": {
+     "rushYds": 13
+    }
+   },
+   "nflverse:00-0036626": {
+    "key": "nflverse:00-0036626",
+    "name": "Dyami Brown",
+    "position": "WR",
+    "team": "WAS",
+    "gameKey": "WAS@SF",
+    "points": 0.5,
+    "stats": {
+     "recYds": 6,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0039355": {
+    "key": "nflverse:00-0039355",
+    "name": "Luke McCaffrey",
+    "position": "WR",
+    "team": "WAS",
+    "gameKey": "WAS@SF",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0041040": {
+    "key": "nflverse:00-0041040",
+    "name": "Antonio Williams",
+    "position": "WR",
+    "team": "WAS",
+    "gameKey": "WAS@SF",
+    "points": 3.5,
+    "stats": {
+     "recYds": 50,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0034173": {
+    "key": "nflverse:00-0034173",
+    "name": "Eddy Pineiro",
+    "position": "K",
+    "team": "SF",
+    "gameKey": "WAS@SF",
+    "points": 5.3,
+    "stats": {
+     "extraPoints": 2,
+     "fgMadeLengths": [
+      33
+     ]
+    }
+   },
+   "nflverse:00-0041182": {
+    "key": "nflverse:00-0041182",
+    "name": "Drew Stevens",
+    "position": "K",
+    "team": "WAS",
+    "gameKey": "WAS@SF",
+    "points": 7.1,
+    "stats": {
+     "fgMadeLengths": [
+      51
+     ],
+     "extraPoints": 2
+    }
    }
   },
   "defenses": {
@@ -4065,6 +4367,31 @@
      "fumbleRecoveries": 1,
      "blockedPunts": 1,
      "blockedPuntTds": 1
+    }
+   },
+   "SF": {
+    "team": "SF",
+    "gameKey": "WAS@SF",
+    "points": 10,
+    "stats": {
+     "opponentPoints": 17,
+     "offensiveTdsAllowed": 2,
+     "passYdsAllowed": 261,
+     "rushYdsAllowed": 53,
+     "sacks": 4
+    }
+   },
+   "WAS": {
+    "team": "WAS",
+    "gameKey": "WAS@SF",
+    "points": 4,
+    "stats": {
+     "opponentPoints": 23,
+     "offensiveTdsAllowed": 3,
+     "passYdsAllowed": 249,
+     "rushYdsAllowed": 126,
+     "sacks": 2,
+     "fumbleRecoveries": 1
     }
    }
   },
