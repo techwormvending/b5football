@@ -151,6 +151,7 @@ a.game:hover { border-color: var(--gold); }
 .mt-stats b { font: 700 22px var(--head); color: var(--gold); }
 .mt-stats span { font: 500 11px var(--head); letter-spacing: .12em; text-transform: uppercase; color: var(--chalk-dim); }
 .mt-viewing { margin: 0; }
+.tag.cm-bad { background: rgba(210, 69, 47, .3); color: #ffb3a6; }
 .mt-pick { flex-basis: 100%; display: grid; gap: 4px; max-width: 320px; font: 500 13px var(--head); letter-spacing: .1em; text-transform: uppercase; color: var(--chalk-dim); }
 .mt-cols { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 24px; align-items: start; }
 .mt-soon h3 { color: var(--gold); }

@@ -40,7 +40,7 @@
       <div class="card table-wrap"><table class="standings">
         <thead><tr><th>#</th><th>Team</th><th class="hide-sm">Div</th><th class="num">W-L</th><th class="num">PF</th><th class="num hide-sm">PA</th></tr></thead>
         <tbody>${body}</tbody></table>
-        <p class="muted small">As of ${fmtDate(L.standings.asOf)}</p>
+        <p class="muted small">${L.standings.fromDb ? "Computed by this site. MFL is official for 2026." : "As of " + fmtDate(L.standings.asOf)}</p>
       </div></section>`;
   }
 
@@ -139,7 +139,7 @@
           <div class="weeks" role="tablist" aria-label="Week">${chips}</div>
           <h3 class="wk-title">Week ${esc(w.week)}${isPlayoff ? " · Playoffs" + (round ? ": " + esc(round) : "") : ""}${w.week === cur ? ` <span class="tag">This week</span>` : ""}</h3>
           ${body}
-          <p class="muted small">Schedule as of ${fmtDate(sched.asOf)}</p>
+          <p class="muted small">${sched.fromDb ? "Scores computed by this site from nflverse stats. MFL is official for 2026." : "Schedule as of " + fmtDate(sched.asOf)}</p>
         </section>`;
     },
 
@@ -335,4 +335,35 @@
     if (strip && active) strip.scrollLeft = active.offsetLeft - strip.offsetLeft - (strip.clientWidth - active.offsetWidth) / 2;
   }
   route();
+
+  // ---- League data from the database -------------------------------------
+  // Matchups (schedule + our scores) and standings computed by this site replace the
+  // static snapshot when the database has them. Public data: works signed out.
+  function loadFromDb() {
+    const cfg = window.B5_SUPABASE, A = window.B5Auth;
+    if (!(cfg && cfg.configured && A)) return;
+    const get = (p) => A.api(cfg, null, p, {}, (u, i) => window.fetch(u, i));
+    Promise.all([
+      get(`matchups?season=eq.${Number(L.season)}&select=week,home_team,away_team,home_score,away_score&order=week`),
+      get(`standings?season=eq.${Number(L.season)}&select=team_id,wins,losses,ties,points_for,points_against,rank&order=rank`)
+    ]).then(([m, s]) => {
+      let changed = false;
+      if (m.ok && m.data && m.data.length) {
+        const byWeek = {};
+        m.data.forEach(x => (byWeek[x.week] = byWeek[x.week] || []).push([x.away_team,
+          x.away_score == null ? null : Number(x.away_score), x.home_team, x.home_score == null ? null : Number(x.home_score)]));
+        sched.weeks.forEach(w => { if (byWeek[w.week]) w.games = byWeek[w.week]; });
+        sched.fromDb = true;
+        changed = true;
+      }
+      if (s.ok && s.data && s.data.length) {
+        rows.length = 0;
+        s.data.forEach(x => rows.push([x.team_id, x.wins, x.losses, x.ties, Number(x.points_for), Number(x.points_against)]));
+        if (L.standings) { L.standings.rows = rows; L.standings.fromDb = true; }
+        changed = true;
+      }
+      if (changed && ["home", "schedule", "teams"].includes((location.hash || "#home").slice(1))) route();
+    }, () => {});
+  }
+  loadFromDb();
 })();

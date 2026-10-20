@@ -430,6 +430,17 @@ describe("commissioner who also manages a team (Mac Daddies, 0011)", () => {
   });
 });
 
+describe("shadow results (2026 comparison with MFL)", () => {
+  test("server jobs write; only the commissioner reads; managers and anon can't read or write", async () => {
+    assert.equal(await affected(db, service, `insert into public.shadow_results (season, week, team_id, mfl_score, our_score, matched) values (${S}, 1, '0001', 100.5, 100.5, true)`), 1);
+    assert.equal((await rows(db, user(COMMISH), `select * from public.shadow_results`)).length, 1);
+    assert.deepEqual(await rows(db, user(ALICE), `select * from public.shadow_results`), []);
+    await denied(db, anon, `select * from public.shadow_results`, /permission denied/);
+    await denied(db, user(ALICE), `insert into public.shadow_results (season, week, team_id, mfl_score, our_score, matched) values (${S}, 2, '0001', 1, 1, true)`, /permission denied/);
+    await denied(db, user(COMMISH), `update public.shadow_results set matched = false`, /permission denied/);
+  });
+});
+
 describe("server jobs (service_role)", () => {
   test("bypass RLS and can touch the heartbeat; nobody else can", async () => {
     assert.equal(await affected(db, service, `insert into public.heartbeats (name) values ('nightly') on conflict (name) do update set at = now()`), 1);

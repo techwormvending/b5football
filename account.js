@@ -108,7 +108,7 @@
   }
 
   // ---- #commish ------------------------------------------------------------
-  var cm = { teams: [], invites: [], managers: [], accounts: [], keep: null, msg: null };
+  var cm = { teams: [], invites: [], managers: [], accounts: [], keep: null, shadow: [], msg: null };
 
   function loadCommish() {
     var s = me.session;
@@ -118,8 +118,10 @@
       A.api(cfg, s, "team_managers?select=team_id,user_id,profiles(display_name)&order=team_id", {}, f),
       A.api(cfg, s, "rpc/keepalive_status", { method: "POST", body: "{}" }, f),
       A.api(cfg, s, "profiles?select=id,display_name,is_commissioner&order=display_name", {}, f),
-      A.api(cfg, s, "invites?select=email,user_id&user_id=not.is.null", {}, f)
+      A.api(cfg, s, "invites?select=email,user_id&user_id=not.is.null", {}, f),
+      A.api(cfg, s, "shadow_results?season=eq." + Number(L.season) + "&select=week,team_id,mfl_score,our_score,matched,details&order=week,team_id", {}, f)
     ]).then(function (r) {
+      cm.shadow = (r[6] && r[6].ok && r[6].data) || [];
       cm.teams = r[0].data || []; cm.invites = r[1].data || []; cm.managers = r[2].data || []; cm.keep = r[3].ok ? r[3].data : null;
       // Signed-up accounts, labelled with their invite email (the commissioner's own account included).
       var emails = {};
@@ -153,6 +155,7 @@
         return "<li>" + esc(h.name === "cloudflare-cron" ? "Cloudflare Worker" : h.name === "nightly" ? "GitHub nightly job (backup)" : h.name) + ": " + esc(ago(h.at)) + " (" + esc(et(h.at)) + ")</li>";
       }).join("") : "<li>No heartbeats yet.</li>") + "</ul></div>";
 
+    var shadow = shadowHtml(cm.shadow);
     var teamOpts = '<option value="">No team</option>' + cm.teams.map(function (t) { return '<option value="' + esc(t.id) + '">' + esc(t.name) + "</option>"; }).join("");
     var seedTeams = cm.teams.length ? "" :
       '<p class="acct-msg err">No teams in the database yet. <button class="btn ghost" type="button" data-cm="seed-teams">Add the ' + esc((L.teams || []).length) + " teams from the site</button></p>";
@@ -182,7 +185,7 @@
         ' <button class="linkish" type="button" data-cm="unassign" data-team="' + esc(x.team_id) + '" data-user="' + esc(x.user_id) + '">remove from team</button></li>';
     }).join("") + "</ul>" : '<p class="muted">No managers have joined yet.</p>';
 
-    root.innerHTML = "<section><h2>Commissioner</h2>" + m + keep +
+    root.innerHTML = "<section><h2>Commissioner</h2>" + m + keep + shadow +
       '<div class="card"><h3>Invite a manager</h3>' + seedTeams +
       '<form class="acct-form" data-cm="invite">' +
       '<label>Email<input name="email" type="email" autocomplete="off" required></label>' +
@@ -194,6 +197,37 @@
       "Removing an invite stops new sign-ups; to cut off someone who already joined, also remove them from their team.</p></div>" +
       '<div class="card"><h3>Invites</h3>' + invites + "</div>" +
       '<div class="card"><h3>Team managers</h3>' + mgrs + assign + "</div></section>";
+  }
+
+  // Shadow mode (2026): our engine's team totals vs MFL's, per week, with every difference explained.
+  function shadowHtml(rows) {
+    if (!rows.length) return '<div class="card"><h3>Shadow scoring vs MFL</h3><p class="muted">No weeks compared yet. The nightly job fills this in.</p></div>';
+    var weeks = {};
+    rows.forEach(function (r) { (weeks[r.week] = weeks[r.week] || []).push(r); });
+    var nums = Object.keys(weeks).map(Number).sort(function (a, b) { return a - b; });
+    var streak = 0;
+    for (var i = nums.length - 1; i >= 0 && weeks[nums[i]].every(function (r) { return r.matched; }); i--) streak++;
+    var fmt = function (n) { return Number(n).toFixed(2).replace(/\.?0+$/, ""); };
+    var body = nums.map(function (w) {
+      var rs = weeks[w], bad = rs.filter(function (r) { return !r.matched || (r.details && r.details.diffs && r.details.diffs.length); });
+      var head = "Week " + w + ": " + rs.filter(function (r) { return r.matched; }).length + "/" + rs.length + " teams match";
+      if (!bad.length) return '<li><span class="tag">Exact</span> ' + esc(head) + "</li>";
+      return '<li><details><summary><span class="tag cm-bad">Check</span> ' + esc(head) + "</summary>" + bad.map(function (r) {
+        var d = r.details || {};
+        return "<p><b>" + esc(teamName(r.team_id)) + "</b>: ours " + esc(fmt(r.our_score)) + " vs MFL " + esc(fmt(r.mfl_score)) + "</p><ul>" +
+          (d.diffs || []).map(function (x) {
+            return "<li>" + esc(x.name) + " (" + esc(x.position || "?") + "): ours " + esc(fmt(x.ours)) + " vs MFL " + esc(fmt(x.mfl)) +
+              (x.note ? " · " + esc(x.note) : "") +
+              (x.lines && x.lines.length ? '<br><span class="muted small">' + esc(x.lines.map(function (l) { return l.stat + " " + l.value + " = " + l.points; }).join(", ")) + "</span>" : "") +
+              (x.plays || []).map(function (p) { return '<br><span class="muted small">▸ ' + esc(p) + "</span>"; }).join("") + "</li>";
+          }).join("") + "</ul>";
+      }).join("") + "</details></li>";
+    }).join("");
+    return '<div class="card"><h3>Shadow scoring vs MFL</h3>' +
+      '<p class="' + (streak >= 3 ? "acct-msg ok" : "muted") + '">' + esc(streak >= 3 ? "Matched MFL exactly for the last " + streak + " weeks: the invite bar is met."
+        : streak + " straight exact week" + (streak === 1 ? "" : "s") + " (the invite bar is 3, or every difference explained).") + "</p>" +
+      '<ul class="checks">' + body + "</ul>" +
+      '<p class="muted small">Our engine scores MFL\'s starters from nflverse stats; MFL stays official for 2026. A week appears once MFL posts its scores.</p></div>';
   }
 
   function startCommish(root) {
