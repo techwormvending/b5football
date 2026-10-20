@@ -27,7 +27,6 @@ jobs:
         working-directory: workers/keepalive
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
     steps:
       - uses: actions/checkout@v4
@@ -37,12 +36,23 @@ jobs:
           node-version: 24
 
       - name: Check configuration
+        env:
+          RAW_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           missing=""
           [ -n "$CLOUDFLARE_API_TOKEN" ] || missing="$missing CLOUDFLARE_API_TOKEN"
-          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || missing="$missing CLOUDFLARE_ACCOUNT_ID"
+          [ -n "$RAW_ACCOUNT_ID" ] || missing="$missing CLOUDFLARE_ACCOUNT_ID"
           [ -n "$SUPABASE_SERVICE_ROLE_KEY" ] || missing="$missing SUPABASE_SERVICE_ROLE_KEY"
           if [ -n "$missing" ]; then echo "::error::Missing repository secrets:$missing"; exit 1; fi
+          # A pasted account ID often carries spaces or a newline: strip whitespace. Anything else
+          # wrong is reported by shape only (the value is never printed).
+          id=$(printf "%s" "$RAW_ACCOUNT_ID" | tr -d "[:space:]")
+          if ! printf "%s" "$id" | grep -Eq "^[0-9a-f]{32}$"; then
+            echo "::error::CLOUDFLARE_ACCOUNT_ID should be the 32-character hex Account ID (Cloudflare > Workers & Pages, right side). After removing whitespace it is ${#id} characters$(printf "%s" "$id" | grep -q "[^0-9a-f]" && echo ", with characters other than 0-9 a-f")."
+            exit 1
+          fi
+          echo "::add-mask::$id"
+          echo "CLOUDFLARE_ACCOUNT_ID=$id" >> "$GITHUB_ENV"
 
       # Deploy first (creates the Worker on the first run), then set its secret.
       - name: Deploy
