@@ -60,7 +60,9 @@ let db: PGlite;
 beforeEach(async () => { db = await freshDb(); await seed(db); });
 
 describe("every table is protected", () => {
-  test("RLS is enabled on every public table, and every table but heartbeats has policies", async () => {
+  // Service-only tables: RLS on, deliberately no policies and no grants to anon/authenticated.
+  const SERVICE_ONLY = new Set(["heartbeats", "live_nonces", "live_games"]);
+  test("RLS is enabled on every public table, and every table but the service-only ones has policies", async () => {
     const t = (await db.query<{ relname: string; rls: boolean; policies: number }>(`
       select c.relname, c.relrowsecurity as rls,
              (select count(*)::int from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname) as policies
@@ -69,7 +71,7 @@ describe("every table is protected", () => {
     assert.ok(t.length >= 17);
     for (const r of t) {
       assert.equal(r.rls, true, `${r.relname} must have RLS enabled`);
-      if (r.relname !== "heartbeats") assert.ok(r.policies > 0, `${r.relname} needs explicit policies`);
+      if (!SERVICE_ONLY.has(r.relname)) assert.ok(r.policies > 0, `${r.relname} needs explicit policies`);
     }
   });
 });
@@ -448,6 +450,42 @@ describe("MFL player map (2026 live mirror)", () => {
     assert.deepEqual(await rows(db, user(ALICE), `select * from public.mfl_player_map`), []);
     await denied(db, anon, `select * from public.mfl_player_map`, /permission denied/);
     await denied(db, user(COMMISH), `insert into public.mfl_player_map (mfl_id, player_id) values ('1', 'QB-DET')`, /permission denied/);
+  });
+});
+
+describe("live scoring tick (pg_cron every minute -> Edge Function)", () => {
+  const tick = () => db.query<{ r: string }>(`select private.live_tick() as r`).then(x => x.rows[0]!.r);
+  const calls = () => db.query<{ url: string; body: { nonce: string } }>(`select url, body from net.calls order by id`).then(x => x.rows);
+
+  test("no NFL game near: does nothing (no HTTP call, no nonce)", async () => {
+    await db.exec(`delete from public.nfl_games; insert into public.nfl_games (season, week, game_key, home, away, kickoff) values (${S}, 7, 'A@B', 'B', 'A', now() + interval '2 hours'), (${S}, 6, 'C@D', 'D', 'C', now() - interval '5 hours')`);
+    assert.equal(await tick(), "idle");
+    assert.deepEqual(await calls(), []);
+    assert.equal((await db.query(`select * from public.live_nonces`)).rows.length, 0);
+  });
+
+  test("a game kicking off within 5 minutes or started under 4.5 h ago: posts a fresh one-time nonce to b5-live", async () => {
+    await db.exec(`delete from public.nfl_games; insert into public.nfl_games (season, week, game_key, home, away, kickoff) values (${S}, 7, 'A@B', 'B', 'A', now() + interval '3 minutes')`);
+    assert.equal(await tick(), "called");
+    await db.exec(`update public.nfl_games set kickoff = now() - interval '4 hours'`);
+    await db.exec(`insert into public.live_nonces (created_at) values (now() - interval '11 minutes')`);
+    assert.equal(await tick(), "called");
+    const c = await calls();
+    assert.equal(c.length, 2);
+    assert.equal(c[0]!.url, "https://kngwdttpbpezlvjrkrrg.supabase.co/functions/v1/b5-live");
+    const nonces = (await db.query<{ nonce: string }>(`select nonce from public.live_nonces order by created_at`)).rows.map(r => r.nonce);
+    assert.deepEqual(nonces.sort(), c.map(x => x.body.nonce).sort(), "each call carries its own stored nonce; stale ones are swept");
+  });
+
+  test("nobody but server jobs can read or forge nonces, see captured games, or run the tick", async () => {
+    await db.exec(`insert into public.live_nonces default values`);
+    for (const who of [anon, user(ALICE), user(COMMISH)]) {
+      await denied(db, who, `select * from public.live_nonces`, /permission denied/);
+      await denied(db, who, `insert into public.live_nonces default values`, /permission denied/);
+      await denied(db, who, `select * from public.live_games`, /permission denied/);
+      await denied(db, who, `select private.live_tick()`, /permission denied/);
+    }
+    assert.equal((await rows(db, service, `select * from public.live_nonces`)).length, 1);
   });
 });
 

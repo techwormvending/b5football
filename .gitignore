@@ -21,3 +21,6 @@ data/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Edge Function build copy of src/ (made by the deploy workflow)
+supabase/functions/b5-live/_src/

@@ -1,0 +1,76 @@
+# Deploy the Supabase Edge Function "b5-live" (live NFL scoring).
+# Manual only: Actions > "Deploy Edge Functions" > Run workflow.
+#
+# The function's code is src/live/ (tested with npm test); this copies src/ next to it
+# and deploys with server-side bundling (no Docker).
+#
+# Needs (repository settings > Secrets and variables > Actions):
+#   variable SUPABASE_PROJECT_REF
+#   secret   SUPABASE_ACCESS_TOKEN   personal access token scoped to project b5ffl. For this
+#                                    workflow it needs "Edge Functions: Read and write" in
+#                                    addition to Project read / Database read+write.
+# The schedule (pg_cron + pg_net) is a migration: 20261020030757_live_scoring_cron.
+
+name: Deploy Edge Functions
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-functions
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Check configuration
+        run: |
+          missing=""
+          [ -n "$PROJECT_REF" ] || missing="$missing variable:SUPABASE_PROJECT_REF"
+          [ -n "$SUPABASE_ACCESS_TOKEN" ] || missing="$missing secret:SUPABASE_ACCESS_TOKEN"
+          if [ -n "$missing" ]; then echo "::error::Missing:$missing"; exit 1; fi
+
+      - name: Tests (the function runs this code)
+        run: npm test
+
+      - name: Copy shared code next to the function
+        run: |
+          rm -rf supabase/functions/b5-live/_src
+          mkdir -p supabase/functions/b5-live/_src
+          cp -r src/* supabase/functions/b5-live/_src/
+          find supabase/functions/b5-live/_src -name '*.test.ts' -delete
+          rm -rf supabase/functions/b5-live/_src/db supabase/functions/b5-live/_src/workers
+
+      - name: Deploy b5-live
+        run: |
+          set -o pipefail
+          npx supabase functions deploy b5-live --project-ref "$PROJECT_REF" --use-api --no-verify-jwt 2>&1 | tee deploy.txt || {
+            if grep -qiE "403|forbidden|permission|scope" deploy.txt; then
+              echo "::error::The access token lacks the Edge Functions permission. Add 'Edge Functions: Read and write' to the SUPABASE_ACCESS_TOKEN token (project b5ffl only)."
+            fi
+            exit 1
+          }
+
+      - name: Summary
+        run: |
+          {
+            echo "### b5-live deployed"
+            echo "Runs only when pg_cron's tick finds an NFL game near (kickoff within 5 min or started < 4.5 h ago)."
+          } >> "$GITHUB_STEP_SUMMARY"

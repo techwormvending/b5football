@@ -34,6 +34,13 @@ const AUTH_STUB = `
   $$;
   grant execute on function auth.uid() to anon, authenticated, service_role;
 
+  -- pg_net stand-in (the real extension isn't in PGlite): records calls instead of sending them.
+  create schema extensions;
+  create schema net;
+  create table net.calls (id bigserial primary key, url text, body jsonb, headers jsonb, at timestamptz default now());
+  create function net.http_post(url text, body jsonb default '{}', params jsonb default '{}', headers jsonb default '{}', timeout_milliseconds int default 5000)
+    returns bigint language sql as $$ insert into net.calls (url, body, headers) values (url, body, headers) returning id $$;
+
   -- Supabase's default privileges (as found on the hosted project, 2026-10-15): new tables,
   -- sequences and functions in public are granted to anon and authenticated automatically,
   -- even with "auto-expose new tables" off. Mirror them so tests catch over-broad access.

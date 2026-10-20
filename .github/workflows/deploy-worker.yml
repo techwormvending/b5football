@@ -1,6 +1,7 @@
-# Deploy a Cloudflare Worker: workers/keepalive ("b5-keepalive") or workers/live ("b5-live").
-# Manual only: Actions > "Deploy Worker" > Run workflow > pick the worker.
-# b5-live needs Workers Paid: a Sunday slate exceeds the Free plan's CPU limit per run.
+# Deploy the Cloudflare keep-alive Worker: workers/keepalive ("b5-keepalive").
+# Manual only: Actions > "Deploy Worker" > Run workflow.
+# Live scoring is NOT a Worker (Free plan CPU is too small): it's the Supabase Edge
+# Function b5-live, deployed by deploy-functions.yml.
 #
 # Needs repository secrets:
 #   CLOUDFLARE_API_TOKEN   API token with ONE permission: Account > Workers Scripts > Edit
@@ -15,7 +16,7 @@ on:
       worker:
         description: Which Worker
         type: choice
-        options: [keepalive, live]
+        options: [keepalive]
         default: keepalive
 
 permissions:
@@ -76,7 +77,6 @@ jobs:
               process.exit(1);
             });'
 
-      # The live Worker bundles shared code from src/ (wrangler/esbuild); nothing to install.
       # Deploy first (creates the Worker on the first run), then set its secret.
       - name: Deploy
         run: npx --yes wrangler@4.145.0 deploy
@@ -107,11 +107,6 @@ jobs:
       - name: Summary
         run: |
           {
-            if [ "${{ inputs.worker }}" = keepalive ]; then
-              echo "### b5-keepalive deployed"
-              echo "Cron: 06:13 and 18:13 UTC. The commissioner banner clears after the first run writes the \`cloudflare-cron\` heartbeat."
-            else
-              echo "### b5-live deployed"
-              echo "Cron: every minute. Outside game windows each run makes one ESPN request and stops."
-            fi
+            echo "### b5-keepalive deployed"
+            echo "Cron: 06:13 and 18:13 UTC. The commissioner banner clears after the first run writes the \`cloudflare-cron\` heartbeat."
           } >> "$GITHUB_STEP_SUMMARY"
