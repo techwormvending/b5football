@@ -73,6 +73,9 @@ export interface FinalizeResult {
 
 export interface FinalizerDeps {
   final: FinalStatsSource;
+  /** The week's full NFL schedule ("AWAY@HOME" keys, kickoffs). Without it, only games the live
+      poller saw count, and a game nobody polled (e.g. Monday night) could go unnoticed. */
+  schedule?: (season: number, week: number) => Promise<{ gameKey: string; kickoff?: string | null }[]>;
   crosswalk: Crosswalk;
   store: ScoreStore;
   now?: () => number;
@@ -120,15 +123,23 @@ export function createFinalizer(deps: FinalizerDeps, config: Partial<FinalizeCon
       ...(unrecorded.length ? { note: `no live numbers were recorded for ${unrecorded.join(", ")}` } : {}) });
     if (corrections.length) rec.diffLog.push({ at, kind: "correction", entries: corrections });
 
-    // Schedule = what the live poller saw (ESPN lists every game of the week).
-    const missing = (live?.games ?? []).map(g => g.gameKey).filter(k => !nowKeys.has(k));
-    // Last game of the week: live kickoff times, else nflverse game dates (noon ET as a stand-in).
-    let kickoffs = (live?.games ?? []).map(g => g.kickoff).filter((k): k is string => !!k).map(Date.parse);
+    // Schedule = the full NFL schedule when known, plus whatever the live poller saw.
+    let sched: { gameKey: string; kickoff?: string | null }[] = [];
+    if (deps.schedule) {
+      try { sched = await deps.schedule(season, week); }
+      catch (err) { log(`${season} wk ${week}: schedule unavailable (${(err as Error).message}); using live games only`); }
+    }
+    const scheduled = new Set([...sched.map(g => g.gameKey), ...(live?.games ?? []).map(g => g.gameKey)]);
+    const missing = [...scheduled].filter(k => !nowKeys.has(k)).sort();
+    // Last game of the week: schedule or live kickoff times, else nflverse game dates (noon ET as a stand-in).
+    let kickoffs = [...sched.map(g => g.kickoff), ...(live?.games ?? []).map(g => g.kickoff)].filter((k): k is string => !!k).map(Date.parse);
     if (!kickoffs.length) kickoffs = finalSnap.games.map(g => g.gameDate).filter((d): d is string => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d))
       .map(d => { const [y, m, dd] = d.split("-").map(Number) as [number, number, number]; return etToUtc(y, m, dd, 12); });
     rec.final = finalSnap;
     rec.missingGames = missing;
-    rec.status = "pending_review";
+    // A week with games still to come (or not yet in nflverse) stays live: live scoring keeps
+    // running for those games and nobody sees the week as final.
+    rec.status = missing.length ? "live" : "pending_review";
     if (kickoffs.length) rec.autoFinalizeAt = new Date(nextEasternTime(Math.max(...kickoffs), cfg.autoFinalize.weekday, cfg.autoFinalize.hour)).toISOString();
     rec.updatedAt = at;
 
@@ -183,11 +194,21 @@ export function createFinalizer(deps: FinalizerDeps, config: Partial<FinalizeCon
 export async function weekScores(store: ScoreStore, season: number, week: number, cw: Crosswalk): Promise<{ status: WeekStatus; snapshot?: ScoredWeek; liveDelayed: boolean; overrides: Override[] }> {
   const overrides = (await store.listOverrides(season, week)).filter(o => o.active);
   const rec = await store.getWeek(season, week);
-  const base = rec?.final ?? (await store.getLive(season, week));
+  const live = await store.getLive(season, week);
+  let base = rec?.final ?? live;
+  // Partly final (games still missing from nflverse): final numbers, plus live numbers for the rest.
+  if (rec?.final && rec.status === "live" && live) {
+    const have = new Set(rec.final.games.map(g => g.gameKey));
+    const carry = new Set(live.games.filter(g => !have.has(g.gameKey)).map(g => g.gameKey));
+    base = { ...rec.final, games: [...rec.final.games, ...live.games.filter(g => carry.has(g.gameKey))],
+      players: { ...rec.final.players }, defenses: { ...rec.final.defenses }, delayed: live.delayed };
+    for (const [k, p] of Object.entries(live.players)) if (carry.has(p.gameKey) && !base.players[k]) base.players[k] = p;
+    for (const [t, d] of Object.entries(live.defenses)) if (carry.has(d.gameKey) && !base.defenses[t]) base.defenses[t] = d;
+  }
   return {
     status: rec?.final ? rec.status : "live",
     ...(base ? { snapshot: applyOverrides(base, overrides, cw) } : {}),
-    liveDelayed: !rec?.final && !!base?.delayed,
+    liveDelayed: (!rec?.final || rec.status === "live") && !!base?.delayed,
     overrides
   };
 }

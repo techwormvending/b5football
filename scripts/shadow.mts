@@ -66,6 +66,12 @@ log(`Shadow ${season}: weeks ${weeks.join(", ") || "(none)"}${dry ? " (dry run)"
 const done: WeekComparison[] = [];
 for (const week of weeks) {
   const ws = await weekScores(store, season, week, cw);
+  if (ws.status === "live") {
+    // Games still to play (or not yet in nflverse): the live scorer owns this week until it's complete.
+    log(`Week ${week}: not complete yet (${(await store.getWeek(season, week))?.missingGames.join(", ") || "games pending"}); left live.`);
+    if (!dry) await upsert(cfg, "score_weeks", [{ season, week, status: "live", updated_at: new Date().toISOString() }], "season,week");
+    continue;
+  }
   if (!ws.snapshot || ws.snapshot.source !== "final") { log(`Week ${week}: no final (nflverse) numbers yet; skipped.`); continue; }
   const results = (await json(`${HOST}/${season}/export?TYPE=weeklyResults&L=${LEAGUE}&W=${week}&JSON=1`))?.weeklyResults;
   if (!results || !list(results.matchup).length) { log(`Week ${week}: MFL has no results yet; skipped.`); continue; }

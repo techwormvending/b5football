@@ -234,6 +234,30 @@ describe("finalizer", () => {
     assert.equal(shown.snapshot!.source, "final");
   });
 
+  test("the full NFL schedule catches a game nobody polled live (Monday night): the week stays live", async () => {
+    const store = tmpStore();
+    const now = T("2026-10-20T03:00:00Z");   // MNF in progress, no live poller ran
+    const f = createFinalizer({ final: fakeFinal(() => [game("nflverse")]), crosswalk: cw, store, now: () => now,
+      schedule: async () => [{ gameKey: "DET@ARI", kickoff: "2026-10-18T17:00:00Z" }, { gameKey: "WAS@SF", kickoff: kick.mnf }] });
+    const r = await f.finalizeWeek(2026, 5);
+    assert.deepEqual([r.status, r.missingGames], ["live", ["WAS@SF"]]);
+    assert.equal((await store.getWeek(2026, 5))!.autoFinalizeAt, "2026-10-21T03:00:00.000Z", "deadline from the real last kickoff");
+    await assert.rejects(f.confirmWeek(2026, 5, "commish"), /missing games in nflverse: WAS@SF/);
+    // A schedule outage falls back to live games; it never throws
+    const g = createFinalizer({ final: fakeFinal(() => [game("nflverse")]), crosswalk: cw, store: tmpStore(), now: () => now, schedule: async () => { throw new Error("HTTP 503"); } });
+    assert.equal((await g.finalizeWeek(2026, 5)).status, "pending_review");
+  });
+
+  test("a partly final week shows final numbers plus live numbers for the unfinished game", async () => {
+    const store = tmpStore();
+    await withLive(store, [game("espn", { kickoff: "2026-10-18T17:00:00Z" }), game("espn", { home: "ATL", away: "BAL", kickoff: kick.mnf })]);
+    const f = createFinalizer({ final: fakeFinal(() => [game("nflverse", { recYds: 95 })]), crosswalk: cw, store, now: () => T("2026-10-20T03:00:00Z") });
+    await f.finalizeWeek(2026, 5);
+    const shown = await weekScores(store, 2026, 5, cw);
+    assert.equal(shown.status, "live");
+    assert.deepEqual(shown.snapshot!.games.map(g => g.gameKey).sort(), ["BAL@ATL", "DET@ARI"].sort());
+  });
+
   test("a game missing from nflverse blocks auto-finalize and confirmation; later runs log corrections", async () => {
     const store = tmpStore();
     await withLive(store, [game("espn", { kickoff: "2026-10-18T17:00:00Z" }), game("espn", { home: "ATL", away: "BAL", kickoff: kick.mnf })]);
@@ -244,10 +268,11 @@ describe("finalizer", () => {
     assert.deepEqual(r.missingGames, ["BAL@ATL"]);
     await assert.rejects(f.confirmWeek(2026, 5, "commish"), /missing games in nflverse: BAL@ATL/);
 
-    // Past the deadline but still missing a game: stays pending
+    assert.equal(r.status, "live", "a week with a game still missing stays live");
+    // Past the deadline but still missing a game: not finalized
     now = T("2026-10-21T08:00:00Z");
     r = await f.finalizeWeek(2026, 5);
-    assert.equal(r.status, "pending_review");
+    assert.equal(r.status, "live");
 
     // MNF arrives, plus an NFL stat correction to the first game
     finals = [game("nflverse", { recYds: 95 }), game("nflverse", { home: "ATL", away: "BAL" })];

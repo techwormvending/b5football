@@ -14,6 +14,20 @@ import { espnLiveSource } from "../src/ingest/espn.ts";
 import { loadCrosswalk } from "../src/ingest/crosswalk.ts";
 import { jsonFileStore } from "../src/league/store.ts";
 import { createFinalizer, type FinalizeConfig } from "../src/league/finalizer.ts";
+import { parseCsv } from "../src/ingest/csv.ts";
+import { gamesFromRows } from "../src/league/nflSync.ts";
+
+// Full NFL schedule (nflverse games.csv): a week isn't complete until every scheduled game is in nflverse.
+const GAMES_URL = "https://github.com/nflverse/nfldata/raw/master/data/games.csv";
+let gamesCsv: Record<string, string>[] | null = null;
+async function schedule(season: number, week: number) {
+  if (!gamesCsv) {
+    const res = await fetch(GAMES_URL);
+    if (!res.ok) throw new Error(`games.csv: HTTP ${res.status}`);
+    gamesCsv = parseCsv(await res.text());
+  }
+  return gamesFromRows(gamesCsv, season).filter(g => g.week === week).map(g => ({ gameKey: g.game_key, kickoff: g.kickoff }));
+}
 
 const DATA = path.resolve(process.env.B5_DATA || "data/league");
 const CACHE = path.resolve(process.env.B5_CACHE || ".cache");
@@ -36,6 +50,7 @@ const finalizer = createFinalizer({
   final: nflverseProvider({ cacheDir: path.join(CACHE, "nflverse"), maxAgeHours: 1 }),
   crosswalk: await loadCrosswalk({ cacheDir: path.join(CACHE, "nflverse") }),
   store: jsonFileStore(DATA),
+  schedule,
   log
 }, { autoFinalize });
 

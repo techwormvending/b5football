@@ -78,7 +78,7 @@
     const round = roundName(week);
     return `<a class="card game" href="#matchup/${esc(week)}/${esc(aId)}-${esc(hId)}">
       ${side(a, aPts, hPts)}${side(h, hPts, aPts)}
-      <div class="g-meta muted">${done ? "Final" : "Upcoming"}${round ? ` · ${esc(round)}` : divGame ? ` · ${esc(divName(a.division))} division game` : ""}</div>
+      <div class="g-meta muted">${done ? (sched.liveWeeks && sched.liveWeeks.has(week) ? "Live" : "Final") : "Upcoming"}${round ? ` · ${esc(round)}` : divGame ? ` · ${esc(divName(a.division))} division game` : ""}</div>
     </a>`;
   }
 
@@ -381,8 +381,10 @@
     const get = (p) => A.api(cfg, null, p, {}, (u, i) => window.fetch(u, i));
     Promise.all([
       get(`matchups?season=eq.${Number(L.season)}&select=week,home_team,away_team,home_score,away_score&order=week`),
-      get(`standings?season=eq.${Number(L.season)}&select=team_id,wins,losses,ties,points_for,points_against,rank&order=rank`)
-    ]).then(([m, s]) => {
+      get(`standings?season=eq.${Number(L.season)}&select=team_id,wins,losses,ties,points_for,points_against,rank&order=rank`),
+      get(`score_weeks?season=eq.${Number(L.season)}&status=eq.live&select=week`)
+    ]).then(([m, s, lw]) => {
+      if (lw.ok && lw.data) sched.liveWeeks = new Set(lw.data.map(x => x.week));
       let changed = false;
       if (m.ok && m.data && m.data.length) {
         const byWeek = {};
