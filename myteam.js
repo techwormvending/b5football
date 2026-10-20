@@ -74,12 +74,36 @@
     return null;
   }
 
+  /** Rows of roster_entries + nfl_players -> { team_id: [{id, name, pos, nfl, acquired}] }, grouped by position. */
+  function rostersFromRows(rows) {
+    var out = {};
+    (rows || []).forEach(function (x) {
+      var p = x.nfl_players || {};
+      (out[x.team_id] = out[x.team_id] || []).push({ id: x.player_id, name: p.name || x.player_id, pos: p.position, nfl: p.nfl_team, acquired: x.acquired || "" });
+    });
+    Object.keys(out).forEach(function (k) { out[k].sort(byPos); });
+    return out;
+  }
+
   // ---- Page --------------------------------------------------------------------
   var L = root.LEAGUE || {}, cfg = root.B5_SUPABASE, A = root.B5Auth;
   var storage = null;
   try { storage = root.localStorage; } catch (e) { storage = null; }
   var f = function (u, i) { return root.fetch(u, i); };   // looked up per call (tests can stub it)
-  var st = { me: null, teamId: null, lu: null, msg: null, managers: {} };
+  var st = { me: null, teamId: null, lu: null, msg: null, managers: {}, dbRosters: null };
+
+  // Rosters from the database (public data; works signed out). Resolves null if unavailable.
+  var rostersP = null;
+  function loadRosters() {
+    if (!(cfg && cfg.configured && A)) return Promise.resolve(null);
+    if (!rostersP) {
+      rostersP = A.api(cfg, null, "roster_entries?season=eq." + Number(L.season) +
+        "&select=team_id,player_id,acquired,nfl_players(name,position,nfl_team)&limit=1000", {}, f)
+        .then(function (r) { return r.ok && r.data && r.data.length ? rostersFromRows(r.data) : null; }, function () { return null; });
+      rostersP.then(function (x) { if (!x) rostersP = null; });   // retry next time
+    }
+    return rostersP;
+  }
 
   var teamById = function (id) { for (var i = 0; i < (L.teams || []).length; i++) if (L.teams[i].id === id) return L.teams[i]; return null; };
   var divName = function (id) { var d = (L.divisions || []).filter(function (x) { return x.id === id; })[0]; return d ? d.name : ""; };
@@ -239,7 +263,9 @@
     var rosterNote = L.rosters && L.rosters.asOf ? "As of " + fmtDate(L.rosters.asOf) + (L.rosters.week ? " (week " + L.rosters.week + ")" : "") + "." : "";
     rootEl.innerHTML = '<section class="mt">' + msgHtml(notice || st.msg) + headerHtml(t) +
       '<div class="mt-cols"><div>' + (open ? editorHtml() : closedHtml()) + "</div><div>" +
-      (open ? rosterHtml(st.lu && st.lu.roster || [], "") : rosterHtml(leagueRoster(L, t.id), rosterNote)) + "</div></div></section>";
+      (open ? rosterHtml(st.lu && st.lu.roster || [], "")
+        : st.dbRosters ? rosterHtml(st.dbRosters[t.id] || [], "Current roster (synced nightly).")
+        : rosterHtml(leagueRoster(L, t.id), rosterNote)) + "</div></div></section>";
     st.msg = null;
   }
 
@@ -258,7 +284,8 @@
       var ids = myTeams();
       if (ids.indexOf(st.teamId) < 0) st.teamId = me && me.teams.length ? me.teams[0].team_id : ids[0] || null;
       return (me && root.B5Account.managerNames ? root.B5Account.managerNames() : Promise.resolve({}))
-        .then(function (m) { st.managers = m; return show(rootEl); });
+        .then(function (m) { st.managers = m; return loadRosters(); })
+        .then(function (r) { st.dbRosters = r; return show(rootEl); });
     }, function () { rootEl.innerHTML = '<section><h2>My Team</h2><p class="acct-msg err">Couldn\'t load your account.</p></section>'; });
 
     if (bound === rootEl) return;
@@ -292,5 +319,5 @@
     });
   }
 
-  root.B5MyTeam = { start: start, lineupsOpen: lineupsOpen, recordFor: recordFor, leagueRoster: leagueRoster, pickWeek: pickWeek, draftFrom: draftFrom, kickoffFor: kickoffFor };
+  root.B5MyTeam = { start: start, loadRosters: loadRosters, rostersFromRows: rostersFromRows, lineupsOpen: lineupsOpen, recordFor: recordFor, leagueRoster: leagueRoster, pickWeek: pickWeek, draftFrom: draftFrom, kickoffFor: kickoffFor };
 })(typeof globalThis !== "undefined" ? globalThis : this);

@@ -200,7 +200,7 @@
               ${t.titles ? `<div class="rings" title="${t.titles} title(s)">${"🏆".repeat(t.titles)}</div>` : ""}
             </div>
           </div>
-          ${rosterHtml(t.id)}
+          <div data-roster="${esc(t.id)}">${rosterHtml(t.id)}</div>
         </div>`;
       };
       const divs = (L.divisions && L.divisions.length) ? L.divisions : [{ id: null, name: "The " + L.teams.length }];
@@ -209,7 +209,7 @@
           .sort((a, b) => standOrder(a.id) - standOrder(b.id));
         return `<section><h2>${esc(d.id === null ? d.name : d.name + " Division")}</h2>
           <div class="grid teams-grid">${ts.map(card).join("")}</div></section>`;
-      }).join("") + (L.rosters ? `<p class="muted small">Rosters as of ${fmtDate(L.rosters.asOf)} (week ${esc(L.rosters.week)})</p>` : "");
+      }).join("") + (L.rosters ? `<p class="muted small rosters-asof">Rosters as of ${fmtDate(L.rosters.asOf)} (week ${esc(L.rosters.week)})</p>` : "");
     },
 
     history() {
@@ -291,6 +291,21 @@
     if (page === "schedule") centerWeek();
     nav.classList.remove("open");
     if (page === "home") startClock();
+    if (page === "teams" && window.B5MyTeam) {
+      // Current rosters from the database replace the static snapshot.
+      window.B5MyTeam.loadRosters().then(db => {
+        if (!db) return;
+        const acq = (d) => /^Waiv/.test(d) ? "Waivers" : d ? "Pick " + d : "";
+        view.querySelectorAll("[data-roster]").forEach(el => {
+          const ps = db[el.dataset.roster] || [];
+          el.innerHTML = `<details class="roster"><summary>Roster (${ps.length})</summary><ul>${ps.map(p => `
+            <li><span class="pos pos-${esc(p.pos)}">${esc(p.pos)}</span><span class="pname">${esc(p.name)}</span>
+              <span class="muted nfl" title="${esc(acq(p.acquired))}">${esc(p.nfl || "FA")}</span></li>`).join("")}</ul></details>`;
+        });
+        const note = view.querySelector(".rosters-asof");
+        if (note) note.textContent = "Rosters are current (synced nightly).";
+      });
+    }
     if (page === "teams" && window.B5Account && window.B5Account.managerNames) {
       window.B5Account.load().then(() => window.B5Account.managerNames()).then(m => {
         view.querySelectorAll("[data-mgr]").forEach(el => { if (m[el.dataset.mgr]) el.textContent = m[el.dataset.mgr]; });

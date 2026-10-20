@@ -13,9 +13,9 @@ Work in phases. Each phase is tested, pushed and (if it has migrations) deployed
 
 ### Phase 1: players and rosters in Supabase
 - [x] `nfl_players` from nflverse, nightly (1,100 incl. 32 DEF; `scripts/sync-nfl.mts`)
-- [ ] ESPN ID crosswalk stored with players; unmatched players flagged in `review_queue`
-- [ ] One-time import of the 2026 rosters (all 12 teams) from MFL into `roster_entries`, MFL IDs mapped to nflverse IDs (no name guessing; unmatched flagged)
-- [ ] My Team and Teams pages read rosters from the database
+- [x] ESPN ID crosswalk stored with players (`nfl_players.espn_id`); rostered players without one flagged in `review_queue` (provider `nflverse`)
+- [x] 2026 rosters (all 12 teams) mirrored from MFL into `roster_entries` **nightly** during the shadow season (`scripts/sync-mfl-rosters.mts`, `src/league/mflRosters.ts`): MFL ID -> GSIS via dynastyprocess `db_playerids.csv`, defenses by MFL team code; unmatched -> `review_queue` (provider `mfl`), never name-matched; refuses to sync unless 12 teams and 180+ mapped players
+- [x] My Team and Teams pages read rosters from the database (anon-readable; the `league-data.js` snapshot is only a fallback)
 
 ### Phase 2: scoring engine and shadow mode
 - [x] Scoring engine verified player by player vs MFL (10,030/10,030)
@@ -197,6 +197,7 @@ The commissioner (an IT director, deploying to a new domain they're registering)
 - Local preview: `node scripts/serve.js` (static files only, http://localhost:8737, which is an allowed Supabase redirect URL). `.claude/launch.json` uses it.
 - **Temporary MFL dependencies, 2026 only. Remove them before 2027:**
   - `scripts/refresh-mfl.js` copies standings, rosters and the schedule from MFL into the `@mfl-begin` / `@mfl-end` blocks of `league-data.js`. Don't hand-edit inside those blocks.
+  - `scripts/sync-mfl-rosters.mts` + `src/league/mflRosters.ts` (nightly roster mirror, 2026 only).
   - `scripts/bakeoff.mts` scores a provider's weeks and compares every player and defense to MFL's official scores (answer-key files documented in its header). Delete it after the bake-off and migration.
   - Roster entries are `[name, pos, nflTeam, acquired, mflPlayerId]`, and franchise IDs (`0001`–`0012`) are MFL's. Keep them for the import, then map players to the new stats provider's IDs.
   - Team logos are still hotlinked from MFL and third-party sites. Self-host them as part of the migration.

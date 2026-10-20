@@ -81,6 +81,20 @@ jobs:
           fi
           node scripts/sync-nfl.mts
 
+      # TEMPORARY (2026 shadow season): mirror MFL's rosters into roster_entries and flag
+      # unmatched players for review. Delete with the other MFL code after the migration.
+      - name: Sync 2026 rosters from MFL to Supabase
+        if: always()
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "::warning::SUPABASE_URL variable or SUPABASE_SERVICE_ROLE_KEY secret not set; skipping roster sync."
+            exit 0
+          fi
+          node scripts/sync-mfl-rosters.mts 2026
+
       # Free-tier Supabase projects pause after ~7 days without activity. The PRIMARY
       # keep-alive is the Cloudflare Worker cron (workers/keepalive, heartbeat
       # "cloudflare-cron"), which GitHub's 60-day schedule shutoff can't stop. This

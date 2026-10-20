@@ -70,3 +70,14 @@ test("kickoff for a player's team in the week, or null on a bye", () => {
   assert.equal(M.kickoffFor(wk, "CIN"), Date.parse("2026-10-18T17:00:00Z"));
   assert.equal(M.kickoffFor(wk, "DAL"), null);
 });
+
+test("database rosters group by team and position (QB RB WR TE K DEF)", () => {
+  const R = (ctx.B5MyTeam as { rostersFromRows(rows: unknown[]): Record<string, { id: string; pos: string; nfl: string }[]> }).rostersFromRows([
+    { team_id: "0011", player_id: "DEF:PIT", acquired: "Waiv", nfl_players: { name: "PIT Defense", position: "DEF", nfl_team: "PIT" } },
+    { team_id: "0011", player_id: "00-1", acquired: "1.07", nfl_players: { name: "Jonathan Taylor", position: "RB", nfl_team: "IND" } },
+    { team_id: "0011", player_id: "00-2", acquired: null, nfl_players: { name: "Joe Burrow", position: "QB", nfl_team: "CIN" } },
+    { team_id: "0003", player_id: "00-3", acquired: "2.01", nfl_players: null }
+  ]);
+  assert.deepEqual(plain(R["0011"]!.map(p => p.id)), ["00-2", "00-1", "DEF:PIT"]);
+  assert.equal(R["0003"]![0]!.id, "00-3", "a player missing from nfl_players still shows (by ID)");
+});
