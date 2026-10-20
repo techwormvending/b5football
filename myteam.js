@@ -152,6 +152,8 @@
         "<div><b>" + esc(Number(r.pf).toFixed(1)) + "</b><span>PF</span></div>" +
         "<div><b>" + esc(Number(r.pa).toFixed(1)) + "</b><span>PA</span></div></div>" : "") +
       (L.standings && L.standings.asOf ? '<div class="muted small mt-asof">' + "Standings as of " + esc(fmtDate(L.standings.asOf)) + "</div>" : "") +
+      (st.won && st.won[t.id] && (st.won[t.id].final + st.won[t.id].projected) && root.B5Payouts ? '<div class="small mt-asof"><a href="#payouts">Season winnings</a>: <b>' + esc(root.B5Payouts.money(st.won[t.id].final)) + "</b>" +
+        (st.won[t.id].projected ? " (+" + esc(root.B5Payouts.money(st.won[t.id].projected)) + " projected)" : "") + "</div>" : "") +
       "</div>";
   }
 
@@ -373,7 +375,8 @@
       if (ids.indexOf(st.teamId) < 0) st.teamId = me && me.teams.length ? me.teams[0].team_id : ids[0] || null;
       return (me && root.B5Account.managerNames ? root.B5Account.managerNames() : Promise.resolve({}))
         .then(function (m) { st.managers = m; return loadRosters(); })
-        .then(function (r) { st.dbRosters = r; return show(rootEl); });
+        .then(function (r) { st.dbRosters = r; return root.B5Payouts ? root.B5Payouts.teamWinnings() : {}; })
+        .then(function (w) { st.won = w; return show(rootEl); });
     }, function () { rootEl.innerHTML = '<section><h2>My Team</h2><p class="acct-msg err">Couldn\'t load your account.</p></section>'; });
 
     if (bound === rootEl) return;

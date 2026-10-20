@@ -155,6 +155,27 @@ a.game:hover { border-color: var(--gold); }
 .mt-stats b { font: 700 22px var(--head); color: var(--gold); }
 .mt-stats span { font: 500 11px var(--head); letter-spacing: .12em; text-transform: uppercase; color: var(--chalk-dim); }
 .mt-viewing { margin: 0; }
+/* Payouts (payouts.js) */
+.po-cols { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+.po .card { margin-bottom: 16px; }
+.po-pot-line { font-size: 15px; margin-bottom: 12px; }
+.po-table td, .po-table th { padding: 8px 10px; vertical-align: top; }
+.po-table .num { text-align: right; white-space: nowrap; }
+.tag.po-proj { background: rgba(255,255,255,.12); color: var(--chalk-dim); }
+.po-owe { color: #ffb3a6; }
+.po-list { list-style: none; padding: 0; margin: 8px 0 0; }
+.po-list li { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--card-line); font-size: 14px; }
+.po-list li:last-child { border-bottom: 0; }
+.po-list li > b { flex: none; min-width: 52px; font: 600 13px var(--head); color: var(--gold); }
+.po-list li > span:nth-of-type(1) { flex: 1; min-width: 0; }
+.po-rank { margin: 8px 0 0; padding-left: 22px; font-size: 14px; }
+.po-rank li { padding: 4px 0; }
+.po-rank li span { display: inline-block; min-width: 60%; }
+.po-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.po-inline input[type=number] { width: 90px; }
+.po-inline input, .acct-form input[type=number], .acct-form input[type=date] { font: 15px var(--body); color: var(--chalk); background: var(--ink-deep); border: 1px solid var(--card-line); border-radius: 6px; padding: 7px 8px; }
+.po-won { margin-top: 6px; }
+@media (max-width: 960px) { .po-cols { grid-template-columns: 1fr; } }
 .tag.cm-bad { background: rgba(210, 69, 47, .3); color: #ffb3a6; }
 .mt-pick { flex-basis: 100%; display: grid; gap: 4px; max-width: 320px; font: 500 13px var(--head); letter-spacing: .1em; text-transform: uppercase; color: var(--chalk-dim); }
 .mt-cols { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 24px; align-items: start; }

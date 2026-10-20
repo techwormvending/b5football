@@ -111,6 +111,17 @@ jobs:
           node scripts/shadow.mts 2026 | tee shadow.txt
           { echo '### Shadow scoring vs MFL'; echo '```'; grep -E '^(Week|Summary|  [0-9]{4}:|    )' shadow.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
+      # Payouts: auto awards, guillotine and flags from this site's scores (rules: src/league/payouts.ts).
+      - name: Recompute payouts
+        if: ${{ always() && steps.finalize.outcome == 'success' }}
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then echo "::warning::Supabase not configured; skipping payouts."; exit 0; fi
+          node scripts/payouts.mts 2026 | tee payouts.txt
+          { echo '### Payouts'; echo '```'; cat payouts.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
       # Free-tier Supabase projects pause after ~7 days without activity. The PRIMARY
       # keep-alive is the Cloudflare Worker cron (workers/keepalive, heartbeat
       # "cloudflare-cron"), which GitHub's 60-day schedule shutoff can't stop. This

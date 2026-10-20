@@ -185,7 +185,7 @@
         ' <button class="linkish" type="button" data-cm="unassign" data-team="' + esc(x.team_id) + '" data-user="' + esc(x.user_id) + '">remove from team</button></li>';
     }).join("") + "</ul>" : '<p class="muted">No managers have joined yet.</p>';
 
-    root.innerHTML = "<section><h2>Commissioner</h2>" + m + keep + shadow +
+    root.innerHTML = "<section><h2>Commissioner</h2>" + m + '<div class="card"><h3>Payouts</h3><p>Fees, payouts, manual awards, overrides and CSV export: <a href="#commish-payouts">open the payout tools</a>.</p></div>' + keep + shadow +
       '<div class="card"><h3>Invite a manager</h3>' + seedTeams +
       '<form class="acct-form" data-cm="invite">' +
       '<label>Email<input name="email" type="email" autocomplete="off" required></label>' +

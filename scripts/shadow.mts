@@ -120,6 +120,9 @@ for (const week of weeks) {
   await upsert(cfg, "matchups", c.matchups.map(m => ({ season, week, home_team: m.home, away_team: m.away,
     home_score: score.get(m.home) ?? null, away_score: score.get(m.away) ?? null, is_playoff: week > REGULAR_WEEKS })), "season,week,home_team");
 
+  // Every team's weekly total, for payouts (weekly high, guillotine, season points).
+  await upsert(cfg, "team_scores", c.teams.map(t => ({ season, week, team_id: t.teamId, points: t.ourScore, status: ws.status, updated_at: now })), "season,week,team_id");
+
   const compared = c.teams.filter(t => t.mflScore != null);
   if (compared.length) await upsert(cfg, "shadow_results", compared.map(t => ({ season, week, team_id: t.teamId, mfl_score: t.mflScore, our_score: t.ourScore, matched: t.matched,
     details: { diffs: t.diffs, unmapped: t.unmapped }, checked_at: now })), "season,week,team_id");

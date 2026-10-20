@@ -77,7 +77,8 @@ describe("every table is protected", () => {
 });
 
 test("no default grants leak: anon only ever has SELECT, and only on public-data tables", async () => {
-  const PUBLIC = new Set(["teams", "nfl_players", "nfl_games", "roster_entries", "score_weeks", "player_scores", "matchups", "standings", "announcements"]);
+  const PUBLIC = new Set(["teams", "nfl_players", "nfl_games", "roster_entries", "score_weeks", "player_scores", "matchups", "standings", "announcements",
+    "season_settings", "team_scores", "awards", "guillotine"]);
   const g = (await db.query<{ table_name: string; privilege_type: string }>(`
     select table_name, privilege_type from information_schema.role_table_grants
     where table_schema = 'public' and grantee = 'anon'`)).rows;
@@ -486,6 +487,68 @@ describe("live scoring tick (pg_cron every minute -> Edge Function)", () => {
       await denied(db, who, `select private.live_tick()`, /permission denied/);
     }
     assert.equal((await rows(db, service, `select * from public.live_nonces`)).length, 1);
+  });
+});
+
+describe("payouts (ledger only)", () => {
+  beforeEach(async () => {
+    await db.exec(`
+      insert into public.season_settings (season, team_count, buy_in, prizes) values (${S}, 12, 360, '{}');
+      insert into public.team_fees (season, team_id, amount_due, paid) values (${S}, '0001', 360, true), (${S}, '0002', 360, false);
+      insert into public.payout_payments (season, team_id, amount, paid_at) values (${S}, '0001', 35, '2026-10-01'), (${S}, '0002', 70, '2026-10-02');
+      insert into public.awards (season, kind, week, label, team_id, amount, status, source) values (${S}, 'weekly_high', 1, 'Week 1 high score', '0001', 35, 'final', 'auto');
+      insert into public.payout_flags (season, flags) values (${S}, '[{"kind":"tie"}]');`);
+  });
+
+  test("anyone reads settings, awards, eliminations and team scores; nobody but the commissioner writes them", async () => {
+    for (const t of ["season_settings", "awards", "guillotine", "team_scores"]) await rows(db, anon, `select * from public.${t}`);
+    assert.equal((await rows(db, anon, `select * from public.awards`)).length, 1);
+    await denied(db, anon, `insert into public.awards (season, kind, label, team_id, amount, status, source) values (${S}, 'manual', 'x', '0001', 1, 'final', 'manual')`, /permission denied/);
+    await denied(db, user(ALICE), `insert into public.awards (season, kind, label, team_id, amount, status, source) values (${S}, 'manual', 'x', '0001', 1, 'final', 'manual')`);
+    assert.equal(await affected(db, user(ALICE), `update public.awards set amount = 1000`), 0);
+  });
+
+  test("the money ledger: a manager sees only his own team's rows; anon sees nothing; flags are commissioner-only", async () => {
+    await denied(db, anon, `select * from public.team_fees`, /permission denied/);
+    await denied(db, anon, `select * from public.payout_payments`, /permission denied/);
+    await denied(db, anon, `select * from public.payout_flags`, /permission denied/);
+    assert.deepEqual((await rows(db, user(ALICE), `select team_id, paid from public.team_fees`)), [{ team_id: "0001", paid: true }]);
+    assert.deepEqual((await rows(db, user(ALICE), `select team_id from public.payout_payments`)), [{ team_id: "0001" }]);
+    assert.deepEqual(await rows(db, user(ALICE), `select * from public.payout_flags`), []);
+    assert.equal(await affected(db, user(ALICE), `update public.team_fees set paid = true`), 0, "can't mark himself paid");
+    assert.equal((await rows(db, user(COMMISH), `select * from public.team_fees`)).length, 2);
+  });
+
+  test("league totals: members get sums only; anon can't call it", async () => {
+    const [r] = await rows(db, user(ALICE), `select public.payout_league_totals(${S}) as t`);
+    assert.deepEqual((r as { t: unknown }).t, { fees_due: 720, fees_paid: 360, teams_paid: 1, teams_unpaid: 1, paid_out: 105 });
+    await denied(db, anon, `select public.payout_league_totals(${S})`, /permission denied/);
+  });
+
+  test("commissioner changes are audited; an override needs a reason", async () => {
+    await as(db, user(COMMISH), tx => tx.query(`update public.team_fees set paid = true, paid_at = '2026-10-20' where team_id = '0002'`));
+    await as(db, user(COMMISH), tx => tx.query(`insert into public.payout_payments (season, team_id, amount, paid_at) values (${S}, '0002', 35, '2026-10-20')`));
+    await denied(db, user(COMMISH), `insert into public.awards (season, kind, week, label, team_id, amount, status, source) values (${S}, 'weekly_high', 2, 'Week 2 high score', '0002', 35, 'final', 'override')`, /check constraint/);
+    await as(db, user(COMMISH), tx => tx.query(`insert into public.awards (season, kind, week, label, team_id, amount, status, source, note) values (${S}, 'weekly_high', 2, 'Week 2 high score', '0002', 35, 'final', 'override', 'stat correction after lock')`));
+    const a = (await db.query<{ action: string }>(`select action from public.audit_log where action like 'payouts:%' order by id`)).rows.map(r => r.action);
+    assert.deepEqual(a, ["payouts:team_fees:update", "payouts:payout_payments:insert", "payouts:awards:insert"]);
+  });
+
+  test("the job replaces auto awards and eliminations atomically, never touching manual awards or overrides; only server jobs may call it", async () => {
+    await db.exec(`
+      insert into public.awards (season, kind, label, team_id, amount, status, source) values (${S}, 'manual', 'Survivor', '0002', 240, 'final', 'manual');
+      insert into public.guillotine (season, week, team_id, status, source, note) values (${S}, 3, '0002', 'final', 'override', 'tie broken by bench points');`);
+    const call = `select public.replace_auto_payouts(${S},
+      '[{"kind":"weekly_high","week":1,"label":"Week 1 high score","team_id":"0002","amount":35,"status":"projected"}]',
+      '[{"week":2,"team_id":"0001","points":50,"status":"final"},{"week":3,"team_id":"0001","points":40,"status":"final"}]',
+      '[{"kind":"seed_mismatch"}]')`;
+    await denied(db, user(COMMISH), call, /permission denied/);
+    await as(db, service, tx => tx.query(call));
+    const aw = (await db.query<{ kind: string; team_id: string; source: string }>(`select kind, team_id, source from public.awards order by id`)).rows;
+    assert.deepEqual(aw.map(x => [x.kind, x.team_id, x.source]), [["manual", "0002", "manual"], ["weekly_high", "0002", "auto"]]);
+    const g = (await db.query<{ week: number; team_id: string; source: string }>(`select week, team_id, source from public.guillotine order by week`)).rows;
+    assert.deepEqual(g.map(x => [x.week, x.team_id, x.source]), [[2, "0001", "auto"], [3, "0002", "override"]], "an overridden week keeps the commissioner's pick");
+    assert.equal((await db.query<{ n: number }>(`select count(*)::int as n from public.audit_log where action like 'payouts:%'`)).rows[0]!.n, 0, "server jobs aren't logged as commissioner actions");
   });
 });
 

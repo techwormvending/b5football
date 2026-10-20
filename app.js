@@ -258,6 +258,10 @@
     // Rendered by myteam.js (team, roster, lineups)
     myteam() { return `<div id="mtRoot"></div>`; },
 
+    // Rendered by payouts.js
+    payouts() { return `<div id="poRoot"></div>`; },
+    "commish-payouts"() { return `<div id="poRoot"></div>`; },
+
     // Rendered by account.js (sign-in, commissioner screen)
     account() { return `<div id="acctRoot"></div>`; },
     commish() { return `<div id="acctRoot"></div>`; }
@@ -322,11 +326,21 @@
     clearInterval(timer);
     view.innerHTML = mu ? matchupPage(Number(mu[1]), mu[2], mu[3]) : pages[page]();
     document.querySelectorAll(".nav a[href^='#']").forEach(a =>
-      a.classList.toggle("active", a.getAttribute("href") === "#" + (mu ? "schedule" : page)));
+      a.classList.toggle("active", a.getAttribute("href") === "#" + (mu ? "schedule" : page === "commish-payouts" ? "commish" : page)));
     if (page === "schedule") centerWeek();
     nav.classList.remove("open");
     if (page === "home") startClock();
     if (mu) loadMatchup(Number(mu[1]), mu[2], mu[3]);
+    if (page === "teams" && window.B5Payouts) {
+      window.B5Payouts.teamWinnings().then(w => {
+        view.querySelectorAll("[data-roster]").forEach(el => {
+          const x = w[el.dataset.roster]; if (!x || !(x.final + x.projected)) return;
+          const p = document.createElement("div"); p.className = "muted small po-won";
+          p.textContent = `Won ${window.B5Payouts.money(x.final)}${x.projected ? ` (+${window.B5Payouts.money(x.projected)} projected)` : ""}`;
+          el.parentNode.insertBefore(p, el);
+        });
+      });
+    }
     if (page === "teams" && window.B5MyTeam) {
       // Current rosters from the database replace the static snapshot.
       window.B5MyTeam.loadRosters().then(db => {
@@ -347,6 +361,7 @@
         view.querySelectorAll("[data-mgr]").forEach(el => { if (m[el.dataset.mgr]) el.textContent = m[el.dataset.mgr]; });
       }, () => {});
     }
+    if ((page === "payouts" || page === "commish-payouts") && window.B5Payouts) window.B5Payouts.start(page === "payouts" ? "public" : "admin", document.getElementById("poRoot"));
     if (page === "myteam" && window.B5MyTeam) window.B5MyTeam.start(document.getElementById("mtRoot"));
     if ((page === "account" || page === "commish") && window.B5Account) window.B5Account.start(page, document.getElementById("acctRoot"));
     window.scrollTo(0, 0);

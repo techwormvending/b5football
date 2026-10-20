@@ -24,6 +24,7 @@ import { crosswalkFromRows, toCanonical, type UnmatchedPlayer } from "../ingest/
 import { scoreWeek } from "../league/scores.ts";
 import { sbBase, sbHeaders, type SbConfig } from "../league/supabaseRest.ts";
 import type { GameData } from "../ingest/types.ts";
+import { refreshPayouts } from "../league/payoutsSync.ts";
 
 const SITE = "https://site.api.espn.com/apis/site/v2/sports/football/nfl";
 const CORE = "https://sports.core.api.espn.com/v2/sports/football/leagues/nfl";
@@ -221,6 +222,11 @@ export async function runLive(deps: LiveDeps): Promise<LiveResult> {
     await upsert("matchups", "season,week,home_team", ms.map(m => ({ season, week, home_team: m.home_team, away_team: m.away_team, is_playoff: m.is_playoff,
       home_score: totals.get(m.home_team) ?? 0, away_score: totals.get(m.away_team) ?? 0 })));
     res.matchups = ms.length;
+    // Every team's live total (payouts: weekly high, guillotine, season points), then projected payouts.
+    const teamIds = new Set([...totals.keys(), ...ms.flatMap(m => [m.home_team, m.away_team])]);
+    await upsert("team_scores", "season,week,team_id", [...teamIds].map(t => ({ season, week, team_id: t, points: totals.get(t) ?? 0, status: "live", updated_at: at })));
+    try { await refreshPayouts(deps.sb, season, (u, i) => deps.fetch(u, i)); }
+    catch (err) { res.errors.push(`payouts: ${(err as Error).message}`); }   // scores are written; payouts catch up next pass
 
     // Finished games whose numbers were just written won't be polled again.
     const captured = raw.filter(r => r.event.competitions?.[0]?.status?.type?.state === "post").map(r => ({ event_id: r.event.id, season, week, captured_at: at }));
