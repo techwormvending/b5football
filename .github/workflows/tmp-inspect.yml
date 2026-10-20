@@ -1,0 +1,20 @@
+name: tmp inspect (delete me)
+on: workflow_dispatch
+permissions: { contents: read }
+jobs:
+  q:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - run: |
+          q() { npx supabase db query --project-ref "$PROJECT_REF" --linked "$1"; }
+          q "select status_code, left(content::text, 400) as content, created from net._http_response order by created desc limit 3"
+          q "select week, game_key, kickoff, status from public.nfl_games where kickoff > now() - interval '30 hours' and kickoff < now() + interval '4 days' order by kickoff limit 8"
+          q "select week, status, live_delayed, updated_at from public.score_weeks where season = 2026 order by week desc limit 3"
+          q "select count(*) as nonces from public.live_nonces"
