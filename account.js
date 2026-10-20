@@ -224,8 +224,8 @@
       }).join("") + "</details></li>";
     }).join("");
     return '<div class="card"><h3>Shadow scoring vs MFL</h3>' +
-      '<p class="' + (streak >= 3 ? "acct-msg ok" : "muted") + '">' + esc(streak >= 3 ? "Matched MFL exactly for the last " + streak + " weeks: the invite bar is met."
-        : streak + " straight exact week" + (streak === 1 ? "" : "s") + " (the invite bar is 3, or every difference explained).") + "</p>" +
+      '<p class="' + (streak >= 3 ? "acct-msg ok" : "muted") + '">' + esc(streak >= 3 ? "Matched MFL exactly for the last " + streak + " weeks: the scoring part of the invite bar is met."
+        : streak + " straight exact week" + (streak === 1 ? "" : "s") + " (the invite bar needs 3, or every difference explained).") + "</p>" +
       '<ul class="checks">' + body + "</ul>" +
       '<p class="muted small">Our engine scores MFL\'s starters from nflverse stats; MFL stays official for 2026. A week appears once MFL posts its scores.</p></div>';
   }
