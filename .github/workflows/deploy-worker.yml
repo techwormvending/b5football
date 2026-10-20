@@ -84,6 +84,26 @@ jobs:
       - name: Set the Worker's Supabase key (secret, not printed)
         run: printf '%s' "$SUPABASE_SERVICE_ROLE_KEY" | npx --yes wrangler@4.145.0 secret put SUPABASE_SERVICE_ROLE_KEY
 
+      # Read back from Cloudflare what the dashboard shows: the script exists, its cron
+      # schedules, and that it has no workers.dev URL.
+      - name: Verify on Cloudflare
+        run: |
+          name=$(sed -n 's/^name *= *"\(.*\)"/\1/p' wrangler.toml)
+          api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$name"
+          auth=(-H "Authorization: Bearer $CLOUDFLARE_API_TOKEN")
+          sched=$(curl -sS "${auth[@]}" "$api/schedules")
+          sub=$(curl -sS "${auth[@]}" "$api/subdomain")
+          SCHED="$sched" SUB="$sub" NAME="$name" node -e '
+            const s = JSON.parse(process.env.SCHED), d = JSON.parse(process.env.SUB);
+            if (!s.success) { console.log("::error::" + process.env.NAME + ": schedules not readable: " + JSON.stringify(s.errors)); process.exit(1); }
+            const crons = (s.result.schedules || []).map(x => x.cron);
+            console.log(process.env.NAME + " cron schedules on Cloudflare: " + (crons.join(", ") || "NONE"));
+            console.log(process.env.NAME + " workers.dev URL: " + (d.success ? (d.result.enabled ? "ENABLED" : "disabled") : "unknown " + JSON.stringify(d.errors)));
+            if (!crons.length) { console.log("::error::No cron schedule registered"); process.exit(1); }
+            if (d.success && d.result.enabled) { console.log("::error::workers.dev URL is enabled; expected disabled"); process.exit(1); }
+            require("fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, "Cloudflare reports: crons " + crons.join(", ") + "; workers.dev URL " + (d.success ? (d.result.enabled ? "enabled" : "disabled") : "unknown") + "\n\n");
+          '
+
       - name: Summary
         run: |
           {
