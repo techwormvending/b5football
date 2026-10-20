@@ -68,6 +68,17 @@ jobs:
             exit 1
           }
 
+      # Read-only check of the schedule that calls the function (migration live_scoring_cron).
+      - name: Verify the schedule
+        run: |
+          npx supabase db query --project-ref "$PROJECT_REF" --linked \
+            "select e.extname, e.extversion from pg_extension e where e.extname in ('pg_cron','pg_net') order by 1" | tee -a sched.txt
+          npx supabase db query --project-ref "$PROJECT_REF" --linked \
+            "select jobname, schedule, command, active from cron.job order by jobname" | tee -a sched.txt
+          npx supabase db query --project-ref "$PROJECT_REF" --linked \
+            "select private.nfl_game_window() as game_window_now" | tee -a sched.txt
+          grep -q "b5-live" sched.txt || { echo "::error::cron job b5-live not found"; exit 1; }
+
       - name: Summary
         run: |
           {
