@@ -61,6 +61,21 @@ jobs:
           echo "::add-mask::$id"
           echo "CLOUDFLARE_ACCOUNT_ID=$id" >> "$GITHUB_ENV"
 
+      # Cron triggers need the ACCOUNT's workers.dev subdomain to exist (Cloudflare error 10063),
+      # even though our Workers have no public URL. Check it for the configured account.
+      - name: Check the account's workers.dev subdomain
+        run: |
+          out=$(curl -sS "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN")
+          echo "$out" | node -e '
+            let s = ""; process.stdin.on("data", d => s += d).on("end", () => {
+              let j; try { j = JSON.parse(s); } catch { console.log("::warning::Unexpected answer from Cloudflare"); return; }
+              if (j.success && j.result && j.result.subdomain) { console.log("workers.dev subdomain for this account: " + j.result.subdomain); return; }
+              const errs = (j.errors || []).map(e => e.code + " " + e.message).join("; ");
+              console.log("::error::No workers.dev subdomain on the account in CLOUDFLARE_ACCOUNT_ID (" + (errs || "none set") + "). Open Workers & Pages for THAT account (check the account switcher; the ID is in the dashboard URL) and finish the subdomain setup.");
+              process.exit(1);
+            });'
+
       # The live Worker bundles shared code from src/ (wrangler/esbuild); nothing to install.
       # Deploy first (creates the Worker on the first run), then set its secret.
       - name: Deploy
