@@ -16,6 +16,7 @@ export interface NflPlayerRow { id: string; espn_id: string | null; name: string
 export interface NflGameRow {
   season: number; week: number; game_key: string; home: string; away: string;
   kickoff: string | null; status: "scheduled" | "final";
+  home_score: number | null; away_score: number | null;   // final scores (pools)
 }
 
 const teamOrNull = (code: string | undefined): string | null => {
@@ -72,7 +73,8 @@ export function gamesFromRows(rows: Record<string, string>[], season: number): N
       && r.away_score != null && r.home_score != null;
     out.push({
       season, week: Number(r.week), game_key: `${away}@${home}`, home, away,
-      kickoff: easternToIso(r.gameday!, r.gametime!), status: done ? "final" : "scheduled"
+      kickoff: easternToIso(r.gameday!, r.gametime!), status: done ? "final" : "scheduled",
+      home_score: done ? Number(r.home_score) : null, away_score: done ? Number(r.away_score) : null
     });
   }
   return out;

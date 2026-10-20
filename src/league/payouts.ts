@@ -25,6 +25,8 @@ export interface PrizeRules {
   playoffs?: { r1: number; r1_games: number; r2: number; r2_games: number; champion: number; weeks: [number, number, number] };
   season_points?: { amounts: number[]; first_week: number; last_week: number };
   guillotine?: { amount: number; start_week: number };
+  survivor?: { amount: number };                 // from the Survivor pool (pools.ts)
+  pickem?: { amounts: number[] };                // Confidence pool season standings: 1st, 2nd, ...
   manual?: { key: string; label: string; amount: number }[];
 }
 export interface SeasonSettings {
@@ -63,6 +65,8 @@ export function prizeTotal(p: PrizeRules): number {
   if (p.playoffs) c += cents(p.playoffs.r1) * p.playoffs.r1_games + cents(p.playoffs.r2) * p.playoffs.r2_games + cents(p.playoffs.champion);
   if (p.season_points) c += p.season_points.amounts.reduce((s, a) => s + cents(a), 0);
   if (p.guillotine) c += cents(p.guillotine.amount);
+  if (p.survivor) c += cents(p.survivor.amount);
+  if (p.pickem) c += p.pickem.amounts.reduce((s, a) => s + cents(a), 0);
   for (const m of p.manual ?? []) c += cents(m.amount);
   return dollars(c);
 }
@@ -95,6 +99,8 @@ export function computePayouts(input: {
   matchups: Matchup[];                           // at least the playoff weeks' matchups
   overrides?: { kind: string; week: number | null; place: number | null; team_id: string }[];   // source "override" awards
   guillotineOverrides?: Map<number, string>;     // week -> eliminated team (commissioner's pick)
+  /** Pool results (pools.ts): Survivor winners, Confidence season totals. */
+  pools?: { survivor?: { winners: string[]; decided: boolean }; pickem?: { totals: { team_id: string; points: number }[]; complete: boolean } };
 }): { awards: AwardRow[]; eliminations: Elimination[]; flags: Flag[]; empire: Empire; alive: string[] } {
   const { settings: s, teams } = input;
   const P = s.prizes;
@@ -206,6 +212,23 @@ export function computePayouts(input: {
           add({ kind: "season_points", week: null, place: g.place, label: `Most points: ${g.tied ? "tied for " : ""}${ordinal(g.place)}`,
             team_id: sh.team_id, amount: sh.amount, status: status(...weeks), note: `${(totals.get(sh.team_id) ?? 0).toFixed(2)} points` });
         }
+      }
+    }
+  }
+
+  // Pools: Survivor winner(s) split the prize; Pick'em pays the Confidence pool's season standings (ties pooled).
+  if (P.survivor && input.pools?.survivor?.decided && input.pools.survivor.winners.length) {
+    const w = input.pools.survivor.winners;
+    for (const sh of splitEven(P.survivor.amount, w)) {
+      add({ kind: "survivor", week: null, place: null, label: `Survivor${w.length > 1 ? ` (${w.length}-way split)` : ""}`, team_id: sh.team_id, amount: sh.amount, status: "final" });
+    }
+  }
+  if (P.pickem && input.pools?.pickem && input.pools.pickem.totals.some(t => t.points > 0)) {
+    const pk = input.pools.pickem;
+    for (const g of pooledPlaces(pk.totals, P.pickem.amounts)) {
+      for (const sh of g.shares) {
+        add({ kind: "pickem", week: null, place: g.place, label: `Pick'em: ${g.tied ? "tied for " : ""}${ordinal(g.place)}`, team_id: sh.team_id, amount: sh.amount,
+          status: pk.complete ? "final" : "projected", note: `${pk.totals.find(t => t.team_id === sh.team_id)?.points ?? 0} confidence points` });
       }
     }
   }

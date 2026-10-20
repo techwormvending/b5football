@@ -260,6 +260,9 @@
 
     // Rendered by payouts.js
     payouts() { return `<div id="poRoot"></div>`; },
+    // Rendered by pools.js
+    survivor() { return `<div id="plRoot"></div>`; },
+    confidence() { return `<div id="plRoot"></div>`; },
     "commish-payouts"() { return `<div id="poRoot"></div>`; },
 
     // Rendered by account.js (sign-in, commissioner screen)
@@ -361,6 +364,7 @@
         view.querySelectorAll("[data-mgr]").forEach(el => { if (m[el.dataset.mgr]) el.textContent = m[el.dataset.mgr]; });
       }, () => {});
     }
+    if ((page === "survivor" || page === "confidence") && window.B5Pools) window.B5Pools.start(page, document.getElementById("plRoot"));
     if ((page === "payouts" || page === "commish-payouts") && window.B5Payouts) window.B5Payouts.start(page === "payouts" ? "public" : "admin", document.getElementById("poRoot"));
     if (page === "myteam" && window.B5MyTeam) window.B5MyTeam.start(document.getElementById("mtRoot"));
     if ((page === "account" || page === "commish") && window.B5Account) window.B5Account.start(page, document.getElementById("acctRoot"));

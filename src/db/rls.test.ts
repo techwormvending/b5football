@@ -78,7 +78,7 @@ describe("every table is protected", () => {
 
 test("no default grants leak: anon only ever has SELECT, and only on public-data tables", async () => {
   const PUBLIC = new Set(["teams", "nfl_players", "nfl_games", "roster_entries", "score_weeks", "player_scores", "matchups", "standings", "announcements",
-    "season_settings", "team_scores", "awards", "guillotine"]);
+    "season_settings", "team_scores", "awards", "guillotine", "survivor_status", "confidence_scores"]);
   const g = (await db.query<{ table_name: string; privilege_type: string }>(`
     select table_name, privilege_type from information_schema.role_table_grants
     where table_schema = 'public' and grantee = 'anon'`)).rows;
@@ -549,6 +549,84 @@ describe("payouts (ledger only)", () => {
     const g = (await db.query<{ week: number; team_id: string; source: string }>(`select week, team_id, source from public.guillotine order by week`)).rows;
     assert.deepEqual(g.map(x => [x.week, x.team_id, x.source]), [[2, "0001", "auto"], [3, "0002", "override"]], "an overridden week keeps the commissioner's pick");
     assert.equal((await db.query<{ n: number }>(`select count(*)::int as n from public.audit_log where action like 'payouts:%'`)).rows[0]!.n, 0, "server jobs aren't logged as commissioner actions");
+  });
+});
+
+describe("pools: survivor and confidence picks", () => {
+  // Week 6: DET@ARI later this week, KC@LV already kicked off (seed). Picking open for the test season.
+  beforeEach(async () => {
+    await db.exec(`insert into public.season_settings (season, team_count, buy_in, prizes, pools) values (${S}, 12, 360, '{}', '{"picking_open": true}');
+      insert into public.nfl_games (season, week, game_key, home, away, kickoff) values (${S}, 7, 'DET@ARI', 'ARI', 'DET', now() + interval '9 days');`);
+  });
+  const sv = (who: Who, team: string, week: number, nfl: string) => as(db, who, tx => tx.query(`insert into public.survivor_picks (season, week, team_id, nfl_team) values (${S}, ${week}, '${team}', '${nfl}') on conflict (season, week, team_id) do update set nfl_team = excluded.nfl_team`));
+  const conf = (who: Who, team: string, picks: { game_key: string; pick: string; points: number }[], week = W) =>
+    as(db, who, tx => tx.query(`select * from public.save_confidence(${S}, ${week}, '${team}', $1::jsonb)`, [JSON.stringify(picks)]));
+
+  test("survivor: pick a team whose game hasn't started; change it until kickoff; never reuse a team", async () => {
+    await sv(user(ALICE), "0001", W, "DET");
+    await sv(user(ALICE), "0001", W, "ARI");
+    await assert.rejects(sv(user(ALICE), "0001", W, "KC"), /locked: that game has kicked off/);
+    await assert.rejects(sv(user(ALICE), "0001", W, "PIT"), /doesn't play in week/);
+    await assert.rejects(sv(user(ALICE), "0001", 7, "ARI"), /duplicate key|unique/, "ARI already used this season");
+    await sv(user(ALICE), "0001", 7, "DET");
+  });
+
+  test("survivor: a pick whose game has started can't be changed or deleted", async () => {
+    await db.exec(`insert into public.survivor_picks (season, week, team_id, nfl_team) values (${S}, ${W}, '0001', 'KC')`);
+    await assert.rejects(sv(user(ALICE), "0001", W, "DET"), /locked/);
+    await denied(db, user(ALICE), `delete from public.survivor_picks where team_id = '0001'`, /locked/);
+  });
+
+  test("confidence: unique values 1..N, pick must play in the game, swaps save atomically, kicked-off games locked", async () => {
+    // Week 6 has 2 games, so points run 1..2
+    await conf(user(ALICE), "0001", [{ game_key: "DET@ARI", pick: "DET", points: 2 }]);
+    await assert.rejects(conf(user(ALICE), "0001", [{ game_key: "DET@ARI", pick: "DET", points: 3 }]), /run 1 to 2/);
+    await assert.rejects(conf(user(ALICE), "0001", [{ game_key: "DET@ARI", pick: "PIT", points: 1 }]), /doesn't play/);
+    await assert.rejects(conf(user(ALICE), "0001", [{ game_key: "KC@LV", pick: "KC", points: 1 }]), /locked/);
+    // A duplicate value is refused at commit
+    await db.exec(`insert into public.confidence_picks (season, week, team_id, game_key, pick, points) values (${S}, 7, '0002', 'DET@ARI', 'ARI', 1)`);
+    await db.exec(`insert into public.nfl_games (season, week, game_key, home, away, kickoff) values (${S}, 7, 'NE@BUF', 'BUF', 'NE', now() + interval '9 days')`);
+    await assert.rejects(conf(user(BOB), "0002", [{ game_key: "NE@BUF", pick: "NE", points: 1 }], 7), /confidence_points_unique|duplicate/);
+    // Swapping two values in one save works (the unique key is deferred)
+    await conf(user(BOB), "0002", [{ game_key: "NE@BUF", pick: "NE", points: 2 }], 7);
+    const swapped = await conf(user(BOB), "0002", [{ game_key: "DET@ARI", pick: "ARI", points: 2 }, { game_key: "NE@BUF", pick: "NE", points: 1 }], 7);
+    assert.deepEqual(swapped.rows.map(r => [(r as { game_key: string }).game_key, (r as { points: number }).points]), [["DET@ARI", 2], ["NE@BUF", 1]]);
+  });
+
+  test("hidden until kickoff: others' picks appear once that game starts; anon never sees picks", async () => {
+    await db.exec(`insert into public.survivor_picks (season, week, team_id, nfl_team) values (${S}, ${W}, '0002', 'DET');
+      insert into public.confidence_picks (season, week, team_id, game_key, pick, points) values (${S}, ${W}, '0002', 'DET@ARI', 'DET', 2);`);
+    assert.deepEqual(await rows(db, user(ALICE), `select * from public.survivor_picks where team_id = '0002'`), []);
+    assert.deepEqual(await rows(db, user(ALICE), `select * from public.confidence_picks where team_id = '0002'`), []);
+    assert.equal((await rows(db, user(BOB), `select * from public.survivor_picks`)).length, 1, "his own, any time");
+    await db.exec(`update public.nfl_games set kickoff = now() - interval '1 minute' where game_key = 'DET@ARI'`);
+    assert.equal((await rows(db, user(ALICE), `select * from public.survivor_picks where team_id = '0002'`)).length, 1);
+    assert.equal((await rows(db, user(ALICE), `select * from public.confidence_picks where team_id = '0002'`)).length, 1);
+    await denied(db, anon, `select * from public.survivor_picks`, /permission denied/);
+    await denied(db, anon, `select * from public.confidence_picks`, /permission denied/);
+  });
+
+  test("managers pick only for their own team, and only while picking is open (2026: MFL's picks, read-only)", async () => {
+    await assert.rejects(sv(user(ALICE), "0002", W, "DET"), /row-level security/);
+    await db.exec(`update public.season_settings set pools = '{"picking_open": false}'`);
+    await assert.rejects(sv(user(ALICE), "0001", W, "DET"), /made on MFL this season/);
+    await assert.rejects(conf(user(ALICE), "0001", [{ game_key: "DET@ARI", pick: "DET", points: 1 }]), /made on MFL this season/);
+  });
+
+  test("the commissioner can enter or fix anyone's pick (even after kickoff), audited; the MFL import isn't logged", async () => {
+    await as(db, service, tx => tx.query(`insert into public.survivor_picks (season, week, team_id, nfl_team, source) values (${S}, ${W}, '0001', 'KC', 'mfl_import')`));
+    await as(db, user(COMMISH), tx => tx.query(`update public.survivor_picks set nfl_team = 'LV' where team_id = '0001'`));
+    const [p] = await rows(db, user(COMMISH), `select nfl_team, source from public.survivor_picks where team_id = '0001'`);
+    assert.deepEqual(p, { nfl_team: "LV", source: "commissioner" });
+    const a = (await db.query<{ action: string }>(`select action from public.audit_log where action like 'pools:%'`)).rows.map(r => r.action);
+    assert.deepEqual(a, ["pools:survivor_picks:update"]);
+  });
+
+  test("standings tables are public read; only the commissioner and server jobs write", async () => {
+    await as(db, service, tx => tx.query(`insert into public.survivor_status (season, team_id, alive, winner) values (${S}, '0002', true, true)`));
+    assert.equal((await rows(db, anon, `select * from public.survivor_status`)).length, 1);
+    await denied(db, anon, `insert into public.confidence_scores (season, week, team_id, points, correct, decided, games) values (${S}, 1, '0001', 1, 1, 1, 1)`, /permission denied/);
+    assert.equal(await affected(db, user(ALICE), `update public.survivor_status set winner = false`), 0);
   });
 });
 

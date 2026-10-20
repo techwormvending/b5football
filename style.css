@@ -176,6 +176,28 @@ a.game:hover { border-color: var(--gold); }
 .po-inline input, .acct-form input[type=number], .acct-form input[type=date] { font: 15px var(--body); color: var(--chalk); background: var(--ink-deep); border: 1px solid var(--card-line); border-radius: 6px; padding: 7px 8px; }
 .po-won { margin-top: 6px; }
 @media (max-width: 960px) { .po-cols { grid-template-columns: 1fr; } }
+/* Pools (pools.js) */
+.pl .card { margin-bottom: 16px; }
+.pl-table td, .pl-table th { padding: 6px 8px; font-size: 13px; }
+.pl-table .num { text-align: center; white-space: nowrap; }
+.pl-grid th { font: 600 11px/1.2 var(--head); letter-spacing: .04em; }
+.pl-win { background: rgba(63, 174, 106, .22); color: #9be3b5; }
+.pl-loss { background: rgba(210, 69, 47, .18); color: #ffb3a6; }
+.pl-alive { color: #9be3b5; font-weight: 600; }
+.pl-games { display: grid; gap: 8px; }
+.pl-game { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pl-kick { margin-left: auto; }
+.pl-team { min-width: 64px; padding: 9px 10px; border-radius: 6px; border: 1px solid var(--card-line); background: var(--ink-deep);
+  color: var(--chalk); font: 600 14px var(--head); letter-spacing: .05em; cursor: pointer; }
+.pl-team.on { background: var(--gold); color: var(--ink-deep); border-color: var(--gold); }
+.pl-team:disabled { opacity: .4; cursor: default; }
+.pl-team.on:disabled { opacity: .8; }
+.pl-conf { list-style: none; padding: 0; margin: 8px 0 0; }
+.pl-conf li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--card-line); }
+.pl-conf li.locked { opacity: .75; }
+.pl-pts { flex: none; width: 30px; text-align: center; font: 700 18px var(--head); color: var(--gold); }
+.pl-move { margin-left: auto; display: flex; gap: 2px; }
+.pl-move .linkish { font-size: 18px; padding: 6px 10px; text-decoration: none; }
 .tag.cm-bad { background: rgba(210, 69, 47, .3); color: #ffb3a6; }
 .mt-pick { flex-basis: 100%; display: grid; gap: 4px; max-width: 320px; font: 500 13px var(--head); letter-spacing: .1em; text-transform: uppercase; color: var(--chalk-dim); }
 .mt-cols { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 24px; align-items: start; }
@@ -232,6 +254,13 @@ ul.checks li { padding-left: 26px; position: relative; margin: 8px 0; }
 ul.checks li::before { content: "▸"; position: absolute; left: 6px; color: var(--gold); }
 
 .foot { padding: 24px 16px 40px; color: var(--chalk-dim); font-size: 13px; border-top: 1px solid var(--card-line); }
+
+/* Many nav items: tighter links and no season subtitle on mid-size screens */
+@media (max-width: 1400px) {
+  .brand-sub { display: none; }
+  .nav { gap: 2px; }
+  .nav a { padding: 8px 9px; letter-spacing: .04em; font-size: 14px; }
+}
 
 /* ---- Mobile ---------------------------------------------------------- */
 @media (max-width: 760px) {

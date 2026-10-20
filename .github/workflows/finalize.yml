@@ -111,6 +111,16 @@ jobs:
           node scripts/shadow.mts 2026 | tee shadow.txt
           { echo '### Shadow scoring vs MFL'; echo '```'; grep -E '^(Week|Summary|  [0-9]{4}:|    )' shadow.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
+      # TEMPORARY (2026): MFL's Survivor and Confidence picks, read-only here. Delete after the migration.
+      - name: Import 2026 pool picks from MFL
+        if: always()
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then echo "::warning::Supabase not configured; skipping."; exit 0; fi
+          node scripts/import-mfl-pools.mts 2026
+
       # Payouts: auto awards, guillotine and flags from this site's scores (rules: src/league/payouts.ts).
       - name: Recompute payouts
         if: ${{ always() && steps.finalize.outcome == 'success' }}

@@ -25,6 +25,8 @@ import { scoreWeek } from "../league/scores.ts";
 import { sbBase, sbHeaders, type SbConfig } from "../league/supabaseRest.ts";
 import type { GameData } from "../ingest/types.ts";
 import { refreshPayouts } from "../league/payoutsSync.ts";
+import { syncMflPools } from "../league/mflPools.ts";
+import { team as canon } from "../ingest/teams.ts";
 
 const SITE = "https://site.api.espn.com/apis/site/v2/sports/football/nfl";
 const CORE = "https://sports.core.api.espn.com/v2/sports/football/leagues/nfl";
@@ -47,7 +49,22 @@ export interface LiveResult {
   delayed: boolean; errors: string[];
 }
 
-interface SbEvent { id?: string; date?: string; competitions?: { status?: { type?: { state?: string } } }[] }
+interface SbEvent { id?: string; date?: string; competitions?: { status?: { type?: { state?: string } }; competitors?: { homeAway?: string; score?: string; team?: { abbreviation?: string } }[] }[] }
+
+/** Live/final NFL scores from the scoreboard, as nfl_games rows (pools score from these). */
+export function scoreboardGames(events: SbEvent[], season: number, week: number) {
+  const out: { season: number; week: number; game_key: string; home: string; away: string; kickoff: string | null; status: string; home_score: number; away_score: number }[] = [];
+  for (const e of events) {
+    const c = e.competitions?.[0], state = c?.status?.type?.state;
+    if (state !== "in" && state !== "post") continue;
+    const h = c?.competitors?.find(x => x.homeAway === "home"), a = c?.competitors?.find(x => x.homeAway === "away");
+    let home: string, away: string;
+    try { home = canon(h?.team?.abbreviation ?? ""); away = canon(a?.team?.abbreviation ?? ""); } catch { continue; }
+    out.push({ season, week, game_key: `${away}@${home}`, home, away, kickoff: e.date ? new Date(e.date).toISOString() : null,
+      status: state === "post" ? "final" : "in_progress", home_score: Number(h?.score ?? 0), away_score: Number(a?.score ?? 0) });
+  }
+  return out;
+}
 
 /** Games worth polling: in progress, or finished within ~4.5 h of kickoff (final capture pending). */
 export function activeEvents(events: SbEvent[], now: number): { inProgress: SbEvent[]; recentlyFinished: SbEvent[] } {
@@ -222,10 +239,17 @@ export async function runLive(deps: LiveDeps): Promise<LiveResult> {
     await upsert("matchups", "season,week,home_team", ms.map(m => ({ season, week, home_team: m.home_team, away_team: m.away_team, is_playoff: m.is_playoff,
       home_score: totals.get(m.home_team) ?? 0, away_score: totals.get(m.away_team) ?? 0 })));
     res.matchups = ms.length;
+    // NFL scores (Survivor and Confidence results move during games)
+    await upsert("nfl_games", "season,week,game_key", scoreboardGames(sb.events ?? [], season, week));
     // Every team's live total (payouts: weekly high, guillotine, season points), then projected payouts.
     const teamIds = new Set([...totals.keys(), ...ms.flatMap(m => [m.home_team, m.away_team])]);
     await upsert("team_scores", "season,week,team_id", [...teamIds].map(t => ({ season, week, team_id: t, points: totals.get(t) ?? 0, status: "live", updated_at: at })));
-    try { await refreshPayouts(deps.sb, season, (u, i) => deps.fetch(u, i)); }
+    // TEMPORARY 2026: this week's MFL pool picks (Survivor, Confidence), then pools + payouts.
+    if (deps.mflLeague) {
+      try { await syncMflPools(deps.sb, season, deps.mflLeague, (u, i) => deps.fetch(u, i), week); }
+      catch (err) { res.errors.push(`MFL pools: ${(err as Error).message}`); }
+    }
+    try { await refreshPayouts(deps.sb, season, (u, i) => deps.fetch(u, i), { liveWeek: week, now: now() }); }
     catch (err) { res.errors.push(`payouts: ${(err as Error).message}`); }   // scores are written; payouts catch up next pass
 
     // Finished games whose numbers were just written won't be polled again.

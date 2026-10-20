@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { activeEvents, espnIds, mirrorSlots, runLive, teamTotals } from "./liveRun.ts";
+import { activeEvents, espnIds, mirrorSlots, runLive, scoreboardGames, teamTotals } from "./liveRun.ts";
 import { handle } from "./edgeHandler.ts";
 import type { EspnSummary } from "../ingest/espn.ts";
 
@@ -183,4 +183,11 @@ test("mirrored slots follow QB RB RB WR WR WR TE K DEF; unmapped or extra starte
     new Map([["w1", "W1"], ["w2", "W2"], ["w3", "W3"], ["w4", "W4"], ["q", "Q"]]), new Map([["W1", "WR"], ["W2", "WR"], ["W3", "WR"], ["W4", "WR"], ["Q", "QB"]]));
   assert.deepEqual(r.rows.map(x => [x.slot, x.player_id]), [[3, "W1"], [0, "Q"], [4, "W2"], [5, "W3"]]);
   assert.deepEqual(r.missing, ["A:w4", "A:x"]);
+});
+
+test("scoreboard scores become nfl_games rows (in progress / final); unknown teams and upcoming games are skipped", () => {
+  const ev = (state: string, a: string, h: string, as: string, hs: string) => ({ date: "2026-10-18T17:00Z", competitions: [{ status: { type: { state } }, competitors: [{ homeAway: "home", score: hs, team: { abbreviation: h } }, { homeAway: "away", score: as, team: { abbreviation: a } }] }] });
+  assert.deepEqual(scoreboardGames([ev("in", "WSH", "SF", "7", "10"), ev("post", "NYJ", "NE", "19", "26"), ev("pre", "A", "B", "0", "0"), ev("in", "XXX", "NE", "0", "0")], 2026, 6), [
+    { season: 2026, week: 6, game_key: "WAS@SF", home: "SF", away: "WAS", kickoff: "2026-10-18T17:00:00.000Z", status: "in_progress", home_score: 10, away_score: 7 },
+    { season: 2026, week: 6, game_key: "NYJ@NE", home: "NE", away: "NYJ", kickoff: "2026-10-18T17:00:00.000Z", status: "final", home_score: 26, away_score: 19 }]);
 });

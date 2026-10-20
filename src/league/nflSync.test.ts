@@ -20,9 +20,9 @@ test("games: regular season only, canonical codes, AWAY@HOME keys, final when sc
     { season: "2025", game_type: "REG", week: "1", gameday: "2025-09-04", gametime: "20:20", away_team: "DAL", away_score: "20", home_team: "PHI", home_score: "24" }
   ], 2026);
   assert.deepEqual(g, [
-    { season: 2026, week: 1, game_key: "SF@LAR", home: "LAR", away: "SF", kickoff: "2026-09-11T00:35:00.000Z", status: "final" },
-    { season: 2026, week: 7, game_key: "PIT@CIN", home: "CIN", away: "PIT", kickoff: "2026-10-18T17:00:00.000Z", status: "scheduled" },
-    { season: 2026, week: 8, game_key: "WAS@NYG", home: "NYG", away: "WAS", kickoff: "2026-10-25T17:00:00.000Z", status: "scheduled" }
+    { season: 2026, week: 1, game_key: "SF@LAR", home: "LAR", away: "SF", kickoff: "2026-09-11T00:35:00.000Z", status: "final", home_score: 7, away_score: 27 },
+    { season: 2026, week: 7, game_key: "PIT@CIN", home: "CIN", away: "PIT", kickoff: "2026-10-18T17:00:00.000Z", status: "scheduled", home_score: null, away_score: null },
+    { season: 2026, week: 8, game_key: "WAS@NYG", home: "NYG", away: "WAS", kickoff: "2026-10-25T17:00:00.000Z", status: "scheduled", home_score: null, away_score: null }
   ]);
 });
 
