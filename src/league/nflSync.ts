@@ -28,12 +28,14 @@ export function playersFromRows(rows: Record<string, string>[], season: number):
   const out: NflPlayerRow[] = [];
   const espnCount = new Map<string, number>();
   for (const r of rows) {
-    if (!r.gsis_id || !(FANTASY_POSITIONS as readonly string[]).includes(r.position ?? "")) continue;
+    // Fullbacks are RBs in fantasy (MFL and our scoring both treat them so).
+    const position = r.position === "FB" ? "RB" : r.position ?? "";
+    if (!r.gsis_id || !(FANTASY_POSITIONS as readonly string[]).includes(position)) continue;
     const recent = Math.max(Number(r.last_season) || 0, Number(r.rookie_season) || 0, Number(r.draft_year) || 0);
     if (recent < season - 1) continue;
     const espn = r.espn_id?.trim() || null;
     if (espn) espnCount.set(espn, (espnCount.get(espn) ?? 0) + 1);
-    out.push({ id: r.gsis_id, espn_id: espn, name: r.display_name || r.gsis_id, position: r.position!, nfl_team: teamOrNull(r.latest_team) });
+    out.push({ id: r.gsis_id, espn_id: espn, name: r.display_name || r.gsis_id, position, nfl_team: teamOrNull(r.latest_team) });
   }
   // espn_id is unique in the table; an ID claimed by two players is ambiguous, so neither gets it (same rule as the crosswalk).
   for (const p of out) if (p.espn_id && espnCount.get(p.espn_id)! > 1) p.espn_id = null;

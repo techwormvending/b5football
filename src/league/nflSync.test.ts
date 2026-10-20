@@ -26,7 +26,7 @@ test("games: regular season only, canonical codes, AWAY@HOME keys, final when sc
   ]);
 });
 
-test("players: fantasy positions, recent or incoming only, canonical team, ambiguous ESPN IDs dropped, plus 32 defenses", () => {
+test("players: fantasy positions (fullbacks as RB), recent or incoming only, canonical team, ambiguous ESPN IDs dropped, plus 32 defenses", () => {
   const p = playersFromRows([
     { gsis_id: "00-1", espn_id: "111", display_name: "Aaron Rodgers", position: "QB", latest_team: "PIT", last_season: "2026", rookie_season: "2005", draft_year: "2005" },
     { gsis_id: "00-2", espn_id: "222", display_name: "Puka Nacua", position: "WR", latest_team: "LA", last_season: "2025", rookie_season: "2023", draft_year: "2023" },
@@ -35,6 +35,7 @@ test("players: fantasy positions, recent or incoming only, canonical team, ambig
     { gsis_id: "00-5", espn_id: "555", display_name: "Lineman", position: "OT", latest_team: "PIT", last_season: "2026", rookie_season: "2020", draft_year: "2020" },
     { gsis_id: "00-6", espn_id: "666", display_name: "Twin A", position: "K", latest_team: "BAL", last_season: "2026", rookie_season: "2012", draft_year: "" },
     { gsis_id: "00-7", espn_id: "666", display_name: "Twin B", position: "K", latest_team: "XXX", last_season: "2026", rookie_season: "2020", draft_year: "" },
+    { gsis_id: "00-8", espn_id: "", display_name: "Kyle Juszczyk", position: "FB", latest_team: "SF", last_season: "2026", rookie_season: "2013", draft_year: "2013" },
     { gsis_id: "", espn_id: "888", display_name: "No ID", position: "QB", latest_team: "PIT", last_season: "2026", rookie_season: "2026", draft_year: "" }
   ], 2026);
   const players = p.filter(x => x.position !== "DEF");
@@ -43,7 +44,8 @@ test("players: fantasy positions, recent or incoming only, canonical team, ambig
     { id: "00-2", espn_id: "222", name: "Puka Nacua", position: "WR", nfl_team: "LAR" },
     { id: "00-3", espn_id: null, name: "Rookie Back", position: "RB", nfl_team: null },
     { id: "00-6", espn_id: null, name: "Twin A", position: "K", nfl_team: "BAL" },
-    { id: "00-7", espn_id: null, name: "Twin B", position: "K", nfl_team: null }
+    { id: "00-7", espn_id: null, name: "Twin B", position: "K", nfl_team: null },
+    { id: "00-8", espn_id: null, name: "Kyle Juszczyk", position: "RB", nfl_team: "SF" }
   ]);
   const defs = p.filter(x => x.position === "DEF");
   assert.equal(defs.length, 32);

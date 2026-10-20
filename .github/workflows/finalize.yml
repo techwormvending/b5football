@@ -67,22 +67,6 @@ jobs:
           THROUGH_WEEK: ${{ inputs.through_week }}
         run: node scripts/finalize.mts $SEASON $THROUGH_WEEK
 
-      # TEMPORARY (2026 shadow season): our engine vs MFL each week, and publish scores,
-      # mirrored lineups, matchups and standings to Supabase. Delete after the migration.
-      - name: Shadow scoring vs MFL; publish weeks to Supabase
-        if: ${{ always() && steps.finalize.outcome == 'success' }}
-        env:
-          B5_DATA: league-store/league
-          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: |
-          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
-            echo "::warning::SUPABASE_URL variable or SUPABASE_SERVICE_ROLE_KEY secret not set; skipping shadow scoring."
-            exit 0
-          fi
-          node scripts/shadow.mts 2026 | tee shadow.txt
-          { echo '### Shadow scoring vs MFL'; echo '```'; grep -E '^(Week|Summary|  [0-9]{4}:|    )' shadow.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-
       # NFL players and schedule (kickoff times) for lineups: the database locks each
       # player at his game's kickoff from public.nfl_games. Independent of finalization.
       - name: Sync NFL players and schedule to Supabase
@@ -110,6 +94,22 @@ jobs:
             exit 0
           fi
           node scripts/sync-mfl-rosters.mts 2026
+
+      # TEMPORARY (2026 shadow season): our engine vs MFL each week, and publish scores,
+      # mirrored lineups, matchups and standings to Supabase. Delete after the migration.
+      - name: Shadow scoring vs MFL; publish weeks to Supabase
+        if: ${{ always() && steps.finalize.outcome == 'success' }}
+        env:
+          B5_DATA: league-store/league
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "::warning::SUPABASE_URL variable or SUPABASE_SERVICE_ROLE_KEY secret not set; skipping shadow scoring."
+            exit 0
+          fi
+          node scripts/shadow.mts 2026 | tee shadow.txt
+          { echo '### Shadow scoring vs MFL'; echo '```'; grep -E '^(Week|Summary|  [0-9]{4}:|    )' shadow.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       # Free-tier Supabase projects pause after ~7 days without activity. The PRIMARY
       # keep-alive is the Cloudflare Worker cron (workers/keepalive, heartbeat
