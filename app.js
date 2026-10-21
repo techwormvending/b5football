@@ -76,7 +76,7 @@
       </div>`;
     const divGame = a.division && a.division === h.division;
     const round = roundName(week);
-    return `<a class="card game" href="#matchup/${esc(week)}/${esc(aId)}-${esc(hId)}">
+    return `<a class="card game" href="#live/${esc(week)}/${esc(aId)}-${esc(hId)}">
       ${side(a, aPts, hPts)}${side(h, hPts, aPts)}
       <div class="g-meta muted">${done ? (sched.liveWeeks && sched.liveWeeks.has(week) ? "Live" : "Final") : "Upcoming"}${round ? ` · ${esc(round)}` : divGame ? ` · ${esc(divName(a.division))} division game` : ""}</div>
     </a>`;
@@ -102,24 +102,6 @@
         </div>
         <p class="muted small">${esc(PO.teams)} teams make the playoffs. Seeding: ${esc(PO.seeding || "TBD")}. Matchups are set after week ${esc(sched.regularSeasonWeeks)}.</p>
       </div>`;
-  }
-
-  function matchupPage(week, aId, hId) {
-    const w = sched.weeks.find(x => x.week === week);
-    const g = w && w.games.find(x => x[0] === aId && x[2] === hId);
-    const back = `<p><a href="#schedule" data-back-week="${esc(week)}">← Week ${esc(week)} schedule</a></p>`;
-    if (!g) return `<section><h2>Matchup</h2>${back}<div class="card muted">That matchup isn't on the schedule.</div></section>`;
-    const done = played(g), round = roundName(week);
-    const lineup = (t) => `<div class="card">
-        <div class="team">${logoHtml(t, "logo sm")}<h3>${esc(t.name)}</h3></div>
-        <div data-mu-team="${esc(t.id || "")}"><p class="muted">Loading…</p></div>
-      </div>`;
-    const a = teamById(aId) || { name: aId }, h = teamById(hId) || { name: hId };
-    return `<section><h2>Week ${esc(week)}${round ? " · " + esc(round) : ""}</h2>${back}
-        <div class="grid games">${gameCard(g, week).replace(/^<a /, "<div ").replace(/<\/a>$/, "</div>")}</div>
-        <p class="muted small mu-note" id="muStatus">${done ? "Final" : "Upcoming"}</p>
-        <div class="grid mu-cols">${lineup(a)}${lineup(h)}</div>
-      </section>`;
   }
 
   const pages = {
@@ -267,43 +249,9 @@
 
     // Rendered by account.js (sign-in, commissioner screen)
     account() { return `<div id="acctRoot"></div>`; },
-    commish() { return `<div id="acctRoot"></div>`; }
+    commish() { return `<div id="acctRoot"></div>`; },
+    live() { return `<div id="lvRoot"></div>`; }
   };
-
-  // ---- Matchup detail: lineups + points; refresh every minute while live --------
-  let muTimer = null;
-  function loadMatchup(week, aId, hId) {
-    clearTimeout(muTimer);
-    if (!window.B5MyTeam || !window.B5MyTeam.matchupLineups) return;
-    const key = location.hash;
-    window.B5MyTeam.matchupLineups(Number(L.season), week, [aId, hId]).then(d => {
-      if (location.hash !== key) return;
-      const M = window.B5MyTeam;
-      let any = false;
-      for (const id of [aId, hId]) {
-        const el = view.querySelector(`[data-mu-team="${id}"]`);
-        if (!el) continue;
-        const ps = d.teams[id] || [];
-        if (ps.length) any = true;
-        el.innerHTML = ps.length ? M.lineupListHtml(ps)
-          : d.readable ? `<p class="muted">No starters for week ${esc(week)} yet.</p>`
-          : `<p class="muted"><a href="#account">Sign in</a> to see lineups (members only).</p>`;
-      }
-      // Live totals straight from player points (the schedule's numbers can be a minute behind).
-      if (any) view.querySelectorAll(".game .g-side").forEach((side, i) => {
-        const ps = d.teams[i === 0 ? aId : hId] || [];
-        const tot = ps.reduce((s, p) => s + (p.points || 0), 0);
-        const el = side.querySelector(".g-pts");
-        if (el && d.status) el.textContent = tot.toFixed(1);
-      });
-      const st = view.querySelector("#muStatus");
-      if (st) st.textContent = M.statusText(d) + (Number(L.season) < Number(L.lineupsFrom || 0) ? ` · Lineups mirrored from MFL; MFL is official for ${L.season}.` : "");
-      if (d.status === "live") muTimer = setTimeout(() => { if (location.hash === key) loadMatchup(week, aId, hId); }, 60000);
-    }, () => {
-      const st = view.querySelector("#muStatus");
-      if (st) st.textContent = "Couldn't load lineups. Reload to try again.";
-    });
-  }
 
   // ---- Countdown ------------------------------------------------------
   function startClock() {
@@ -326,17 +274,17 @@
 
   function route() {
     const r = window.B5Route.parse(location.hash, k => !!pages[k]);
-    const mu = r.page === "matchup" ? [null, r.week, r.away, r.home] : null;
     const page = r.page;
     curPage = page;
     clearInterval(timer);
-    view.innerHTML = mu ? matchupPage(Number(mu[1]), mu[2], mu[3]) : pages[page]();
+    if (window.B5Live) window.B5Live.stop();   // leaves Realtime and its timers when you leave #live
+    view.innerHTML = pages[page]();
     document.querySelectorAll(".nav a[href^='#']").forEach(a =>
-      a.classList.toggle("active", a.getAttribute("href") === "#" + (mu ? "schedule" : page === "commish-payouts" ? "commish" : page)));
+      a.classList.toggle("active", a.getAttribute("href") === "#" + (page === "commish-payouts" ? "commish" : page)));
     if (page === "schedule") centerWeek();
     nav.classList.remove("open");
     if (page === "home") startClock();
-    if (mu) loadMatchup(Number(mu[1]), mu[2], mu[3]);
+    if (page === "live" && window.B5Live) window.B5Live.start(document.getElementById("lvRoot"), r);
     if (page === "teams" && window.B5Payouts) {
       window.B5Payouts.teamWinnings().then(w => {
         view.querySelectorAll("[data-roster]").forEach(el => {
@@ -381,11 +329,6 @@
     schedWeek = Number(b.dataset.schedWeek);
     view.innerHTML = pages.schedule();
     centerWeek();
-  });
-  // "Back to week N" from a matchup opens the schedule on that week.
-  view.addEventListener("click", (e) => {
-    const b = e.target.closest("[data-back-week]");
-    if (b) schedWeek = Number(b.dataset.backWeek);
   });
   // Scroll the week strip (not the page) so the selected week is centered.
   function centerWeek() {

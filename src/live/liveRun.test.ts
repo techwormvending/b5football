@@ -6,7 +6,8 @@ import type { EspnSummary } from "../ingest/espn.ts";
 
 const NOW = Date.parse("2026-10-18T19:00:00Z");   // Sunday 3 PM ET
 const ev = (id: string, state: string, hoursFromNow: number) =>
-  ({ id, date: new Date(NOW + hoursFromNow * 3600_000).toISOString(), competitions: [{ status: { type: { state } } }] });
+  ({ id, date: new Date(NOW + hoursFromNow * 3600_000).toISOString(), competitions: [{ status: { period: 3, displayClock: "4:12", type: { state, shortDetail: "3rd 4:12" } },
+    competitors: [{ homeAway: "home", score: "7", team: { abbreviation: "ARI" } }, { homeAway: "away", score: "10", team: { abbreviation: "DET" } }] }] });
 
 // DET (away) at ARI (home). Goff: 271 pass yds, -1 rush, 1 INT -> 270 total yds = 7, INT -1 => 6.
 const ath = (id: number, name: string, stats: string[]) => ({ athlete: { id: String(id), displayName: name }, stats });
@@ -39,7 +40,8 @@ function world(opts: { events: ReturnType<typeof ev>[]; weekStatus?: string; fai
     if (u.endsWith("/scoreboard")) return J({ season: { year: 2026, type: 2 }, week: { number: 7 }, events: opts.events });
     if (u.includes("/summary?event=")) return opts.failSummary ? J({}, 500) : J(summary(opts.events[0]!.competitions[0]!.status.type.state));
     if (u.includes("/plays?")) return J({ items: [], pageCount: 1 });
-    if (u.includes("TYPE=weeklyResults")) return J({ weeklyResults: { matchup: [{ franchise: Object.entries(opts.mflStarters ?? {}).map(([id, s]) => ({ id, starters: s })) }] } });
+    if (u.includes("TYPE=liveScoring")) return J({ liveScoring: { matchup: [{ franchise: Object.entries(opts.mflStarters ?? {}).map(([id, s]) => ({ id, score: "9.5",
+      players: { player: s.split(",").filter(Boolean).map(p => ({ id: p, status: "starter", score: p === "m1" ? "6.0" : "3.5" })) } })) }] } });
     const path = decodeURIComponent(u.replace(/^.*\/rest\/v1\//, ""));
     if (path.startsWith("live_nonces") && method === "DELETE") {
       const n = /nonce=eq\.([^&]+)/.exec(path)![1]!;
@@ -54,8 +56,9 @@ function world(opts: { events: ReturnType<typeof ev>[]; weekStatus?: string; fai
     if (path.startsWith("live_games")) return J((opts.captured ?? []).map(event_id => ({ event_id })));
     if (path.startsWith("score_weeks")) return J(opts.weekStatus ? [{ status: opts.weekStatus }] : []);
     if (path.startsWith("nfl_players?espn_id")) return J(path.includes('"1"') ? [{ id: "00-GOFF", espn_id: "1", name: "Jared Goff", position: "QB", nfl_team: "DET" }] : []);
-    if (path.startsWith("nfl_players?id")) return J([{ id: "00-GOFF", position: "QB" }]);
+    if (path.startsWith("nfl_players?id")) return J([{ id: "00-GOFF", name: "Jared Goff", position: "QB", nfl_team: "DET" }]);
     if (path.startsWith("mfl_player_map")) return J([{ mfl_id: "m1", player_id: "00-GOFF" }, { mfl_id: "m2", player_id: "DEF:ARI" }]);
+    if (path.startsWith("lineup_slots") && path.includes("select=season")) return J([]);   // MFL mirror: no lineup yet
     if (path.startsWith("lineup_slots")) return J([{ team_id: "0011", player_id: "00-GOFF" }, { team_id: "0011", player_id: "DEF:ARI" }, { team_id: "0005", player_id: "00-NOPE" }]);
     if (path.startsWith("player_scores")) return J([{ player_id: "00-GOFF", points: 6 }, { player_id: "DEF:ARI", points: 3.5 }]);
     if (path.startsWith("matchups")) return J([{ home_team: "0011", away_team: "0005", is_playoff: false }]);
@@ -124,6 +127,17 @@ describe("runLive", () => {
     const sw = w.writes.find(x => x.path.startsWith("score_weeks"))!.body as { status: string; live_delayed: boolean }[];
     assert.deepEqual([sw[0]!.status, sw[0]!.live_delayed], ["live", false]);
     assert.equal(w.writes.find(x => x.path.startsWith("live_games")), undefined, "an in-progress game isn't marked captured");
+    // The points breakdown is the engine's own lines, stored with the score; it adds up.
+    const goff = ps.find(p => p.player_id === "00-GOFF") as unknown as { points: number; lines: { text: string; points: number }[] };
+    assert.deepEqual(goff.lines.map(l => `${l.text} → ${l.points}`), ["1 INT thrown × -1 → -1", "270 total yards (200+): 5 + 2 × 1 (per full 50 over 200) → 7"]);
+    // Game clock is written before the scores (the scoring-play trigger stamps plays with it).
+    const order = w.writes.map(x => x.path.split("?")[0]);
+    assert.ok(order.indexOf("nfl_games") >= 0 && order.indexOf("nfl_games") < order.indexOf("player_scores"));
+    const g = (w.writes.find(x => x.path.startsWith("nfl_games"))!.body as { game_key: string; period: number; clock: string; status_detail: string }[])[0]!;
+    assert.deepEqual([g.game_key, g.period, g.clock, g.status_detail], ["DET@ARI", 3, "4:12", "3rd 4:12"]);
+    // MFL live comparison: our 9.5 vs MFL's 9.5 for 0011; 0005's only starter isn't mapped, so it differs.
+    const cmp = w.writes.find(x => x.path.startsWith("live_compare"))!.body as { team_id: string; our_points: number; mfl_points: number; diff_since: string | null }[];
+    assert.deepEqual(cmp.map(x => [x.team_id, x.our_points, x.mfl_points, x.diff_since != null]), [["0011", 9.5, 9.5, false], ["0005", 0, 9.5, true]]);
   });
 
   test("a game ESPN fails on is marked delayed and not written (its last good numbers stay)", async () => {
@@ -187,9 +201,9 @@ test("mirrored slots follow QB RB RB WR WR WR TE K DEF; unmapped or extra starte
 
 test("scoreboard scores become nfl_games rows (in progress / final); unknown teams and upcoming games are skipped", () => {
   const ev = (state: string, a: string, h: string, as: string, hs: string) => ({ date: "2026-10-18T17:00Z", competitions: [{ status: { type: { state } }, competitors: [{ homeAway: "home", score: hs, team: { abbreviation: h } }, { homeAway: "away", score: as, team: { abbreviation: a } }] }] });
-  assert.deepEqual(scoreboardGames([ev("in", "WSH", "SF", "7", "10"), ev("post", "NYJ", "NE", "19", "26"), ev("pre", "A", "B", "0", "0"), ev("in", "XXX", "NE", "0", "0")], 2026, 6), [
-    { season: 2026, week: 6, game_key: "WAS@SF", home: "SF", away: "WAS", kickoff: "2026-10-18T17:00:00.000Z", status: "in_progress", home_score: 10, away_score: 7 },
-    { season: 2026, week: 6, game_key: "NYJ@NE", home: "NE", away: "NYJ", kickoff: "2026-10-18T17:00:00.000Z", status: "final", home_score: 26, away_score: 19 }]);
+  assert.deepEqual(scoreboardGames([ev("in", "WSH", "SF", "7", "10"), ev("post", "NYJ", "NE", "19", "26"), ev("pre", "A", "B", "0", "0"), ev("in", "XXX", "NE", "0", "0")], 2026, 6, "T"), [
+    { season: 2026, week: 6, game_key: "WAS@SF", home: "SF", away: "WAS", kickoff: "2026-10-18T17:00:00.000Z", status: "in_progress", home_score: 10, away_score: 7, period: null, clock: null, status_detail: null, updated_at: "T" },
+    { season: 2026, week: 6, game_key: "NYJ@NE", home: "NE", away: "NYJ", kickoff: "2026-10-18T17:00:00.000Z", status: "final", home_score: 26, away_score: 19, period: null, clock: null, status_detail: null, updated_at: "T" }]);
 });
 
 describe("edge handler: weekly pool import job", () => {
@@ -201,5 +215,20 @@ describe("edge handler: weekly pool import job", () => {
     assert.equal((await handle(post({ job: "pool_import", season: 2026, week: 6 }), env, w.f, () => NOW)).status, 401);
     assert.equal((await handle(post({ nonce: N, job: "pool_import", season: 2026 }), env, w.f, () => NOW)).status, 400);
     assert.ok(!w.calls.some(c => c.includes("myfantasyleague")), "nothing fetched from MFL without a valid call");
+  });
+});
+
+describe("edge handler: MFL starters job (2026, before kickoff)", () => {
+  const env = { SUPABASE_URL: "https://x.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "sb_secret_t", MFL_LEAGUE: "22689" };
+  const post = (body: unknown) => new Request("https://x.supabase.co/functions/v1/b5-live", { method: "POST", body: JSON.stringify(body) });
+  test("needs a fresh nonce; mirrors MFL's starters without touching ESPN", async () => {
+    const N = "0b4e7c1a-1111-4222-8333-944445555888";
+    const w = world({ events: [], nonces: [N], mflStarters: { "0011": "m1,m2," } });
+    assert.equal((await handle(post({ job: "mfl_lineups", season: 2026, week: 7 }), env, w.f, () => NOW)).status, 401);
+    const r = await handle(post({ nonce: N, job: "mfl_lineups", season: 2026, week: 7 }), env, w.f, () => NOW);
+    assert.equal(r.status, 200);
+    assert.deepEqual(await r.json(), { teams: 1, changedLineups: 1, compared: 1, missing: [], ignored: [] });
+    assert.ok(w.calls.some(c => c.includes("TYPE=liveScoring&L=22689&W=7")));
+    assert.ok(!w.calls.some(c => c.includes("espn.com")));
   });
 });

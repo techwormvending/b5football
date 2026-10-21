@@ -12,10 +12,13 @@
       (crosswalk from nfl_players.espn_id, fetched only for the athletes in these games)
       -> our engine. A game that fails keeps its previous numbers (only processed games
       are written).
-   4. player_scores (source "live"), score_weeks (live, delayed flag), review_queue (ESPN
-      athletes with no nflverse match; never guessed), live_games (finished games captured).
-   5. 2026 shadow season: mirror MFL's current-week starters into lineup_slots
-      (via mfl_player_map). TEMPORARY; remove with the other MFL code.
+   4. nfl_games (score, quarter, clock), then player_scores (source "live", with the engine's
+      points breakdown; a trigger logs each change as a scoring play in score_events),
+      score_weeks (live, delayed flag; browsers on #live subscribe to it via Realtime),
+      review_queue (ESPN athletes with no nflverse match; never guessed), live_games
+      (finished games captured).
+   5. 2026 shadow season: MFL's starters into lineup_slots (until each player's kickoff) and
+      our totals vs MFL's live scoring (live_compare). TEMPORARY; see mflLive.ts.
    6. matchups: each team's total = its starters' current points.
    Never throws. Everything goes through the injected fetch. */
 
@@ -27,10 +30,12 @@ import type { GameData } from "../ingest/types.ts";
 import { refreshPayouts } from "../league/payoutsSync.ts";
 import { syncMflPools } from "../league/mflPools.ts";
 import { team as canon } from "../ingest/teams.ts";
+import { breakdown } from "../scoring/explain.ts";
+import { syncMflLive } from "./mflLive.ts";
+export { mirrorSlots } from "./mflLive.ts";
 
 const SITE = "https://site.api.espn.com/apis/site/v2/sports/football/nfl";
 const CORE = "https://sports.core.api.espn.com/v2/sports/football/leagues/nfl";
-const MFL = "https://www45.myfantasyleague.com";
 const AFTER_MS = 4.5 * 3600_000;
 const IN_CHUNK = 120;   // IDs per "in.(...)" filter, keeps URLs short
 
@@ -49,11 +54,12 @@ export interface LiveResult {
   delayed: boolean; errors: string[];
 }
 
-interface SbEvent { id?: string; date?: string; competitions?: { status?: { type?: { state?: string } }; competitors?: { homeAway?: string; score?: string; team?: { abbreviation?: string } }[] }[] }
+interface SbEvent { id?: string; date?: string; competitions?: { status?: { period?: number; displayClock?: string; type?: { state?: string; shortDetail?: string } }; competitors?: { homeAway?: string; score?: string; team?: { abbreviation?: string } }[] }[] }
 
-/** Live/final NFL scores from the scoreboard, as nfl_games rows (pools score from these). */
-export function scoreboardGames(events: SbEvent[], season: number, week: number) {
-  const out: { season: number; week: number; game_key: string; home: string; away: string; kickoff: string | null; status: string; home_score: number; away_score: number }[] = [];
+/** Live/final NFL scores and game clock from the scoreboard, as nfl_games rows (pools score from these; #live shows them). */
+export function scoreboardGames(events: SbEvent[], season: number, week: number, at: string) {
+  const out: { season: number; week: number; game_key: string; home: string; away: string; kickoff: string | null; status: string; home_score: number; away_score: number;
+    period: number | null; clock: string | null; status_detail: string | null; updated_at: string }[] = [];
   for (const e of events) {
     const c = e.competitions?.[0], state = c?.status?.type?.state;
     if (state !== "in" && state !== "post") continue;
@@ -61,7 +67,8 @@ export function scoreboardGames(events: SbEvent[], season: number, week: number)
     let home: string, away: string;
     try { home = canon(h?.team?.abbreviation ?? ""); away = canon(a?.team?.abbreviation ?? ""); } catch { continue; }
     out.push({ season, week, game_key: `${away}@${home}`, home, away, kickoff: e.date ? new Date(e.date).toISOString() : null,
-      status: state === "post" ? "final" : "in_progress", home_score: Number(h?.score ?? 0), away_score: Number(a?.score ?? 0) });
+      status: state === "post" ? "final" : "in_progress", home_score: Number(h?.score ?? 0), away_score: Number(a?.score ?? 0),
+      period: c?.status?.period ?? null, clock: c?.status?.displayClock ?? null, status_detail: c?.status?.type?.shortDetail ?? null, updated_at: at });
   }
   return out;
 }
@@ -97,26 +104,6 @@ export function teamTotals(slots: { team_id: string; player_id: string }[], poin
   const t = new Map<string, number>();
   for (const s of slots) t.set(s.team_id, Math.round(((t.get(s.team_id) ?? 0) + (points.get(s.player_id) ?? 0)) * 100) / 100);
   return t;
-}
-
-/** MFL starters (comma lists per franchise) -> lineup_slots rows, slotted QB RB RB WR WR WR TE K DEF by our positions. */
-export function mirrorSlots(season: number, week: number, starters: { team: string; mflIds: string[] }[],
-  map: Map<string, string>, position: Map<string, string>): { rows: { season: number; week: number; team_id: string; slot: number; player_id: string }[]; missing: string[] } {
-  const ORDER = ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "K", "DEF"];
-  const rows: { season: number; week: number; team_id: string; slot: number; player_id: string }[] = [], missing: string[] = [];
-  for (const s of starters) {
-    const used = ORDER.map(() => false);
-    for (const m of s.mflIds) {
-      const pid = map.get(m);
-      if (!pid) { missing.push(`${s.team}:${m}`); continue; }
-      const pos = pid.startsWith("DEF:") ? "DEF" : position.get(pid);
-      const i = ORDER.findIndex((p, k) => p === pos && !used[k]);
-      if (i < 0) { missing.push(`${s.team}:${m}`); continue; }
-      used[i] = true;
-      rows.push({ season, week, team_id: s.team, slot: i, player_id: pid });
-    }
-  }
-  return { rows, missing };
 }
 
 const chunks = <T>(a: T[], n: number): T[][] => { const out: T[][] = []; for (let i = 0; i < a.length; i += n) out.push(a.slice(i, i + n)); return out; };
@@ -196,9 +183,11 @@ export async function runLive(deps: LiveDeps): Promise<LiveResult> {
     const known = new Set(pl.map(p => p.id));
     const rows = [
       ...Object.values(snap.players).map(p => ({ id: p.key.replace(/^nflverse:/, ""), p })).filter(x => known.has(x.id))
-        .map(({ id, p }) => ({ season, week, player_id: id, game_key: p.gameKey, points: p.points, stats: p.stats, source: "live", overridden: false, updated_at: at })),
-      ...Object.values(snap.defenses).map(d => ({ season, week, player_id: `DEF:${d.team}`, game_key: d.gameKey, points: d.points, stats: d.stats, source: "live", overridden: false, updated_at: at }))
+        .map(({ id, p }) => ({ season, week, player_id: id, game_key: p.gameKey, points: p.points, stats: p.stats, lines: breakdown(p.position, p.stats), source: "live", overridden: false, updated_at: at })),
+      ...Object.values(snap.defenses).map(d => ({ season, week, player_id: `DEF:${d.team}`, game_key: d.gameKey, points: d.points, stats: d.stats, lines: breakdown("DEF", d.stats), source: "live", overridden: false, updated_at: at }))
     ];
+    // Game clock first: the scoring-play trigger on player_scores stamps each play with it.
+    await upsert("nfl_games", "season,week,game_key", scoreboardGames(sb.events ?? [], season, week, at));
     await upsert("player_scores", "season,week,player_id", rows);
     res.players = rows.length;
     await upsert("score_weeks", "season,week", [{ season, week, status: "live", live_delayed: res.delayed, updated_at: at }]);
@@ -209,25 +198,13 @@ export async function runLive(deps: LiveDeps): Promise<LiveResult> {
         reason: "ESPN athlete with no nflverse match: not credited until reviewed", status: "open", last_seen: at })));
     }
 
-    // TEMPORARY 2026: mirror MFL's current-week starters (lineups are set on MFL this season).
+    // TEMPORARY 2026: MFL's starters (until each player's kickoff) and the MFL live comparison.
     if (deps.mflLeague) {
       try {
-        const wr = await getJson<{ weeklyResults?: { matchup?: unknown } }>(`${MFL}/${season}/export?TYPE=weeklyResults&L=${deps.mflLeague}&W=${week}&JSON=1`);
-        const fr = ([] as { franchise: { id: string; starters?: string }[] }[]).concat((wr.weeklyResults?.matchup ?? []) as never).flatMap(m => m.franchise);
-        const starters = fr.map(f => ({ team: f.id, mflIds: (f.starters ?? "").split(",").map(s => s.trim()).filter(Boolean) })).filter(s => s.mflIds.length);
-        if (starters.length) {
-          const all = [...new Set(starters.flatMap(s => s.mflIds))];
-          const map = new Map<string, string>();
-          for (const c of chunks(all, IN_CHUNK)) for (const r of await rest<{ mfl_id: string; player_id: string }[]>(`mfl_player_map?mfl_id=in.(${inList(c)})&select=mfl_id,player_id`)) map.set(r.mfl_id, r.player_id);
-          const pos = new Map<string, string>();
-          const pids = [...new Set(map.values())].filter(p => !p.startsWith("DEF:"));
-          for (const c of chunks(pids, IN_CHUNK)) for (const r of await rest<{ id: string; position: string }[]>(`nfl_players?id=in.(${inList(c)})&select=id,position`)) pos.set(r.id, r.position);
-          const { rows: slots, missing } = mirrorSlots(season, week, starters, map, pos);
-          if (missing.length) res.errors.push(`MFL starters not mapped: ${missing.join(", ")}`);
-          await write(`lineup_slots?season=eq.${season}&week=eq.${week}&team_id=in.(${inList(starters.map(s => s.team))})`, "DELETE", null, "return=minimal");
-          if (slots.length) await write(`lineup_slots`, "POST", slots, "return=minimal");
-          res.mirroredLineups = starters.length;
-        }
+        const m = await syncMflLive({ sb: deps.sb, fetch: (u, i) => deps.fetch(u, i), league: deps.mflLeague, season, week, now: now() });
+        if (m.missing.length) res.errors.push(`MFL starters not mapped: ${m.missing.join(", ")}`);
+        if (m.ignored.length) res.errors.push(`MFL starters changed after kickoff (kept ours): ${m.ignored.join(", ")}`);
+        res.mirroredLineups = m.teams;
       } catch (err) { res.errors.push(`MFL lineups: ${(err as Error).message}`); }   // keep last mirrored lineups
     }
 
@@ -239,8 +216,6 @@ export async function runLive(deps: LiveDeps): Promise<LiveResult> {
     await upsert("matchups", "season,week,home_team", ms.map(m => ({ season, week, home_team: m.home_team, away_team: m.away_team, is_playoff: m.is_playoff,
       home_score: totals.get(m.home_team) ?? 0, away_score: totals.get(m.away_team) ?? 0 })));
     res.matchups = ms.length;
-    // NFL scores (Survivor and Confidence results move during games)
-    await upsert("nfl_games", "season,week,game_key", scoreboardGames(sb.events ?? [], season, week));
     // Every team's live total (payouts: weekly high, guillotine, season points), then projected payouts.
     const teamIds = new Set([...totals.keys(), ...ms.flatMap(m => [m.home_team, m.away_team])]);
     await upsert("team_scores", "season,week,team_id", [...teamIds].map(t => ({ season, week, team_id: t, points: totals.get(t) ?? 0, status: "live", updated_at: at })));

@@ -26,6 +26,7 @@ import { mflToGsis, type MflPlayerInfo } from "../src/league/mflRosters.ts";
 import { compareWeek, standingsFrom, type WeekComparison, type WeekScores } from "../src/league/shadow.ts";
 import { upsert } from "../src/league/nflSync.ts";
 import { deleteWhere, selectAll, type SbConfig } from "../src/league/supabaseRest.ts";
+import { breakdown } from "../src/scoring/explain.ts";
 
 const LEAGUE = "22689", HOST = "https://www45.myfantasyleague.com", API = "https://api.myfantasyleague.com";
 const IDMAP_URL = "https://github.com/dynastyprocess/data/raw/master/files/db_playerids.csv";
@@ -100,10 +101,10 @@ for (const week of weeks) {
   for (const p of Object.values(ws.snapshot.players)) {
     const id = p.key.replace(/^nflverse:/, "");
     if (!known!.has(id)) { skipped.push(`${p.name} (${id})`); continue; }
-    rows.push({ season, week, player_id: id, game_key: p.gameKey, points: p.points, stats: p.stats, source: "final", overridden: !!(p as { override?: unknown }).override, updated_at: now });
+    rows.push({ season, week, player_id: id, game_key: p.gameKey, points: p.points, stats: p.stats, lines: breakdown(p.position, p.stats, p.points), source: "final", overridden: !!(p as { override?: unknown }).override, updated_at: now });
   }
   for (const d of Object.values(ws.snapshot.defenses)) {
-    rows.push({ season, week, player_id: `DEF:${d.team}`, game_key: d.gameKey, points: d.points, stats: d.stats, source: "final", overridden: !!(d as { override?: unknown }).override, updated_at: now });
+    rows.push({ season, week, player_id: `DEF:${d.team}`, game_key: d.gameKey, points: d.points, stats: d.stats, lines: breakdown("DEF", d.stats, d.points), source: "final", overridden: !!(d as { override?: unknown }).override, updated_at: now });
   }
   await upsert(cfg, "player_scores", rows, "season,week,player_id");
   if (skipped.length) log(`  player_scores: ${skipped.length} scored players not in nfl_players (not on any fantasy roster list): ${skipped.slice(0, 8).join(", ")}${skipped.length > 8 ? "…" : ""}`);

@@ -236,7 +236,7 @@
     return '<div class="card"><h3>Week ' + esc(w.week) + ' lineup <span class="tag">' + esc(statusText(w.data)) + "</span></h3>" +
       (mine.length ? lineupListHtml(mine) : '<p class="muted">No starters for week ' + esc(w.week) + " yet.</p>") +
       '<p class="muted small">Mirrored from MFL. <b>MFL is official for ' + esc(L.season) + "</b>: set your lineup there. Points are this site\'s, from live ESPN stats, finalized nightly by nflverse." +
-      (w.matchup ? ' <a href="#matchup/' + esc(w.week) + "/" + esc(w.matchup[0]) + "-" + esc(w.matchup[1]) + '">Open the matchup</a>' : "") + "</p></div>";
+      (w.matchup ? ' <a href="#live/' + esc(w.week) + "/" + esc(w.matchup[0]) + "-" + esc(w.matchup[1]) + '">Open the matchup</a>' : "") + "</p></div>";
   }
 
   // Week to show on My Team (2026): the current week if it has starters, else the latest week that does.
@@ -410,11 +410,5 @@
     });
   }
 
-  // For the matchup page (app.js): loads the signed-in member (if any) first.
-  function matchupLineups(season, week, teamIds) {
-    var who = st.me ? Promise.resolve(st.me) : root.B5Account ? root.B5Account.load().catch(function () { return null; }) : Promise.resolve(null);
-    return who.then(function (me) { st.me = me || st.me; return weekLineups(season, week, teamIds); });
-  }
-
-  root.B5MyTeam = { start: start, matchupLineups: matchupLineups, lineupListHtml: lineupListHtml, statusText: statusText, loadRosters: loadRosters, rostersFromRows: rostersFromRows, lineupsOpen: lineupsOpen, recordFor: recordFor, leagueRoster: leagueRoster, pickWeek: pickWeek, draftFrom: draftFrom, kickoffFor: kickoffFor };
+  root.B5MyTeam = { start: start, lineupListHtml: lineupListHtml, statusText: statusText, loadRosters: loadRosters, rostersFromRows: rostersFromRows, lineupsOpen: lineupsOpen, recordFor: recordFor, leagueRoster: leagueRoster, pickWeek: pickWeek, draftFrom: draftFrom, kickoffFor: kickoffFor };
 })(typeof globalThis !== "undefined" ? globalThis : this);

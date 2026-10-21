@@ -10,6 +10,7 @@
 
 import { runLive, type LiveDeps } from "./liveRun.ts";
 import { runPoolImport } from "../league/poolImport.ts";
+import { syncMflLive } from "./mflLive.ts";
 import { sbBase, sbHeaders, type SbConfig } from "../league/supabaseRest.ts";
 
 export interface EdgeEnv { SUPABASE_URL?: string; SUPABASE_SERVICE_ROLE_KEY?: string; MFL_LEAGUE?: string }
@@ -40,6 +41,14 @@ export async function handle(req: Request, env: EdgeEnv, fetchImpl: typeof fetch
     const season = Number(body.season), week = Number(body.week);
     if (!season || !week) return json({ error: "season and week required" }, 400);
     try { return json(await runPoolImport(sb, season, week, { by: String(body.by ?? "schedule"), fetchImpl, now: now() })); }
+    catch (err) { return json({ status: "failed", message: (err as Error).message }, 500); }
+  }
+  // TEMPORARY 2026: MFL's starters before kickoff (pg_cron "b5-mfl-lineups"), plus the live comparison.
+  if (body.job === "mfl_lineups") {
+    const season = Number(body.season), week = Number(body.week);
+    if (!season || !week) return json({ error: "season and week required" }, 400);
+    if (!env.MFL_LEAGUE) return json({ skipped: "no MFL league" });
+    try { return json(await syncMflLive({ sb, fetch: fetchImpl, league: env.MFL_LEAGUE, season, week, now: now() })); }
     catch (err) { return json({ status: "failed", message: (err as Error).message }, 500); }
   }
   const deps: LiveDeps = { fetch: fetchImpl, sb, now, log: m => console.log(m), ...(env.MFL_LEAGUE ? { mflLeague: env.MFL_LEAGUE } : {}) };

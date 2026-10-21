@@ -120,8 +120,11 @@
       A.api(cfg, s, "profiles?select=id,display_name,is_commissioner&order=display_name", {}, f),
       A.api(cfg, s, "invites?select=email,user_id&user_id=not.is.null", {}, f),
       A.api(cfg, s, "pool_imports?season=eq." + Number(L.season) + "&select=week,status,source,attempts,attempted_at,succeeded_at,picks,teams,replaced_test,message,compare,triggered_by&order=week.desc", {}, f),
-      A.api(cfg, s, "shadow_results?season=eq." + Number(L.season) + "&select=week,team_id,mfl_score,our_score,matched,details&order=week,team_id", {}, f)
+      A.api(cfg, s, "shadow_results?season=eq." + Number(L.season) + "&select=week,team_id,mfl_score,our_score,matched,details&order=week,team_id", {}, f),
+      A.api(cfg, s, "live_compare?season=eq." + Number(L.season) + "&select=week,team_id,our_points,mfl_points,players,diff_since,checked_at&order=week.desc,team_id&limit=36", {}, f)
     ]).then(function (r) {
+      var lc = (r[8] && r[8].ok && r[8].data) || [];
+      cm.live = lc.filter(function (x) { return x.week === (lc[0] || {}).week; });
       cm.poolImports = (r[6] && r[6].ok && r[6].data) || [];
       cm.shadow = (r[7] && r[7].ok && r[7].data) || [];
       cm.teams = r[0].data || []; cm.invites = r[1].data || []; cm.managers = r[2].data || []; cm.keep = r[3].ok ? r[3].data : null;
@@ -187,7 +190,7 @@
         ' <button class="linkish" type="button" data-cm="unassign" data-team="' + esc(x.team_id) + '" data-user="' + esc(x.user_id) + '">remove from team</button></li>';
     }).join("") + "</ul>" : '<p class="muted">No managers have joined yet.</p>';
 
-    root.innerHTML = "<section><h2>Commissioner</h2>" + m + poolImportHtml(cm.poolImports || []) + '<div class="card"><h3>Payouts</h3><p>Fees, payouts, manual awards, overrides and CSV export: <a href="#commish-payouts">open the payout tools</a>.</p></div>' + keep + shadow +
+    root.innerHTML = "<section><h2>Commissioner</h2>" + m + poolImportHtml(cm.poolImports || []) + '<div class="card"><h3>Payouts</h3><p>Fees, payouts, manual awards, overrides and CSV export: <a href="#commish-payouts">open the payout tools</a>.</p></div>' + keep + liveCompareHtml(cm.live || []) + shadow +
       '<div class="card"><h3>Invite a manager</h3>' + seedTeams +
       '<form class="acct-form" data-cm="invite">' +
       '<label>Email<input name="email" type="email" autocomplete="off" required></label>' +
@@ -216,6 +219,29 @@
       '<p class="muted small">Tuesdays 6:00 AM ET the official MFL picks replace the TEST picks for the week that just finished; then our totals are checked against MFL\'s results.</p>' +
       '<form class="po-inline" data-cm="pool-import"><label>Week <input name="week" type="number" min="1" max="18" placeholder="latest"></label>' +
       '<button class="btn" type="submit">Run import now</button></form>' + list + "</div>";
+  }
+
+  // Live check during games (2026): our live totals vs MFL's live scoring, per team and starter.
+  // MFL's live numbers can trail ours by a few minutes, so a difference that lasts is the one to look at.
+  function liveCompareHtml(rows) {
+    if (!rows.length) return '<div class="card"><h3>Live scoring vs MFL</h3><p class="muted">No live comparison yet. It runs during games (and every 15 minutes before kickoffs).</p></div>';
+    var n = function (x) { return x == null ? "–" : Number(x).toFixed(2).replace(/\.?0+$/, ""); };
+    var mins = function (iso) { return Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000)); };
+    var diff = rows.filter(function (x) { return x.diff_since; });
+    var items = rows.map(function (x) {
+      var p = x.players || [];
+      return "<li><b>" + esc(teamName(x.team_id)) + "</b>: ours " + esc(n(x.our_points)) + ", MFL " + esc(n(x.mfl_points)) +
+        (x.diff_since ? ' <span class="tag cm-bad">Differs for ' + esc(mins(x.diff_since)) + " min</span>" : ' <span class="tag">Match</span>') +
+        (p.length ? "<ul>" + p.map(function (z) {
+          return "<li>" + esc(z.name || z.mfl_id || z.player_id) + ": ours " + esc(n(z.ours)) + ", MFL " + esc(n(z.mfl)) +
+            (z.ours == null ? " (MFL starter we can't map)" : z.mfl == null ? " (our starter, not MFL's)" : "") + "</li>";
+        }).join("") + "</ul>" : "") + "</li>";
+    }).join("");
+    return '<div class="card"><h3>Live scoring vs MFL (week ' + esc(rows[0].week) + ")</h3>" +
+      '<p class="' + (diff.length ? "acct-msg err" : "acct-msg ok") + '">' + (diff.length ? esc(diff.length) + " of " + esc(rows.length) + " teams differ from MFL's live scoring." : "All " + esc(rows.length) + " teams match MFL's live scoring.") +
+      " Checked " + esc(et(rows[0].checked_at)) + ".</p>" +
+      '<p class="muted small">MFL is official for ' + esc(L.season) + ". MFL's live numbers can lag ours by a few minutes; a difference that lasts is worth a look.</p>" +
+      '<details><summary>Every team</summary><ul class="checks">' + items + "</ul></details></div>";
   }
 
   // Shadow mode (2026): our engine's team totals vs MFL's, per week, with every difference explained.

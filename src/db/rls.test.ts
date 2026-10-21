@@ -78,7 +78,7 @@ describe("every table is protected", () => {
 
 test("no default grants leak: anon only ever has SELECT, and only on public-data tables", async () => {
   const PUBLIC = new Set(["teams", "nfl_players", "nfl_games", "roster_entries", "score_weeks", "player_scores", "matchups", "standings", "announcements",
-    "season_settings", "team_scores", "awards", "guillotine", "survivor_status", "confidence_scores"]);
+    "season_settings", "team_scores", "awards", "guillotine", "survivor_status", "confidence_scores", "score_events"]);
   const g = (await db.query<{ table_name: string; privilege_type: string }>(`
     select table_name, privilege_type from information_schema.role_table_grants
     where table_schema = 'public' and grantee = 'anon'`)).rows;
@@ -695,6 +695,69 @@ describe("pools: survivor and confidence picks", () => {
     assert.equal((await rows(db, anon, `select * from public.survivor_status`)).length, 1);
     await denied(db, anon, `insert into public.confidence_scores (season, week, team_id, points, correct, decided, games) values (${S}, 1, '0001', 1, 1, 1, 1)`, /permission denied/);
     assert.equal(await affected(db, user(ALICE), `update public.survivor_status set winner = false`), 0);
+  });
+});
+
+describe("Live page (public read)", () => {
+  const lineup = (who: Who) => rows(db, who, `select team_id, slot, player_id, revealed from public.live_lineups(${S}, ${W}) order by team_id, slot`);
+  test("lineups: everyone sees a starter from his kickoff on; before that only his team's managers and the commissioner", async () => {
+    await db.exec(`insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '0001', 0, 'QB-KC')`);
+    const hidden = [{ team_id: "0001", slot: 0, player_id: "QB-KC", revealed: true }, { team_id: "0001", slot: 1, player_id: null, revealed: false },
+      { team_id: "0002", slot: 0, player_id: null, revealed: false }];
+    assert.deepEqual(await lineup(anon), hidden, "signed out: the kicked-off QB only");
+    assert.deepEqual(await lineup(user(BOB)), [hidden[0], hidden[1], { team_id: "0002", slot: 0, player_id: "QB-ARI", revealed: true }], "Bob sees his own lineup in full");
+    assert.deepEqual((await lineup(user(COMMISH)) as { player_id: string }[]).map(r => r.player_id), ["QB-KC", "RB-DET", "QB-ARI"]);
+    await denied(db, anon, `select * from public.lineup_slots`, /permission denied/);
+  });
+
+  test("scoring plays: every live change in a player's points is logged with the changed lines and the game clock", async () => {
+    const L = (stat: string, value: number, points: number, text: string) => ({ stat, value, points, text });
+    await db.exec(`update public.nfl_games set period = 2, clock = '4:12', status_detail = '2nd 4:12' where game_key = 'KC@LV'`);
+    const up = (pts: number, lines: unknown[], source = "live") => db.query(`insert into public.player_scores (season, week, player_id, game_key, points, lines, source)
+      values (${S}, ${W}, 'QB-KC', 'KC@LV', $1, $2, $3) on conflict (season, week, player_id) do update set points = excluded.points, lines = excluded.lines, source = excluded.source`,
+      [pts, JSON.stringify(lines), source]);
+    const yds98 = L("scrimmageYds", 98, 1, "98 total yards (50–99)"), yds112 = L("scrimmageYds", 112, 2, "112 total yards (100–149)");
+    await up(1, [yds98]);
+    await up(1, [yds98]);                                                    // unchanged pass: no event
+    await up(11, [L("passTdLength", 52, 10, "52-yd passing TD (51–75)"), yds98]);
+    await up(12, [L("passTdLength", 52, 10, "52-yd passing TD (51–75)"), yds112]);
+    await up(2, [yds112]);                                                   // stat correction: TD taken away
+    await up(2.5, [yds112], "final");                                        // nflverse rewrite: not a play
+    const ev = await rows(db, anon, `select delta::float, points::float, period, clock, lines from public.score_events where player_id = 'QB-KC' order by id`) as { delta: number; points: number; clock: string; lines: unknown }[];
+    assert.deepEqual(ev.map(e => [e.delta, e.points]), [[1, 1], [10, 11], [1, 12], [-10, 2]]);
+    assert.deepEqual(ev[1]!.lines, [{ stat: "passTdLength", delta: 10, text: "52-yd passing TD (51–75)" }]);
+    assert.deepEqual(ev[2]!.lines, [{ stat: "scrimmageYds", delta: 1, text: "112 total yards (100–149)" }]);
+    assert.deepEqual(ev[3]!.lines, [{ stat: "passTdLength", delta: -10, text: "Taken away: 52-yd passing TD (51–75)" }]);
+    assert.equal(ev[1]!.clock, "4:12");
+    await denied(db, anon, `insert into public.score_events (season, week, player_id, delta, points) values (${S}, ${W}, 'QB-KC', 1, 1)`, /permission denied/);
+    await denied(db, user(COMMISH), `delete from public.score_events`, /permission denied/);
+  });
+
+  test("MFL live comparison (2026): server jobs write; only the commissioner reads", async () => {
+    await db.exec(`insert into public.live_compare (season, week, team_id, our_points, mfl_points) values (${S}, ${W}, '0001', 50, 48)`);
+    assert.equal((await rows(db, user(COMMISH), `select * from public.live_compare`)).length, 1);
+    assert.equal((await rows(db, user(ALICE), `select * from public.live_compare`)).length, 0);
+    await denied(db, anon, `select * from public.live_compare`, /permission denied/);
+    await denied(db, user(COMMISH), `insert into public.live_compare (season, week, team_id, our_points) values (${S}, ${W}, '0002', 1)`, /permission denied/);
+    assert.equal(await affected(db, service, `update public.live_compare set mfl_points = 50`), 1);
+  });
+
+  test("MFL starters refresh (2026): every 15 minutes, every minute in the half hour before a kickoff, never once all games started", async () => {
+    const tick = (at: string) => db.query<{ r: string }>(`select private.mfl_lineups_tick('${at}'::timestamptz) as r`).then(x => x.rows[0]!.r);
+    await db.exec(`delete from public.nfl_games; insert into public.nfl_games (season, week, game_key, home, away, kickoff) values
+      (${S}, 7, 'A@B', 'B', 'A', '2026-10-25 17:00Z'), (${S}, 7, 'C@D', 'D', 'C', '2026-10-25 20:25Z'), (${S}, 6, 'E@F', 'F', 'E', '2026-10-20 00:15Z')`);
+    assert.equal(await tick("2026-10-23 12:07Z"), "waiting");
+    assert.equal(await tick("2026-10-23 12:15Z"), "requested 2026 week 7");
+    assert.equal(await tick("2026-10-25 16:41Z"), "requested 2026 week 7", "30 minutes before kickoff: every minute");
+    assert.equal(await tick("2026-10-25 18:07Z"), "waiting", "between kickoffs: back to every 15 minutes");
+    assert.equal(await tick("2026-10-25 20:01Z"), "requested 2026 week 7");
+    assert.equal(await tick("2026-10-25 21:00Z"), "every game has kicked off");
+    const c = (await db.query<{ body: { job: string; season: number; week: number; nonce: string } }>(`select body from net.calls`)).rows;
+    assert.equal(c.length, 3);
+    assert.deepEqual({ ...c[0]!.body, nonce: undefined }, { job: "mfl_lineups", season: S, week: 7, nonce: undefined });
+    await db.exec(`update public.nfl_games set season = 2027`);
+    assert.equal(await tick("2026-10-23 12:15Z"), "not the 2026 shadow season");
+    for (const who of [anon, user(COMMISH)]) await denied(db, who, `select private.mfl_lineups_tick()`, /permission denied/);
   });
 });
 

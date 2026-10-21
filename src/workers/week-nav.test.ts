@@ -12,7 +12,7 @@ vm.runInNewContext(read("route.js"), ctx);
 vm.runInNewContext(read("pools.js"), ctx);
 const R = ctx.B5Route as { parse(hash: string, known: (k: string) => boolean): { page: string; week: number | null } };
 const P = ctx.B5Pools as { weekChipsHtml(cfg: { start_week: number; end_week: number }, week: number): string };
-const PAGES = new Set(["home", "myteam", "schedule", "teams", "payouts", "survivor", "confidence", "history", "rules", "traditions", "account", "commish", "commish-payouts"]);
+const PAGES = new Set(["home", "myteam", "schedule", "teams", "payouts", "survivor", "confidence", "history", "rules", "traditions", "account", "commish", "commish-payouts", "live"]);
 const known = (k: string) => PAGES.has(k);
 
 test("every Confidence week button links back to the Confidence page with that week", () => {
@@ -37,7 +37,7 @@ test("routes: pool weeks, old #pool links, matchups, old #lineups, unknown pages
   assert.deepEqual({ ...R.parse("#pool/7", known) }, { page: "confidence", week: 7 });
   assert.deepEqual({ ...R.parse("#confidence", known) }, { page: "confidence", week: null });
   assert.deepEqual({ ...R.parse("#survivor", known) }, { page: "survivor", week: null });
-  assert.deepEqual({ ...R.parse("#matchup/3/0005-0006", known) }, { page: "matchup", week: 3, away: "0005", home: "0006" });
+  assert.deepEqual({ ...R.parse("#matchup/3/0005-0006", known) }, { page: "live", week: 3, away: "0005", home: "0006" }, "old matchup links open the Live detail");
   assert.deepEqual({ ...R.parse("#lineups", known) }, { page: "myteam", week: null });
   assert.deepEqual({ ...R.parse("#nope", known) }, { page: "home", week: null });
   assert.deepEqual({ ...R.parse("", known) }, { page: "home", week: null });
