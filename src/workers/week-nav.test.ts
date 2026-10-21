@@ -37,7 +37,7 @@ test("routes: pool weeks, old #pool links, matchups, old #lineups, unknown pages
   assert.deepEqual({ ...R.parse("#pool/7", known) }, { page: "confidence", week: 7 });
   assert.deepEqual({ ...R.parse("#confidence", known) }, { page: "confidence", week: null });
   assert.deepEqual({ ...R.parse("#survivor", known) }, { page: "survivor", week: null });
-  assert.deepEqual({ ...R.parse("#matchup/3/0005-0006", known) }, { page: "live", week: 3, away: "0005", home: "0006" }, "old matchup links open the Live detail");
+  assert.deepEqual({ ...R.parse("#matchup/3/0005-0006", known) }, { page: "live", week: 3, team: "0005", redirect: "#live/3/0005" }, "old matchup links redirect to the Live page");
   assert.deepEqual({ ...R.parse("#lineups", known) }, { page: "myteam", week: null });
   assert.deepEqual({ ...R.parse("#nope", known) }, { page: "home", week: null });
   assert.deepEqual({ ...R.parse("", known) }, { page: "home", week: null });

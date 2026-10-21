@@ -76,7 +76,7 @@
       </div>`;
     const divGame = a.division && a.division === h.division;
     const round = roundName(week);
-    return `<a class="card game" href="#live/${esc(week)}/${esc(aId)}-${esc(hId)}">
+    return `<a class="card game" href="#live/${esc(week)}/${esc(aId)}">
       ${side(a, aPts, hPts)}${side(h, hPts, aPts)}
       <div class="g-meta muted">${done ? (sched.liveWeeks && sched.liveWeeks.has(week) ? "Live" : "Final") : "Upcoming"}${round ? ` · ${esc(round)}` : divGame ? ` · ${esc(divName(a.division))} division game` : ""}</div>
     </a>`;
@@ -274,6 +274,7 @@
 
   function route() {
     const r = window.B5Route.parse(location.hash, k => !!pages[k]);
+    if (r.redirect && history.replaceState) history.replaceState(null, "", r.redirect);   // old matchup links -> #live/<week>/<team>
     const page = r.page;
     curPage = page;
     clearInterval(timer);

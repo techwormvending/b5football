@@ -1,14 +1,19 @@
-/* Live Scoring page (#live, #live/<week>, #live/<week>/<away>-<home>; old #matchup/... links land here).
-   Scoreboard: every matchup of the week with live totals, who's leading and how many starters are
-   done / playing / to go; the week's NFL games strip. Matchup detail: both lineups in slot order
-   (QB RB RB WR WR WR TE K DEF), then the bench (points shown, not counted); tap a player for the
-   points breakdown; the scoring-play feed (big plays highlighted).
+/* Live Scoring page, one page: #live, #live/<week>, #live/<week>/<franchiseId> (that matchup selected;
+   old #live/<week>/<away>-<home> and #matchup/... links redirect here, see route.js).
+   Top to bottom: week links (stay on Live), the week's NFL games strip, all matchup cards (totals,
+   leader, "X done · Y playing · Z to go · N bye", status, a bye warning), then the selected
+   matchup below the cards: both lineups in slot order (QB RB RB WR WR WR TE K DEF), the bench
+   (points shown, not counted), tap a player for his points breakdown, the scoring-play feed.
+   Clicking a card selects it in place (no page change; the URL becomes its deep link). Default:
+   the signed-in manager's matchup, else the first card. A bye is its own status: never done,
+   playing or to go, and it never makes a matchup Live.
    Public read, no sign-in. Each starter is revealed at his game's kickoff (public.live_lineups);
-   his team's managers and the commissioner see their lineup in full.
+   a starter on bye is flagged at once and named after the week's last kickoff; his team's
+   managers and the commissioner see their lineup in full.
    Only the Edge Function b5-live talks to ESPN. This page reads the database and subscribes to
-   Supabase Realtime on score_weeks (one row per live pass), then re-reads the week. The
-   breakdown lines come from the scoring engine (player_scores.lines, src/scoring/explain.ts);
-   nothing is recalculated here. All data is escaped. */
+   Supabase Realtime on score_weeks (one row per live pass), then re-reads the week and the
+   selected matchup and re-fills the page in place. The breakdown lines come from the scoring
+   engine (player_scores.lines, src/scoring/explain.ts); nothing is recalculated here. All data is escaped. */
 (function (root) {
   "use strict";
   var L = root.LEAGUE || {}, cfg = root.B5_SUPABASE, A = root.B5Auth;
@@ -48,27 +53,30 @@
   /** A player's game line: state, opponent ("vs ARI" / "@ ARI") and status (clock, kickoff time, Final, Bye). */
   function playerGame(games, nfl, now) {
     var g = gameFor(games, nfl), s = gameState(g, now);
-    if (!g) return { state: "bye", opp: "", text: "Bye", game: null };
+    // No game this week = bye (only once the week's games are known; nothing loaded isn't a bye).
+    if (!g) return games.length ? { state: "bye", opp: "", text: "Bye", game: null } : { state: "pre", opp: "", text: "", game: null };
     var opp = g.home === nfl ? "vs " + g.away : "@ " + g.home;
     var text = s === "final" ? "Final" : s === "live" ? (g.status_detail || (g.period ? "Q" + g.period + " " + (g.clock || "") : "Live")) : fmtKick(g.kickoff);
     return { state: s, opp: opp, text: text, game: g };
   }
-  /** Starters done / playing / to go. Hidden starters (not yet revealed) are still to go; a bye counts as done. */
+  /** Starters done / playing / to go / on bye. A bye is its own status: never done, playing or to go.
+      A hidden starter (not revealed yet) is to go, or on bye when the database flags his slot as a bye. */
   function progress(starters, games, now) {
-    var p = { done: 0, playing: 0, toGo: 0 };
+    var p = { done: 0, playing: 0, toGo: 0, bye: 0 };
     starters.forEach(function (s) {
-      if (!s.revealed) { p.toGo++; return; }
+      if (!s.revealed) { if (s.bye) p.bye++; else p.toGo++; return; }
       var st = playerGame(games, s.nfl_team, now).state;
-      if (st === "final" || st === "bye") p.done++; else if (st === "live") p.playing++; else p.toGo++;
+      if (st === "bye") p.bye++; else if (st === "final") p.done++; else if (st === "live") p.playing++; else p.toGo++;
     });
     return p;
   }
-  var progressText = function (p) { return p.done + " done · " + p.playing + " playing · " + p.toGo + " to go"; };
-  /** Matchup card status: official once nflverse has finalized the week; otherwise from the starters. */
+  var progressText = function (p) { return p.done + " done · " + p.playing + " playing · " + p.toGo + " to go · " + p.bye + " bye"; };
+  /** Matchup card status: official once nflverse has finalized the week. Otherwise LIVE only when at
+      least one starter's game is in progress or finished; byes never start a matchup. */
   function cardStatus(weekRow, a, h) {
     if (weekRow && (weekRow.status === "pending_review" || weekRow.status === "final")) return { key: "official", text: "Final (official)" };
-    var any = a.done + a.playing + h.done + h.playing, left = a.playing + a.toGo + h.playing + h.toGo;
-    if (!any) return { key: "upcoming", text: "Upcoming" };
+    var started = a.done + a.playing + h.done + h.playing, left = a.playing + a.toGo + h.playing + h.toGo;
+    if (!started) return { key: "upcoming", text: "Upcoming" };
     if (!left) return { key: "final", text: "Final (unofficial)" };
     return { key: "live", text: "Live" };
   }
@@ -89,27 +97,29 @@
   /** One team's lineup for the detail page: 9 slots (empty / hidden / player), the bench and the
       total (starters only; the bench never counts). Players: {id, name, pos, nfl_team, points, lines}. */
   function lineupView(slots, roster, scores, games, now) {
-    var bySlot = {}, starterIds = {}, hidden = 0;
-    slots.forEach(function (s) { bySlot[s.slot] = s; if (s.player_id) starterIds[s.player_id] = true; else hidden++; });
+    var bySlot = {}, starterIds = {}, hidden = 0, hiddenBye = 0;
+    slots.forEach(function (s) { bySlot[s.slot] = s; if (s.player_id) starterIds[s.player_id] = true; else if (s.bye) hiddenBye++; else hidden++; });
     var withScore = function (p) {
       var sc = scores[p.id] || null;
       return { id: p.id, name: p.name, pos: p.pos, nfl_team: p.nfl_team, points: sc ? Number(sc.points) : 0, scored: !!sc, lines: sc ? sc.lines || [] : [], game: playerGame(games, p.nfl_team, now) };
     };
-    var total = 0;
+    var total = 0, byes = 0;
     var starters = SLOTS.map(function (pos, i) {
       var s = bySlot[i];
       if (!s) return { slot: i, pos: pos, empty: true };
-      if (!s.player_id) return { slot: i, pos: pos, hidden: true };
+      if (!s.player_id) { if (s.bye) byes++; return { slot: i, pos: pos, hidden: true, bye: !!s.bye }; }
       var p = withScore({ id: s.player_id, name: s.name, pos: pos, nfl_team: s.nfl_team });
+      if (p.game.state === "bye") byes++;
       total += p.points;
       return { slot: i, pos: pos, player: p };
     });
     // Bench: rostered players who aren't starters. While some starters are still hidden, a
-    // player whose game hasn't started could be one of them, so he's listed only from kickoff.
+    // player whose game hasn't started (or who is on bye, for a hidden bye slot) could be one of
+    // them, so he isn't listed until that can't be the case.
     var bench = roster.filter(function (r) { return !starterIds[r.id]; }).map(function (r) { var p = withScore(r); p.bench = true; return p; })
-      .filter(function (p) { return !hidden || p.game.state !== "pre"; });
+      .filter(function (p) { return !(hidden && p.game.state === "pre") && !(hiddenBye && p.game.state === "bye"); });
     var benchTotal = bench.reduce(function (t, p) { return t + p.points; }, 0);
-    return { starters: starters, bench: bench, hidden: hidden, total: Math.round(total * 100) / 100, benchTotal: Math.round(benchTotal * 100) / 100 };
+    return { starters: starters, bench: bench, hidden: hidden + hiddenBye, byes: byes, total: Math.round(total * 100) / 100, benchTotal: Math.round(benchTotal * 100) / 100 };
   }
   /** Scoring plays for a matchup: events of either team's starters, newest first, with a big-play flag. */
   function feed(events, teams) {
@@ -155,11 +165,25 @@
   }
 
   // ---- Data -------------------------------------------------------------------------
-  var st = { me: null, week: null, pair: null, data: null, open: {}, el: null, tick: null, poll: null, loading: false, err: null };
+  // st.sel = the selected matchup's team (either side). st.d = the week (cards); st.dd = the
+  // selected matchup's detail ({key, roster, scores, events}).
+  var st = { me: null, week: null, sel: null, d: null, dd: null, open: {}, el: null, tick: null, poll: null, loading: false, err: null };
   var session = function () { return st.me && st.me.session; };
   var api = function (path, init) { return A.api(cfg, session(), path, init || {}, f); };
   var ok = function (x) { return x && x.ok ? x.data || [] : []; };
   var inList = function (ids) { return encodeURIComponent(ids.map(function (i) { return '"' + String(i).replace(/"/g, "") + '"'; }).join(",")); };
+  var byAway = function (a, b) { return a.away_team < b.away_team ? -1 : 1; };
+
+  /** The matchup to show: the one with `team` in it, else the viewer's own team's, else the first card. */
+  function pickMatchup(matchups, team, myTeams) {
+    var list = matchups.slice().sort(byAway);
+    var has = function (t) { return list.filter(function (m) { return t && (m.away_team === t || m.home_team === t); })[0]; };
+    var mine = (myTeams || []).map(has).filter(Boolean)[0];
+    return has(team) || mine || list[0] || null;
+  }
+  var myTeams = function () { return st.me && st.me.teams ? st.me.teams.map(function (t) { return t.team_id; }) : []; };
+  var selected = function () { return st.d ? pickMatchup(st.d.matchups, st.sel, myTeams()) : null; };
+  var pairKey = function (m) { return m ? m.away_team + "-" + m.home_team : ""; };
 
   function pickWeek() {
     return api("nfl_games?season=eq." + season + "&select=week,kickoff&order=kickoff&limit=1000").then(function (r) {
@@ -176,22 +200,24 @@
       api("rpc/live_lineups", { method: "POST", body: JSON.stringify({ p_season: season, p_week: w }) })
     ]).then(function (r) {
       if (!r[1].ok && !r[2].ok) throw new Error(r[2].error || "couldn't load the week");
-      var d = { week: w, sw: ok(r[0])[0] || null, games: ok(r[1]), matchups: ok(r[2]), slots: ok(r[3]), detail: null };
-      if (!st.pair) return d;
-      var teams = [st.pair.away, st.pair.home];
-      var ids = d.slots.filter(function (s) { return s.player_id && teams.indexOf(s.team_id) >= 0; }).map(function (s) { return s.player_id; });
-      return api("roster_entries?season=eq." + season + "&team_id=in.(" + inList(teams) + ")&select=team_id,player_id,nfl_players(name,position,nfl_team)").then(function (rr) {
-        var roster = ok(rr).map(function (x) { var n = x.nfl_players || {}; return { team: x.team_id, id: x.player_id, name: n.name || x.player_id, pos: n.position || "", nfl_team: n.nfl_team || "" }; });
-        var all = ids.concat(roster.map(function (x) { return x.id; }));
-        return Promise.all([
-          all.length ? api("player_scores" + q + "&player_id=in.(" + inList(all) + ")&select=player_id,points,lines,source") : Promise.resolve({ ok: true, data: [] }),
-          ids.length ? api("score_events" + q + "&player_id=in.(" + inList(ids) + ")&select=player_id,at,status_detail,delta,points,lines&order=at.desc&limit=300") : Promise.resolve({ ok: true, data: [] })
-        ]).then(function (x) {
-          var scores = {};
-          ok(x[0]).forEach(function (s) { scores[s.player_id] = s; });
-          d.detail = { roster: roster, scores: scores, events: ok(x[1]) };
-          return d;
-        });
+      return { week: w, sw: ok(r[0])[0] || null, games: ok(r[1]), matchups: ok(r[2]), slots: ok(r[3]) };
+    });
+  }
+  /** The selected matchup's rosters, player scores (with breakdown lines) and scoring plays. */
+  function loadDetail(d, m) {
+    if (!m) return Promise.resolve(null);
+    var q = "?season=eq." + season + "&week=eq." + d.week, teams = [m.away_team, m.home_team];
+    var ids = d.slots.filter(function (s) { return s.player_id && teams.indexOf(s.team_id) >= 0; }).map(function (s) { return s.player_id; });
+    return api("roster_entries?season=eq." + season + "&team_id=in.(" + inList(teams) + ")&select=team_id,player_id,nfl_players(name,position,nfl_team)").then(function (rr) {
+      var roster = ok(rr).map(function (x) { var n = x.nfl_players || {}; return { team: x.team_id, id: x.player_id, name: n.name || x.player_id, pos: n.position || "", nfl_team: n.nfl_team || "" }; });
+      var all = ids.concat(roster.map(function (x) { return x.id; }));
+      return Promise.all([
+        all.length ? api("player_scores" + q + "&player_id=in.(" + inList(all) + ")&select=player_id,points,lines,source") : Promise.resolve({ ok: true, data: [] }),
+        ids.length ? api("score_events" + q + "&player_id=in.(" + inList(ids) + ")&select=player_id,at,status_detail,delta,points,lines&order=at.desc&limit=300") : Promise.resolve({ ok: true, data: [] })
+      ]).then(function (x) {
+        var scores = {};
+        ok(x[0]).forEach(function (s) { scores[s.player_id] = s; });
+        return { key: d.week + ":" + pairKey(m), roster: roster, scores: scores, events: ok(x[1]) };
       });
     });
   }
@@ -207,7 +233,8 @@
   function freshHtml(d) {
     var s = staleness(d.sw, d.games, Date.now());
     var age = d.sw && d.sw.status === "live" && s.ageMs != null ? '<span class="lv-ago" data-lv-ago>' + esc(ago(s.ageMs)) + "</span>" : "";
-    return '<div class="lv-fresh">' + age + (s.stale ? '<span class="lv-delayed" role="status">Live scoring delayed — showing the last good numbers.</span>' : "") + "</div>";
+    return age + (s.stale ? '<span class="lv-delayed" role="status">Live scoring delayed — showing the last good numbers.</span>' : "") +
+      (st.err ? '<span class="lv-delayed">' + esc(st.err) + "</span>" : "");
   }
   function nflStrip(d) {
     if (!d.games.length) return "";
@@ -220,40 +247,43 @@
     }).join("") + "</div>";
   }
   var teamSlots = function (d, team) { return d.slots.filter(function (s) { return s.team_id === team; }); };
-  function scoreboardHtml(d) {
-    var now = Date.now();
-    var cards = d.matchups.slice().sort(function (a, b) { return a.away_team < b.away_team ? -1 : 1; }).map(function (m) {
+  var byeWarn = function (n) { return n ? '<span class="lv-warn">⚠ ' + n + " starter" + (n === 1 ? "" : "s") + " on bye</span>" : ""; };
+  function cardsHtml(d) {
+    var now = Date.now(), sel = pairKey(selected());
+    var cards = d.matchups.slice().sort(byAway).map(function (m) {
       var a = teamById(m.away_team), h = teamById(m.home_team);
       var pa = progress(teamSlots(d, a.id), d.games, now), ph = progress(teamSlots(d, h.id), d.games, now);
       var sa = Number(m.away_score || 0), sh = Number(m.home_score || 0), cs = cardStatus(d.sw, pa, ph);
       var lead = cs.key === "upcoming" || sa === sh ? null : sa > sh ? "a" : "h";
       var row = function (t, s, p, isLead) {
-        return '<div class="lv-row' + (isLead ? " lead" : "") + '">' + logo(t) + '<div class="lv-name"><b>' + esc(t.name) + "</b><span class=\"muted small\">" + esc(progressText(p)) + '</span></div><span class="lv-pts">' + esc(pts(s)) + "</span></div>";
+        return '<div class="lv-row' + (isLead ? " lead" : "") + '">' + logo(t) + '<div class="lv-name"><b>' + esc(t.name) + '</b><span class="muted small">' + esc(progressText(p)) + "</span>" + byeWarn(p.bye) +
+          '</div><span class="lv-pts">' + esc(pts(s)) + "</span></div>";
       };
-      return '<a class="card lv-card lv-' + cs.key + '" href="#live/' + esc(d.week) + "/" + esc(a.id) + "-" + esc(h.id) + '"><span class="tag lv-st">' + esc(cs.text) + "</span>" +
-        row(a, sa, pa, lead === "a") + row(h, sh, ph, lead === "h") + "</a>";
+      var isSel = pairKey(m) === sel;
+      return '<a class="card lv-card lv-' + cs.key + (isSel ? " sel" : "") + '" href="#live/' + esc(d.week) + "/" + esc(a.id) + '" data-lv-team="' + esc(a.id) + '"' + (isSel ? ' aria-current="true"' : "") + '>' +
+        '<span class="tag lv-st">' + esc(cs.text) + "</span>" + row(a, sa, pa, lead === "a") + row(h, sh, ph, lead === "h") + "</a>";
     }).join("");
-    return '<section class="lv"><h2>Live</h2>' + unofficial() + weekChips() + freshHtml(d) + nflStrip(d) +
-      (cards ? '<div class="lv-board">' + cards + "</div>" : '<div class="card muted">No matchups for week ' + esc(d.week) + ".</div>") +
-      '<p class="muted small">Updates by itself during games. Starters are shown from their kickoff on.</p></section>';
+    return cards ? '<div class="lv-board">' + cards + "</div>" : '<div class="card muted">No matchups for week ' + esc(d.week) + ".</div>";
   }
 
   function breakdownHtml(p) {
     var lines = p.lines || [];
-    if (!lines.length) return '<div class="lv-bd muted small">' + (p.scored ? "No scoring lines yet." : p.game.state === "pre" ? "Hasn't played yet." : "No points.") + "</div>";
+    if (!lines.length) return '<div class="lv-bd muted small">' + (p.game.state === "bye" ? "On bye this week: no game, no points." : p.scored ? "No scoring lines yet." : p.game.state === "pre" ? "Hasn't played yet." : "No points.") + "</div>";
     var sum = lineSum(lines);
     return '<div class="lv-bd"><ul>' + lines.map(function (l) { return "<li><span>" + esc(l.text) + '</span><b>→ ' + esc(num(l.points)) + "</b></li>"; }).join("") +
       '</ul><p class="lv-bd-total"><span>Total</span><b>' + esc(pts(sum)) + "</b></p></div>";
   }
   function playerCell(p, side) {
     if (!p) return '<div class="lv-p ' + side + ' muted">—</div>';
-    var g = p.game, live = g.state === "live";
-    return '<button type="button" class="lv-p ' + side + (live ? " playing" : "") + '" data-lv-player="' + esc(p.id) + '" aria-expanded="' + (st.open[p.id] ? "true" : "false") + '">' +
+    var g = p.game, live = g.state === "live", bye = g.state === "bye";
+    var shown = bye ? '<span class="lv-bye' + (p.bench ? " bench" : "") + '">BYE</span>' : esc(g.state === "pre" && !p.scored ? "–" : pts(p.points));
+    return '<button type="button" class="lv-p ' + side + (live ? " playing" : "") + (bye && !p.bench ? " on-bye" : "") + '" data-lv-player="' + esc(p.id) + '" aria-expanded="' + (st.open[p.id] ? "true" : "false") + '">' +
       '<span class="lv-pn">' + esc(p.name) + '</span><span class="lv-pg small muted">' + esc((p.bench ? p.pos + " · " : "") + (p.nfl_team || "") + (g.opp ? " " + g.opp : "")) + " · " + esc(g.text) + "</span></button>" +
-      '<span class="lv-pp ' + side + '">' + esc(g.state === "pre" && !p.scored ? "–" : pts(p.points)) + "</span>";
+      '<span class="lv-pp ' + side + '">' + shown + "</span>";
   }
   function slotRow(pos, a, h, extra) {
     var cell = function (x, side) {
+      if (x && x.hidden && x.bye) return '<div class="lv-p ' + side + ' muted small">🔒 Starter on bye</div><span class="lv-pp ' + side + '"><span class="lv-bye">BYE</span></span>';
       if (x && x.hidden) return '<div class="lv-p ' + side + ' muted small">🔒 Revealed at kickoff</div><span class="lv-pp ' + side + '">–</span>';
       if (x && x.empty) return '<div class="lv-p ' + side + ' muted small">Empty</div><span class="lv-pp ' + side + '">–</span>';
       return playerCell(x && x.player !== undefined ? x.player : x, side);
@@ -262,18 +292,19 @@
     return '<li class="lv-slot' + (extra || "") + '">' + cell(a, "a") + '<span class="pos pos-' + esc(pos) + '">' + esc(pos) + "</span>" + cell(h, "h") +
       (open ? '<div class="lv-open">' + open + "</div>" : "") + "</li>";
   }
-  function detailHtml(d) {
-    var a = teamById(st.pair.away), h = teamById(st.pair.home), now = Date.now(), dt = d.detail;
-    var m = d.matchups.filter(function (x) { return x.away_team === a.id && x.home_team === h.id; })[0];
-    var back = '<p><a href="#live/' + esc(d.week) + '">← Week ' + esc(d.week) + " scoreboard</a></p>";
-    if (!m) return '<section class="lv"><h2>Matchup</h2>' + back + '<div class="card muted">That matchup isn\'t on the week ' + esc(d.week) + " schedule.</div></section>";
+  function detailHtml(d, m, dt) {
+    if (!m) return "";
+    if (!dt || dt.key !== d.week + ":" + pairKey(m)) return '<div class="card muted">Loading the matchup…</div>';
+    var a = teamById(m.away_team), h = teamById(m.home_team), now = Date.now();
     var side = function (t) { return lineupView(teamSlots(d, t.id), dt.roster.filter(function (r) { return r.team === t.id; }), dt.scores, d.games, now); };
     var va = side(a), vh = side(h);
     var pa = progress(teamSlots(d, a.id), d.games, now), ph = progress(teamSlots(d, h.id), d.games, now), cs = cardStatus(d.sw, pa, ph);
     var lead = cs.key === "upcoming" || va.total === vh.total ? null : va.total > vh.total ? "a" : "h";
+    var ht = function (t, v, p, isLead) {
+      return '<div class="lv-ht' + (isLead ? " lead" : "") + '">' + logo(t) + "<b>" + esc(t.name) + '</b><span class="lv-big">' + esc(pts(v.total)) + '</span><span class="muted small">' + esc(progressText(p)) + "</span>" + byeWarn(p.bye) + "</div>";
+    };
     var head = '<div class="card lv-head"><span class="tag lv-st">' + esc(cs.text) + (d.sw && d.sw.status === "pending_review" ? " · awaiting commissioner sign-off" : "") + "</span>" +
-      '<div class="lv-vs"><div class="lv-ht' + (lead === "a" ? " lead" : "") + '">' + logo(a) + "<b>" + esc(a.name) + '</b><span class="lv-big">' + esc(pts(va.total)) + '</span><span class="muted small">' + esc(progressText(pa)) + "</span></div>" +
-      '<div class="lv-ht' + (lead === "h" ? " lead" : "") + '">' + logo(h) + "<b>" + esc(h.name) + '</b><span class="lv-big">' + esc(pts(vh.total)) + '</span><span class="muted small">' + esc(progressText(ph)) + "</span></div></div></div>";
+      '<div class="lv-vs">' + ht(a, va, pa, lead === "a") + ht(h, vh, ph, lead === "h") + "</div></div>";
     var starters = SLOTS.map(function (pos, i) { return slotRow(pos, va.starters[i], vh.starters[i]); }).join("");
     var nb = Math.max(va.bench.length, vh.bench.length), bench = "";
     for (var i = 0; i < nb; i++) { var x = va.bench[i], y = vh.bench[i]; bench += slotRow("BN", x || null, y || null, " bench"); }
@@ -294,27 +325,65 @@
         '<span class="lv-fd ' + (e.delta < 0 ? "down" : "up") + '">' + (e.delta > 0 ? "+" : "") + esc(num(e.delta)) + "</span>" +
         '<span class="lv-fl small">' + esc(e.lines.map(function (l) { return l.text + " (" + (l.delta > 0 ? "+" : "") + num(l.delta) + ")"; }).join("; ")) + "</span></li>";
     }).join("") + "</ul>" : '<p class="muted small">No scoring plays yet. Plays are recorded as they happen during games (from week 7 of 2026 on).</p>') + "</div>";
-    return '<section class="lv lv-detail"><h2>Week ' + esc(d.week) + "</h2>" + unofficial() + back + freshHtml(d) + head + lineups + feedHtml + "</section>";
+    return '<h3 class="lv-detail-h">' + esc(a.name) + " vs " + esc(h.name) + "</h3>" + head + lineups + feedHtml;
   }
 
+  // One page: the shell (title, label, week links) is built once per week; the other parts are
+  // re-filled in place, so a Realtime update never reloads the page or the selected matchup.
+  function shellHtml() {
+    return '<section class="lv"><h2>Live</h2>' + unofficial() + weekChips() +
+      '<div class="lv-fresh" data-lv="fresh"></div><div data-lv="strip"></div><div data-lv="cards"><p class="muted">Loading…</p></div>' +
+      '<div class="lv-detail" id="lvDetail" data-lv="detail"></div>' +
+      '<p class="muted small">Updates by itself during games. Starters are shown from their kickoff on.</p></section>';
+  }
   function render() {
-    if (!st.el || !st.data) return;
-    var y = root.scrollY;
-    st.el.innerHTML = st.pair ? detailHtml(st.data) : scoreboardHtml(st.data);
-    if (st.err) st.el.querySelector(".lv-fresh").insertAdjacentHTML("beforeend", '<span class="lv-delayed">' + esc(st.err) + "</span>");
-    var strip = st.el.querySelector(".weeks"), act = st.el.querySelector(".wk.active");
-    if (strip && act) strip.scrollLeft = act.offsetLeft - strip.offsetLeft - (strip.clientWidth - act.offsetWidth) / 2;
+    if (!st.el || !st.d) return;
+    var part = function (k) { return st.el.querySelector('[data-lv="' + k + '"]'); };
+    if (!part("cards")) {
+      st.el.innerHTML = shellHtml();
+      var strip = st.el.querySelector(".weeks"), act = st.el.querySelector(".wk.active");
+      if (strip && act) strip.scrollLeft = act.offsetLeft - strip.offsetLeft - (strip.clientWidth - act.offsetWidth) / 2;
+    }
+    var y = root.scrollY, d = st.d;
+    part("fresh").innerHTML = freshHtml(d);
+    var sx = part("strip").firstChild ? part("strip").firstChild.scrollLeft : 0;
+    part("strip").innerHTML = nflStrip(d);
+    if (part("strip").firstChild) part("strip").firstChild.scrollLeft = sx;
+    part("cards").innerHTML = cardsHtml(d);
+    part("detail").innerHTML = detailHtml(d, selected(), st.dd);
     if (root.scrollTo && st.rendered) root.scrollTo(0, y);
     st.rendered = true;
   }
   function refresh() {
     if (st.loading) { st.again = true; return; }
     st.loading = true;
-    loadWeek().then(function (d) { st.data = d; st.err = null; }, function (e) { st.err = "Couldn't refresh: " + e.message; })
+    loadWeek().then(function (d) {
+      st.d = d; st.err = null;
+      return loadDetail(d, selected()).then(function (dd) { if (dd) st.dd = dd; });
+    }).catch(function (e) { st.err = "Couldn't refresh: " + e.message; })
       .then(function () {
         st.loading = false; render();
         if (st.again) { st.again = false; refresh(); }
       });
+  }
+  var detailTop = function (det) {
+    var head = root.document.querySelector("header.top");
+    return Math.max(0, det.getBoundingClientRect().top + root.scrollY - (head ? head.offsetHeight : 0) - 8);
+  };
+  /** Select a matchup (card click): highlight it, load it below, keep the URL a deep link. */
+  function select(team) {
+    st.sel = team; st.open = {};
+    var m = selected();
+    if (root.history && root.history.replaceState) root.history.replaceState(null, "", "#live/" + st.week + "/" + team);
+    render();
+    var el = st.el;
+    loadDetail(st.d, m).then(function (dd) {
+      if (st.el !== el || pairKey(selected()) !== pairKey(m)) return;
+      st.dd = dd; render();
+      var det = st.el.querySelector("#lvDetail");
+      // Phones: the detail is below six cards, so bring it into view (just under the sticky header).
+      if (det && root.matchMedia && root.matchMedia("(max-width: 760px)").matches) root.scrollTo({ top: detailTop(det), behavior: "smooth" });
+    }, function (e) { st.err = "Couldn't load the matchup: " + e.message; render(); });
   }
 
   function stop() {
@@ -323,7 +392,7 @@
   }
   function start(rootEl, r) {
     stop();
-    st.el = rootEl; st.pair = r && r.away ? { away: r.away, home: r.home } : null; st.data = null; st.rendered = false; st.open = {};
+    st.el = rootEl; st.sel = r && r.team ? r.team : null; st.d = null; st.dd = null; st.rendered = false; st.open = {}; st.err = null;
     if (!(cfg && cfg.configured && A)) { rootEl.innerHTML = '<section><h2>Live</h2><div class="card">Not set up yet.</div></section>'; return; }
     rootEl.innerHTML = '<section class="lv"><h2>Live</h2><p class="muted">Loading…</p></section>';
     var el = rootEl;
@@ -336,20 +405,26 @@
       st.week = w;
       return loadWeek().then(function (d) {
         if (st.el !== el) return;
-        st.data = d; render();
-        // Realtime: each live pass updates score_weeks; re-read when this week's row changes.
-        rtStart(function (rec) { if (!rec || Number(rec.week) === st.week) refresh(); }, session() ? session().access_token : null);
-        // "updated Xs ago" every second; a slow poll as a fallback while games are on and Realtime isn't joined.
-        st.tick = setInterval(function () {
-          var x = st.el && st.el.querySelector("[data-lv-ago]"), s = st.data && staleness(st.data.sw, st.data.games, Date.now());
-          if (x && s && s.ageMs != null) x.textContent = ago(s.ageMs);
-          if (s && s.stale && st.el && !st.el.querySelector(".lv-delayed")) render();
-        }, 1000);
-        st.poll = setInterval(function () { if (!rt.joined && st.data && staleness(st.data.sw, st.data.games, Date.now()).on && !(root.document && root.document.hidden)) refresh(); }, 60000);
+        st.d = d; render();
+        return loadDetail(d, selected()).then(function (dd) {
+          if (st.el !== el) return;
+          st.dd = dd; render();
+          // Realtime: each live pass updates score_weeks; re-read the week and the selected matchup.
+          rtStart(function (rec) { if (!rec || Number(rec.week) === st.week) refresh(); }, session() ? session().access_token : null);
+          // "updated Xs ago" every second; a slow poll as a fallback while games are on and Realtime isn't joined.
+          st.tick = setInterval(function () {
+            var x = st.el && st.el.querySelector("[data-lv-ago]"), s = st.d && staleness(st.d.sw, st.d.games, Date.now());
+            if (x && s && s.ageMs != null) x.textContent = ago(s.ageMs);
+            if (s && s.stale && st.el && !st.el.querySelector(".lv-delayed")) render();
+          }, 1000);
+          st.poll = setInterval(function () { if (!rt.joined && st.d && staleness(st.d.sw, st.d.games, Date.now()).on && !(root.document && root.document.hidden)) refresh(); }, 60000);
+        });
       });
     }).catch(function (e) { if (st.el === el) el.innerHTML = '<section class="lv"><h2>Live</h2><p class="acct-msg err">Couldn\'t load: ' + esc(e.message) + "</p></section>"; });
 
     rootEl.addEventListener("click", function (e) {
+      var card = e.target.closest("a.lv-card[data-lv-team]");
+      if (card && !(e.metaKey || e.ctrlKey || e.shiftKey)) { e.preventDefault(); select(card.dataset.lvTeam); return; }
       var b = e.target.closest("[data-lv-player]"); if (!b) return;
       var id = b.dataset.lvPlayer;
       st.open[id] = !st.open[id];
@@ -359,5 +434,6 @@
 
   root.B5Live = { start: start, stop: stop, gameState: gameState, playerGame: playerGame, progress: progress, progressText: progressText, cardStatus: cardStatus,
     staleness: staleness, ago: ago, lineupView: lineupView, feed: feed, lineSum: lineSum,
-    weekChipsHtml: function (w) { st.week = w; return weekChips(); }, scoreboardHtml: scoreboardHtml };
+    weekChipsHtml: function (w) { st.week = w; return weekChips(); }, pickMatchup: pickMatchup,
+    cardsHtml: function (d, team, mine) { st.d = d; st.sel = team || null; st.me = mine ? { teams: mine.map(function (t) { return { team_id: t }; }) } : null; return cardsHtml(d); } };
 })(typeof globalThis !== "undefined" ? globalThis : this);

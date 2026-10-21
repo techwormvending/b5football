@@ -710,6 +710,20 @@ describe("Live page (public read)", () => {
     await denied(db, anon, `select * from public.lineup_slots`, /permission denied/);
   });
 
+  test("a starter on bye: flagged at once for everyone, named only to his team until the week's last kickoff", async () => {
+    await db.exec(`insert into public.nfl_players (id, name, position, nfl_team) values ('WR-PIT', 'Bye Receiver', 'WR', 'PIT');
+      insert into public.roster_entries (season, team_id, player_id) values (${S}, '0002', 'WR-PIT');
+      insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '0002', 3, 'WR-PIT')`);
+    const bye = (who: Who) => rows(db, who, `select player_id, revealed, bye from public.live_lineups(${S}, ${W}) where slot = 3`);
+    assert.deepEqual(await bye(anon), [{ player_id: null, revealed: false, bye: true }], "anon: on bye, but not who");
+    assert.deepEqual(await bye(user(BOB)), [{ player_id: "WR-PIT", revealed: true, bye: true }]);
+    assert.deepEqual((await rows(db, anon, `select bye from public.live_lineups(${S}, ${W}) where team_id = '0002' and slot = 0`)), [{ bye: false }], "a player with a game later isn't a bye");
+    await db.exec(`update public.nfl_games set kickoff = now() - interval '2 hours'`);
+    assert.deepEqual(await bye(anon), [{ player_id: "WR-PIT", revealed: true, bye: true }], "named once every game this week has kicked off");
+    await db.exec(`delete from public.nfl_games where week = ${W}`);
+    assert.deepEqual((await rows(db, user(BOB), `select bye from public.live_lineups(${S}, ${W}) where slot = 3`)), [{ bye: false }], "no games loaded for the week: nobody is on bye");
+  });
+
   test("scoring plays: every live change in a player's points is logged with the changed lines and the game clock", async () => {
     const L = (stat: string, value: number, points: number, text: string) => ({ stat, value, points, text });
     await db.exec(`update public.nfl_games set period = 2, clock = '4:12', status_detail = '2nd 4:12' where game_key = 'KC@LV'`);

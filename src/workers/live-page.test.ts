@@ -38,18 +38,48 @@ test("game status transitions: before kickoff -> live (clock) -> final; a team o
   assert.equal(V.playerGame(games, "PIT", NOW).state, "bye");
 });
 
-test("done / playing / to go, and the card status: Upcoming -> Live -> Final (unofficial) -> Final (official)", () => {
+test("done / playing / to go / bye, and the card status: Upcoming -> Live -> Final (unofficial) -> Final (official)", () => {
   const s = (nfl: string) => ({ revealed: true, nfl_team: nfl });
-  const p = V.progress([s("KC"), s("DET"), s("MIA"), { revealed: false }, s("PIT")], games, NOW);
-  assert.deepEqual(plain(p), { done: 2, playing: 1, toGo: 2 }, "final + bye done, DET playing, MIA + hidden to go");
-  assert.equal(V.progressText(p), "2 done · 1 playing · 2 to go");
-  const z = { done: 0, playing: 0, toGo: 9 }, fin = { done: 9, playing: 0, toGo: 0 };
+  const p = V.progress([s("KC"), s("DET"), s("MIA"), { revealed: false }, s("PIT"), { revealed: false, bye: true }], games, NOW);
+  assert.deepEqual(plain(p), { done: 1, playing: 1, toGo: 2, bye: 2 }, "KC final done, DET playing, MIA + hidden to go, PIT + a hidden bye slot on bye");
+  assert.equal(V.progressText(p), "1 done · 1 playing · 2 to go · 2 bye");
+  const z = { done: 0, playing: 0, toGo: 9, bye: 0 }, fin = { done: 9, playing: 0, toGo: 0, bye: 0 };
   assert.equal(V.cardStatus({ status: "live" }, z, z).text, "Upcoming");
   assert.equal(V.cardStatus({ status: "live" }, p, z).text, "Live");
   assert.equal(V.cardStatus({ status: "live" }, fin, fin).text, "Final (unofficial)");
   assert.equal(V.cardStatus({ status: "pending_review" }, fin, fin).text, "Final (official)");
   assert.equal(V.cardStatus({ status: "final" }, fin, fin).text, "Final (official)");
   assert.equal(V.cardStatus(null, z, z).text, "Upcoming");
+});
+
+test("byes never make a matchup Live: before any game starts, starters on bye are just on bye", () => {
+  const early = [g("DET@ARI", "2026-10-25T17:00:00Z"), g("BUF@MIA", "2026-10-25T20:25:00Z")];   // nothing kicked off
+  const at = Date.parse("2026-10-25T12:00:00Z"), s = (nfl: string) => ({ revealed: true, nfl_team: nfl });
+  const a = V.progress([s("PIT"), s("NYJ"), { revealed: false }, { revealed: false, bye: true }], early, at);
+  const h = V.progress([{ revealed: false }, { revealed: false }], early, at);
+  assert.deepEqual(plain(a), { done: 0, playing: 0, toGo: 1, bye: 3 });
+  assert.equal(V.cardStatus({ status: "live" }, a, h).text, "Upcoming", "3 byes aren't 3 done");
+  const allBye = { done: 0, playing: 0, toGo: 0, bye: 9 };
+  assert.equal(V.cardStatus({ status: "live" }, allBye, allBye).text, "Upcoming", "byes alone never start a matchup");
+  assert.equal(V.cardStatus({ status: "live" }, { done: 1, playing: 0, toGo: 0, bye: 8 }, allBye).text, "Final (unofficial)", "one starter played, the rest on bye");
+  assert.equal(V.playerGame([], "PIT", NOW).state, "pre", "the week's games not loaded yet: not a bye");
+});
+
+test("starters on bye: BYE status, counted for the warning, hidden bye slots flagged; bench byes held back while a bye slot is hidden", () => {
+  const slots = [{ slot: 0, player_id: "QB1", name: "Q", nfl_team: "PIT", revealed: true }, { slot: 1, player_id: null, revealed: false, bye: true },
+    { slot: 2, player_id: "RB2", name: "R2", nfl_team: "ARI", revealed: true }];
+  const roster = [{ id: "QB1", name: "Q", pos: "QB", nfl_team: "PIT" }, { id: "RB2", name: "R2", pos: "RB", nfl_team: "ARI" },
+    { id: "RB7", name: "R7", pos: "RB", nfl_team: "NYJ" }, { id: "WR9", name: "W9", pos: "WR", nfl_team: "DET" }];
+  const v = V.lineupView(slots, roster, { RB2: { points: 8, lines: [] } }, games, NOW);
+  assert.equal(v.starters[0].player.game.state, "bye");
+  assert.equal(v.byes, 2, "the revealed bye QB and the hidden bye RB");
+  assert.equal(v.starters[1].bye, true);
+  assert.equal(v.total, 8);
+  assert.deepEqual(plain(v.bench.map((p: { id: string }) => p.id)), ["WR9"], "RB7 (bye) could be the hidden bye starter");
+  const html = V.cardsHtml({ week: 7, sw: { status: "live" }, games, matchups: [{ away_team: "0001", home_team: "0002", away_score: 8, home_score: 0 }],
+    slots: [...slots.map(s => ({ ...s, team_id: "0001" })), { team_id: "0002", slot: 0, player_id: null, revealed: false }] });
+  assert.match(html, /⚠ 2 starters on bye/);
+  assert.match(html, /0 done · 1 playing · 0 to go · 2 bye/);
 });
 
 test("stale-data notice: only while a game is on, when the last live pass is over 3 minutes old or flagged delayed", () => {
@@ -96,7 +126,7 @@ test("scoring-play feed: the two teams' starters only, newest first, 6+ point pl
   assert.deepEqual(plain(out.map((e: { player_id: string; team: string; big: boolean }) => [e.player_id, e.team, e.big])), [["RB9", "0002", false], ["QB1", "0001", true]]);
 });
 
-test("every Live week link stays on the Live page; matchup links (old ones too) open the Live detail", () => {
+test("one page: week links stay on Live; #live/<week>/<franchiseId> selects that matchup; old matchup links redirect", () => {
   const known = (k: string) => ["home", "live", "schedule"].includes(k);
   const html = V.weekChipsHtml(7);
   const links = [...html.matchAll(/<a [^>]*href="([^"]+)"[^>]*>(\d+)<\/a>/g)];
@@ -104,18 +134,35 @@ test("every Live week link stays on the Live page; matchup links (old ones too) 
   for (const [, href, label] of links) assert.deepEqual({ ...R.parse(href!, known) }, { page: "live", week: Number(label) });
   assert.doesNotMatch(read("live.js"), /data-sched-week|data-week=/, "the Schedule's week handler can't grab these");
   assert.deepEqual({ ...R.parse("#live", known) }, { page: "live", week: null });
-  assert.deepEqual({ ...R.parse("#live/7/0001-0002", known) }, { page: "live", week: 7, away: "0001", home: "0002" });
-  assert.deepEqual({ ...R.parse("#matchup/3/0005-0006", known) }, { page: "live", week: 3, away: "0005", home: "0006" });
+  assert.deepEqual({ ...R.parse("#live/7/0002", known) }, { page: "live", week: 7, team: "0002" });
+  assert.deepEqual({ ...R.parse("#live/7/0001-0002", known) }, { page: "live", week: 7, team: "0001", redirect: "#live/7/0001" });
+  assert.deepEqual({ ...R.parse("#matchup/3/0005-0006", known) }, { page: "live", week: 3, team: "0005", redirect: "#live/3/0005" });
+  assert.match(read("app.js"), /r\.redirect && history\.replaceState/, "the router rewrites old links in place");
 });
 
-test("scoreboard: one card per matchup linking to its detail, leader marked, 2026 labelled unofficial", () => {
-  const html = V.scoreboardHtml({ week: 7, sw: { status: "live", updated_at: new Date().toISOString(), live_delayed: false }, games,
-    matchups: [{ away_team: "0001", home_team: "0002", away_score: 40.5, home_score: 38 }],
-    slots: [{ team_id: "0001", slot: 0, player_id: "QB1", nfl_team: "DET", revealed: true }, { team_id: "0002", slot: 0, player_id: null, revealed: false }] });
-  assert.match(html, /Unofficial — MFL is official for 2026/);
-  assert.match(html, /href="#live\/7\/0001-0002"/);
-  assert.match(html, /lv-row lead"><div class="logo sm">N<\/div><div class="lv-name"><b>NSFW/);
-  assert.match(html, /0 done · 1 playing · 0 to go/);
-  assert.match(html, /<span class="tag lv-st">Live<\/span>/);
-  assert.match(html, /DET <b>10<\/b>/, "the NFL strip shows live scores");
+test("selected matchup: the deep-linked team's (either side), else the signed-in manager's, else the first card", () => {
+  const ms = [{ away_team: "0007", home_team: "0005" }, { away_team: "0001", home_team: "0011" }, { away_team: "0004", home_team: "0002" }];
+  const pick = (team: string | null, mine: string[] = []) => { const m = V.pickMatchup(ms, team, mine); return m && m.away_team + "-" + m.home_team; };
+  assert.equal(pick("0011"), "0001-0011", "home side deep link");
+  assert.equal(pick("0004"), "0004-0002");
+  assert.equal(pick(null, ["0002"]), "0004-0002", "signed in: my team's matchup");
+  assert.equal(pick("0007", ["0002"]), "0007-0005", "a deep link beats my team");
+  assert.equal(pick(null), "0001-0011", "signed out: the first card (cards are ordered by away team)");
+  assert.equal(pick("9999"), "0001-0011", "unknown team: the first card");
+  assert.equal(V.pickMatchup([], "0001", []), null);
 });
+
+test("cards: one per matchup, each a deep link to itself, the selected one highlighted, leader marked", () => {
+  const d = { week: 7, sw: { status: "live", updated_at: new Date().toISOString(), live_delayed: false }, games,
+    matchups: [{ away_team: "0001", home_team: "0002", away_score: 40.5, home_score: 38 }, { away_team: "0003", home_team: "0004", away_score: 0, home_score: 0 }],
+    slots: [{ team_id: "0001", slot: 0, player_id: "QB1", nfl_team: "DET", revealed: true }, { team_id: "0002", slot: 0, player_id: null, revealed: false }] };
+  const html = V.cardsHtml(d, "0004");
+  assert.match(html, /href="#live\/7\/0001" data-lv-team="0001">/);
+  assert.match(html, /class="card lv-card lv-upcoming sel" href="#live\/7\/0003" data-lv-team="0003" aria-current="true">/);
+  assert.match(html, /lv-row lead"><div class="logo sm">N<\/div><div class="lv-name"><b>NSFW/);
+  assert.match(html, /0 done · 1 playing · 0 to go · 0 bye/);
+  assert.match(html, /<span class="tag lv-st">Live<\/span>/);
+  assert.match(V.cardsHtml(d, null, ["0002"]), /lv-live sel"/, "signed in as 0002's manager: that card is selected");
+  assert.match(read("live.js"), /Unofficial — MFL is official for/);
+});
+

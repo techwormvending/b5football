@@ -236,7 +236,7 @@
     return '<div class="card"><h3>Week ' + esc(w.week) + ' lineup <span class="tag">' + esc(statusText(w.data)) + "</span></h3>" +
       (mine.length ? lineupListHtml(mine) : '<p class="muted">No starters for week ' + esc(w.week) + " yet.</p>") +
       '<p class="muted small">Mirrored from MFL. <b>MFL is official for ' + esc(L.season) + "</b>: set your lineup there. Points are this site\'s, from live ESPN stats, finalized nightly by nflverse." +
-      (w.matchup ? ' <a href="#live/' + esc(w.week) + "/" + esc(w.matchup[0]) + "-" + esc(w.matchup[1]) + '">Open the matchup</a>' : "") + "</p></div>";
+      (w.matchup ? ' <a href="#live/' + esc(w.week) + "/" + esc(st.teamId) + '">Open the matchup</a>' : "") + "</p></div>";
   }
 
   // Week to show on My Team (2026): the current week if it has starters, else the latest week that does.
