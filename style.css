@@ -411,3 +411,10 @@ div.lv-p.small { margin: 0; font-size: 12px; align-self: center; }
 #lvDetail { margin-top: 22px; }
 .lv-detail-h { margin: 0 0 10px; }
 .lv-name .small { white-space: normal; }
+/* Live: injury tags (nflverse injury report / roster status) */
+.lv-warn.q { color: var(--gold); font-weight: 500; }
+.lv-inj { display: inline-block; margin-left: 4px; padding: 0 4px; border-radius: 3px; font: 600 10px/1.5 var(--head); letter-spacing: .06em; vertical-align: 1px; }
+.lv-inj.out { background: var(--red); color: #fff; }
+.lv-inj.doubtful { background: #b4532a; color: #fff; }
+.lv-inj.questionable { background: transparent; color: var(--gold); border: 1px solid var(--gold); }
+.lv-inj-note { margin: 0 0 6px; font-size: 12px; color: #ff8a75; }

@@ -41,7 +41,7 @@ test("game status transitions: before kickoff -> live (clock) -> final; a team o
 test("done / playing / to go / bye, and the card status: Upcoming -> Live -> Final (unofficial) -> Final (official)", () => {
   const s = (nfl: string) => ({ revealed: true, nfl_team: nfl });
   const p = V.progress([s("KC"), s("DET"), s("MIA"), { revealed: false }, s("PIT"), { revealed: false, bye: true }], games, NOW);
-  assert.deepEqual(plain(p), { done: 1, playing: 1, toGo: 2, bye: 2 }, "KC final done, DET playing, MIA + hidden to go, PIT + a hidden bye slot on bye");
+  assert.deepEqual(plain(p), { done: 1, playing: 1, toGo: 2, bye: 2, out: 0, doubtful: 0, questionable: 0 }, "KC final done, DET playing, MIA + hidden to go, PIT + a hidden bye slot on bye");
   assert.equal(V.progressText(p), "1 done · 1 playing · 2 to go · 2 bye");
   const z = { done: 0, playing: 0, toGo: 9, bye: 0 }, fin = { done: 9, playing: 0, toGo: 0, bye: 0 };
   assert.equal(V.cardStatus({ status: "live" }, z, z).text, "Upcoming");
@@ -57,7 +57,7 @@ test("byes never make a matchup Live: before any game starts, starters on bye ar
   const at = Date.parse("2026-10-25T12:00:00Z"), s = (nfl: string) => ({ revealed: true, nfl_team: nfl });
   const a = V.progress([s("PIT"), s("NYJ"), { revealed: false }, { revealed: false, bye: true }], early, at);
   const h = V.progress([{ revealed: false }, { revealed: false }], early, at);
-  assert.deepEqual(plain(a), { done: 0, playing: 0, toGo: 1, bye: 3 });
+  assert.deepEqual(plain(a), { done: 0, playing: 0, toGo: 1, bye: 3, out: 0, doubtful: 0, questionable: 0 });
   assert.equal(V.cardStatus({ status: "live" }, a, h).text, "Upcoming", "3 byes aren't 3 done");
   const allBye = { done: 0, playing: 0, toGo: 0, bye: 9 };
   assert.equal(V.cardStatus({ status: "live" }, allBye, allBye).text, "Upcoming", "byes alone never start a matchup");
@@ -80,6 +80,28 @@ test("starters on bye: BYE status, counted for the warning, hidden bye slots fla
     slots: [...slots.map(s => ({ ...s, team_id: "0001" })), { team_id: "0002", slot: 0, player_id: null, revealed: false }] });
   assert.match(html, /⚠ 2 starters on bye/);
   assert.match(html, /0 done · 1 playing · 0 to go · 2 bye/);
+});
+
+test("injury warnings: out (incl. IR/PUP/suspended/reserve), doubtful and questionable starters who haven't finished; hidden starters count; byes outrank", () => {
+  const s = (nfl: string, injury: string | null) => ({ revealed: true, nfl_team: nfl, injury });
+  const p = V.progress([s("MIA", "Out"), s("MIA", "IR"), s("DET", "Doubtful"), s("MIA", "Questionable"), { revealed: false, injury: "Questionable" },
+    s("KC", "Out"), s("PIT", "Out"), { revealed: false, bye: true, injury: "IR" }, s("MIA", null)], games, NOW);
+  assert.deepEqual(plain(p), { done: 1, playing: 1, toGo: 5, bye: 2, out: 2, doubtful: 1, questionable: 2 },
+    "KC is final (moot), PIT and the hidden IR player are on bye (bye wins)");
+  const html = V.cardsHtml({ week: 7, sw: { status: "live" }, games, matchups: [{ away_team: "0001", home_team: "0002", away_score: 0, home_score: 0 }],
+    slots: [{ team_id: "0001", slot: 0, player_id: "Q", nfl_team: "MIA", revealed: true, injury: "Out" }, { team_id: "0001", slot: 1, player_id: null, revealed: false, injury: "Doubtful" },
+      { team_id: "0001", slot: 2, player_id: "W", nfl_team: "PIT", revealed: true, injury: null }, { team_id: "0002", slot: 0, player_id: null, revealed: false, injury: "Questionable" }] });
+  assert.match(html, /⚠ 1 starter on bye · 1 out · 1 doubtful/);
+  assert.match(html, /<span class="lv-warn q">1 questionable<\/span>/);
+});
+
+test("lineup: injury status from the week's report (bench too), falling back to the slot's status", () => {
+  const slots = [{ slot: 0, player_id: "QB1", name: "Q", nfl_team: "MIA", revealed: true, injury: "Out" }, { slot: 1, player_id: null, revealed: false, injury: "Doubtful" }];
+  const roster = [{ id: "QB1", name: "Q", pos: "QB", nfl_team: "MIA" }, { id: "RB7", name: "R7", pos: "RB", nfl_team: "KC" }];
+  const v = V.lineupView(slots, roster, {}, games, NOW, { RB7: { player_id: "RB7", status: "Questionable", injury: "Ankle", practice: "Limited Participation in Practice" } });
+  assert.deepEqual(plain(v.starters[0].player.injury), { status: "Out" });
+  assert.equal(v.starters[1].injury, "Doubtful");
+  assert.equal(v.bench[0].injury.injury, "Ankle");
 });
 
 test("stale-data notice: only while a game is on, when the last live pass is over 3 minutes old or flagged delayed", () => {

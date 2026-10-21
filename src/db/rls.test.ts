@@ -78,7 +78,7 @@ describe("every table is protected", () => {
 
 test("no default grants leak: anon only ever has SELECT, and only on public-data tables", async () => {
   const PUBLIC = new Set(["teams", "nfl_players", "nfl_games", "roster_entries", "score_weeks", "player_scores", "matchups", "standings", "announcements",
-    "season_settings", "team_scores", "awards", "guillotine", "survivor_status", "confidence_scores", "score_events"]);
+    "season_settings", "team_scores", "awards", "guillotine", "survivor_status", "confidence_scores", "score_events", "player_injuries"]);
   const g = (await db.query<{ table_name: string; privilege_type: string }>(`
     select table_name, privilege_type from information_schema.role_table_grants
     where table_schema = 'public' and grantee = 'anon'`)).rows;
@@ -722,6 +722,26 @@ describe("Live page (public read)", () => {
     assert.deepEqual(await bye(anon), [{ player_id: "WR-PIT", revealed: true, bye: true }], "named once every game this week has kicked off");
     await db.exec(`delete from public.nfl_games where week = ${W}`);
     assert.deepEqual((await rows(db, user(BOB), `select bye from public.live_lineups(${S}, ${W}) where slot = 3`)), [{ bye: false }], "no games loaded for the week: nobody is on bye");
+  });
+
+  test("injury statuses: public read (hidden starters flagged, not named); only server jobs replace them, all at once", async () => {
+    const put = (rows: unknown[], from = W) => db.query(`select public.replace_injuries(${S}, ${from}, $1::jsonb) as n`, [JSON.stringify(rows)]);
+    await put([{ week: W, player_id: "QB-ARI", status: "Out", injury: "Ankle", practice: null, source: "report" },
+      { week: W, player_id: "QB-KC", status: "Questionable", injury: "Knee", practice: null, source: "report" },
+      { week: W - 1, player_id: "QB-DET", status: "Doubtful", injury: "Hand", practice: null, source: "report" }], W - 1);
+    await db.exec(`insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '0001', 0, 'QB-KC')`);
+    assert.deepEqual(await rows(db, anon, `select team_id, slot, player_id, injury from public.live_lineups(${S}, ${W}) order by team_id, slot`), [
+      { team_id: "0001", slot: 0, player_id: "QB-KC", injury: "Questionable" }, { team_id: "0001", slot: 1, player_id: null, injury: null },
+      { team_id: "0002", slot: 0, player_id: null, injury: "Out" }], "Bob's hidden QB is flagged Out without his name");
+    assert.equal((await rows(db, anon, `select * from public.player_injuries`)).length, 3);
+    // Next night: QB-ARI is off the report (healthy); week W-1 is before p_from_week, so it stays.
+    await put([{ week: W, player_id: "QB-KC", status: "IR", injury: "Knee", practice: null, source: "roster" }]);
+    assert.deepEqual(await rows(db, anon, `select week, player_id, status from public.player_injuries order by week, player_id`),
+      [{ week: W - 1, player_id: "QB-DET", status: "Doubtful" }, { week: W, player_id: "QB-KC", status: "IR" }]);
+    for (const who of [anon, user(COMMISH)]) {
+      await denied(db, who, `select public.replace_injuries(${S}, 1, '[]')`, /permission denied/);
+      await denied(db, who, `insert into public.player_injuries (season, week, player_id, status, source) values (${S}, ${W}, 'QB-DET', 'Out', 'report')`, /permission denied/);
+    }
   });
 
   test("scoring plays: every live change in a player's points is logged with the changed lines and the game clock", async () => {

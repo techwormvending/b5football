@@ -59,14 +59,22 @@
     var text = s === "final" ? "Final" : s === "live" ? (g.status_detail || (g.period ? "Q" + g.period + " " + (g.clock || "") : "Live")) : fmtKick(g.kickoff);
     return { state: s, opp: opp, text: text, game: g };
   }
-  /** Starters done / playing / to go / on bye. A bye is its own status: never done, playing or to go.
-      A hidden starter (not revealed yet) is to go, or on bye when the database flags his slot as a bye. */
+  /** Injury status (public.player_injuries, from nflverse) -> warning level: reserve lists and Out
+      are "out"; Doubtful; Questionable. Tag = the short label shown next to the player. */
+  var INJ = { IR: ["out", "IR"], PUP: ["out", "PUP"], Suspended: ["out", "SUSP"], Reserve: ["out", "RES"], Out: ["out", "OUT"], Doubtful: ["doubtful", "D"], Questionable: ["questionable", "Q"] };
+  var injuryLevel = function (status) { return INJ[status] ? INJ[status][0] : null; };
+  var injuryTag = function (status) { return INJ[status] ? INJ[status][1] : ""; };
+  /** Starters done / playing / to go / on bye, plus injury warnings. A bye is its own status: never
+      done, playing or to go. A hidden starter (not revealed yet) is to go, or on bye when the database
+      flags his slot as a bye. Injury warnings count starters on the week's report who haven't finished
+      (a finished game's warning is moot); a bye outranks an injury. */
   function progress(starters, games, now) {
-    var p = { done: 0, playing: 0, toGo: 0, bye: 0 };
+    var p = { done: 0, playing: 0, toGo: 0, bye: 0, out: 0, doubtful: 0, questionable: 0 };
     starters.forEach(function (s) {
-      if (!s.revealed) { if (s.bye) p.bye++; else p.toGo++; return; }
-      var st = playerGame(games, s.nfl_team, now).state;
+      var st = !s.revealed ? (s.bye ? "bye" : "pre") : playerGame(games, s.nfl_team, now).state;
       if (st === "bye") p.bye++; else if (st === "final") p.done++; else if (st === "live") p.playing++; else p.toGo++;
+      var lv = injuryLevel(s.injury);
+      if (lv && st !== "bye" && st !== "final") p[lv]++;
     });
     return p;
   }
@@ -96,19 +104,20 @@
   }
   /** One team's lineup for the detail page: 9 slots (empty / hidden / player), the bench and the
       total (starters only; the bench never counts). Players: {id, name, pos, nfl_team, points, lines}. */
-  function lineupView(slots, roster, scores, games, now) {
+  function lineupView(slots, roster, scores, games, now, injuries) {
+    var inj = function (id, status) { return (injuries && injuries[id]) || (status ? { status: status } : null); };
     var bySlot = {}, starterIds = {}, hidden = 0, hiddenBye = 0;
     slots.forEach(function (s) { bySlot[s.slot] = s; if (s.player_id) starterIds[s.player_id] = true; else if (s.bye) hiddenBye++; else hidden++; });
     var withScore = function (p) {
       var sc = scores[p.id] || null;
-      return { id: p.id, name: p.name, pos: p.pos, nfl_team: p.nfl_team, points: sc ? Number(sc.points) : 0, scored: !!sc, lines: sc ? sc.lines || [] : [], game: playerGame(games, p.nfl_team, now) };
+      return { id: p.id, name: p.name, pos: p.pos, nfl_team: p.nfl_team, points: sc ? Number(sc.points) : 0, scored: !!sc, lines: sc ? sc.lines || [] : [], game: playerGame(games, p.nfl_team, now), injury: inj(p.id, p.injury) };
     };
     var total = 0, byes = 0;
     var starters = SLOTS.map(function (pos, i) {
       var s = bySlot[i];
       if (!s) return { slot: i, pos: pos, empty: true };
-      if (!s.player_id) { if (s.bye) byes++; return { slot: i, pos: pos, hidden: true, bye: !!s.bye }; }
-      var p = withScore({ id: s.player_id, name: s.name, pos: pos, nfl_team: s.nfl_team });
+      if (!s.player_id) { if (s.bye) byes++; return { slot: i, pos: pos, hidden: true, bye: !!s.bye, injury: s.injury || null }; }
+      var p = withScore({ id: s.player_id, name: s.name, pos: pos, nfl_team: s.nfl_team, injury: s.injury });
       if (p.game.state === "bye") byes++;
       total += p.points;
       return { slot: i, pos: pos, player: p };
@@ -213,11 +222,14 @@
       var all = ids.concat(roster.map(function (x) { return x.id; }));
       return Promise.all([
         all.length ? api("player_scores" + q + "&player_id=in.(" + inList(all) + ")&select=player_id,points,lines,source") : Promise.resolve({ ok: true, data: [] }),
+        all.length ? api("player_injuries" + q + "&player_id=in.(" + inList(all) + ")&select=player_id,status,injury,practice") : Promise.resolve({ ok: true, data: [] }),
         ids.length ? api("score_events" + q + "&player_id=in.(" + inList(ids) + ")&select=player_id,at,status_detail,delta,points,lines&order=at.desc&limit=300") : Promise.resolve({ ok: true, data: [] })
       ]).then(function (x) {
         var scores = {};
         ok(x[0]).forEach(function (s) { scores[s.player_id] = s; });
-        return { key: d.week + ":" + pairKey(m), roster: roster, scores: scores, events: ok(x[1]) };
+        var injuries = {};
+        ok(x[1]).forEach(function (s) { injuries[s.player_id] = s; });
+        return { key: d.week + ":" + pairKey(m), roster: roster, scores: scores, injuries: injuries, events: ok(x[2]) };
       });
     });
   }
@@ -247,7 +259,12 @@
     }).join("") + "</div>";
   }
   var teamSlots = function (d, team) { return d.slots.filter(function (s) { return s.team_id === team; }); };
-  var byeWarn = function (n) { return n ? '<span class="lv-warn">⚠ ' + n + " starter" + (n === 1 ? "" : "s") + " on bye</span>" : ""; };
+  /** "⚠ 2 starters on bye · 1 out · 1 doubtful" (red) and "2 questionable" (gold), or nothing. */
+  function warnHtml(p) {
+    var parts = [[p.bye, "on bye"], [p.out, "out"], [p.doubtful, "doubtful"]].filter(function (x) { return x[0]; });
+    var red = parts.map(function (x, i) { return i ? x[0] + " " + x[1] : x[0] + " starter" + (x[0] === 1 ? "" : "s") + " " + x[1]; }).join(" · ");
+    return (red ? '<span class="lv-warn">⚠ ' + esc(red) + "</span>" : "") + (p.questionable ? '<span class="lv-warn q">' + esc(p.questionable + " questionable") + "</span>" : "");
+  }
   function cardsHtml(d) {
     var now = Date.now(), sel = pairKey(selected());
     var cards = d.matchups.slice().sort(byAway).map(function (m) {
@@ -256,7 +273,7 @@
       var sa = Number(m.away_score || 0), sh = Number(m.home_score || 0), cs = cardStatus(d.sw, pa, ph);
       var lead = cs.key === "upcoming" || sa === sh ? null : sa > sh ? "a" : "h";
       var row = function (t, s, p, isLead) {
-        return '<div class="lv-row' + (isLead ? " lead" : "") + '">' + logo(t) + '<div class="lv-name"><b>' + esc(t.name) + '</b><span class="muted small">' + esc(progressText(p)) + "</span>" + byeWarn(p.bye) +
+        return '<div class="lv-row' + (isLead ? " lead" : "") + '">' + logo(t) + '<div class="lv-name"><b>' + esc(t.name) + '</b><span class="muted small">' + esc(progressText(p)) + "</span>" + warnHtml(p) +
           '</div><span class="lv-pts">' + esc(pts(s)) + "</span></div>";
       };
       var isSel = pairKey(m) === sel;
@@ -266,24 +283,31 @@
     return cards ? '<div class="lv-board">' + cards + "</div>" : '<div class="card muted">No matchups for week ' + esc(d.week) + ".</div>";
   }
 
+  function injuryNote(p) {
+    var i = p.injury;
+    return i ? '<p class="lv-inj-note">Injury report: <b>' + esc(i.status) + "</b>" + (i.injury ? " (" + esc(i.injury) + ")" : "") + (i.practice ? " · " + esc(i.practice) : "") + "</p>" : "";
+  }
   function breakdownHtml(p) {
     var lines = p.lines || [];
-    if (!lines.length) return '<div class="lv-bd muted small">' + (p.game.state === "bye" ? "On bye this week: no game, no points." : p.scored ? "No scoring lines yet." : p.game.state === "pre" ? "Hasn't played yet." : "No points.") + "</div>";
+    if (!lines.length) return '<div class="lv-bd small">' + injuryNote(p) + '<span class="muted">' + (p.game.state === "bye" ? "On bye this week: no game, no points." : p.scored ? "No scoring lines yet." : p.game.state === "pre" ? "Hasn't played yet." : "No points.") + "</span></div>";
     var sum = lineSum(lines);
-    return '<div class="lv-bd"><ul>' + lines.map(function (l) { return "<li><span>" + esc(l.text) + '</span><b>→ ' + esc(num(l.points)) + "</b></li>"; }).join("") +
+    return '<div class="lv-bd">' + injuryNote(p) + '<ul>' + lines.map(function (l) { return "<li><span>" + esc(l.text) + '</span><b>→ ' + esc(num(l.points)) + "</b></li>"; }).join("") +
       '</ul><p class="lv-bd-total"><span>Total</span><b>' + esc(pts(sum)) + "</b></p></div>";
   }
   function playerCell(p, side) {
     if (!p) return '<div class="lv-p ' + side + ' muted">—</div>';
     var g = p.game, live = g.state === "live", bye = g.state === "bye";
+    var lv = p.injury && injuryLevel(p.injury.status), warn = !p.bench && (bye || (lv === "out" && g.state !== "final"));
+    var tag = lv ? ' <span class="lv-inj ' + lv + '" title="' + esc(p.injury.status + (p.injury.injury ? ": " + p.injury.injury : "")) + '">' + esc(injuryTag(p.injury.status)) + "</span>" : "";
     var shown = bye ? '<span class="lv-bye' + (p.bench ? " bench" : "") + '">BYE</span>' : esc(g.state === "pre" && !p.scored ? "–" : pts(p.points));
-    return '<button type="button" class="lv-p ' + side + (live ? " playing" : "") + (bye && !p.bench ? " on-bye" : "") + '" data-lv-player="' + esc(p.id) + '" aria-expanded="' + (st.open[p.id] ? "true" : "false") + '">' +
-      '<span class="lv-pn">' + esc(p.name) + '</span><span class="lv-pg small muted">' + esc((p.bench ? p.pos + " · " : "") + (p.nfl_team || "") + (g.opp ? " " + g.opp : "")) + " · " + esc(g.text) + "</span></button>" +
+    return '<button type="button" class="lv-p ' + side + (live ? " playing" : "") + (warn ? " on-bye" : "") + '" data-lv-player="' + esc(p.id) + '" aria-expanded="' + (st.open[p.id] ? "true" : "false") + '">' +
+      '<span class="lv-pn">' + esc(p.name) + tag + '</span><span class="lv-pg small muted">' + esc((p.bench ? p.pos + " · " : "") + (p.nfl_team || "") + (g.opp ? " " + g.opp : "")) + " · " + esc(g.text) + "</span></button>" +
       '<span class="lv-pp ' + side + '">' + shown + "</span>";
   }
   function slotRow(pos, a, h, extra) {
     var cell = function (x, side) {
       if (x && x.hidden && x.bye) return '<div class="lv-p ' + side + ' muted small">🔒 Starter on bye</div><span class="lv-pp ' + side + '"><span class="lv-bye">BYE</span></span>';
+      if (x && x.hidden && injuryLevel(x.injury)) return '<div class="lv-p ' + side + ' muted small"><span>🔒 Starter listed <span class="lv-inj ' + injuryLevel(x.injury) + '">' + esc(injuryTag(x.injury)) + '</span></span></div><span class="lv-pp ' + side + '">–</span>';
       if (x && x.hidden) return '<div class="lv-p ' + side + ' muted small">🔒 Revealed at kickoff</div><span class="lv-pp ' + side + '">–</span>';
       if (x && x.empty) return '<div class="lv-p ' + side + ' muted small">Empty</div><span class="lv-pp ' + side + '">–</span>';
       return playerCell(x && x.player !== undefined ? x.player : x, side);
@@ -296,12 +320,12 @@
     if (!m) return "";
     if (!dt || dt.key !== d.week + ":" + pairKey(m)) return '<div class="card muted">Loading the matchup…</div>';
     var a = teamById(m.away_team), h = teamById(m.home_team), now = Date.now();
-    var side = function (t) { return lineupView(teamSlots(d, t.id), dt.roster.filter(function (r) { return r.team === t.id; }), dt.scores, d.games, now); };
+    var side = function (t) { return lineupView(teamSlots(d, t.id), dt.roster.filter(function (r) { return r.team === t.id; }), dt.scores, d.games, now, dt.injuries); };
     var va = side(a), vh = side(h);
     var pa = progress(teamSlots(d, a.id), d.games, now), ph = progress(teamSlots(d, h.id), d.games, now), cs = cardStatus(d.sw, pa, ph);
     var lead = cs.key === "upcoming" || va.total === vh.total ? null : va.total > vh.total ? "a" : "h";
     var ht = function (t, v, p, isLead) {
-      return '<div class="lv-ht' + (isLead ? " lead" : "") + '">' + logo(t) + "<b>" + esc(t.name) + '</b><span class="lv-big">' + esc(pts(v.total)) + '</span><span class="muted small">' + esc(progressText(p)) + "</span>" + byeWarn(p.bye) + "</div>";
+      return '<div class="lv-ht' + (isLead ? " lead" : "") + '">' + logo(t) + "<b>" + esc(t.name) + '</b><span class="lv-big">' + esc(pts(v.total)) + '</span><span class="muted small">' + esc(progressText(p)) + "</span>" + warnHtml(p) + "</div>";
     };
     var head = '<div class="card lv-head"><span class="tag lv-st">' + esc(cs.text) + (d.sw && d.sw.status === "pending_review" ? " · awaiting commissioner sign-off" : "") + "</span>" +
       '<div class="lv-vs">' + ht(a, va, pa, lead === "a") + ht(h, vh, ph, lead === "h") + "</div></div>";
