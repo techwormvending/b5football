@@ -1,7 +1,7 @@
 {
  "season": 2026,
  "week": 6,
- "status": "pending_review",
+ "status": "final",
  "missingGames": [],
  "diffLog": [
   {
@@ -23,12 +23,12 @@
    "note": "no live numbers were recorded for WAS@SF"
   }
  ],
- "updatedAt": "2026-10-20T14:18:09.580Z",
+ "updatedAt": "2026-10-21T04:37:20.245Z",
  "final": {
   "season": 2026,
   "week": 6,
   "source": "final",
-  "computedAt": "2026-10-20T14:18:09.580Z",
+  "computedAt": "2026-10-21T04:37:20.245Z",
   "delayed": false,
   "errors": [],
   "games": [
@@ -4398,5 +4398,7 @@
   "unmatched": [],
   "warnings": []
  },
- "autoFinalizeAt": "2026-10-21T03:00:00.000Z"
+ "autoFinalizeAt": "2026-10-21T03:00:00.000Z",
+ "finalizedAt": "2026-10-21T04:37:20.245Z",
+ "finalizedBy": "auto"
 }

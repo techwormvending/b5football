@@ -3,3 +3,4 @@
 {"at":"2026-10-15T16:35:49.510Z","actor":"system","action":"auto_finalize_week","season":2026,"week":3,"details":{"autoFinalizeAt":"2026-09-30T03:00:00.000Z"}}
 {"at":"2026-10-15T16:35:49.531Z","actor":"system","action":"auto_finalize_week","season":2026,"week":4,"details":{"autoFinalizeAt":"2026-10-07T03:00:00.000Z"}}
 {"at":"2026-10-15T16:35:49.552Z","actor":"system","action":"auto_finalize_week","season":2026,"week":5,"details":{"autoFinalizeAt":"2026-10-14T03:00:00.000Z"}}
+{"at":"2026-10-21T04:37:20.245Z","actor":"system","action":"auto_finalize_week","season":2026,"week":6,"details":{"autoFinalizeAt":"2026-10-21T03:00:00.000Z"}}
