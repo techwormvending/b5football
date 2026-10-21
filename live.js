@@ -293,7 +293,7 @@
         '<span class="lv-fw">' + esc(t.name) + " · <b>" + esc(names[e.player_id] || e.player_id) + "</b>" + (e.big ? ' <span class="tag">Big play</span>' : "") + "</span>" +
         '<span class="lv-fd ' + (e.delta < 0 ? "down" : "up") + '">' + (e.delta > 0 ? "+" : "") + esc(num(e.delta)) + "</span>" +
         '<span class="lv-fl small">' + esc(e.lines.map(function (l) { return l.text + " (" + (l.delta > 0 ? "+" : "") + num(l.delta) + ")"; }).join("; ")) + "</span></li>";
-    }).join("") + "</ul>" : '<p class="muted small">No scoring plays yet.</p>') + "</div>";
+    }).join("") + "</ul>" : '<p class="muted small">No scoring plays yet. Plays are recorded as they happen during games (from week 7 of 2026 on).</p>') + "</div>";
     return '<section class="lv lv-detail"><h2>Week ' + esc(d.week) + "</h2>" + unofficial() + back + freshHtml(d) + head + lineups + feedHtml + "</section>";
   }
 
