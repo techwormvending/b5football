@@ -1184,6 +1184,171 @@ describe("message board (members only)", () => {
   });
 });
 
+describe("add/drop and waivers", () => {
+  const CAROL = "00000000-0000-0000-0000-0000000000c3";   // owns H.N.I.C (0003)
+  const AL = "00000000-0000-0000-0000-0000000000a2";      // Alice's co-owner
+  const status = (season: number, player: string, at: string) =>
+    db.query<{ status: string; until: string | null; reason: string | null }>(`select status, until, reason from private.move_status($1, $2, $3::timestamptz)`, [season, player, at]).then(r => r.rows[0]!);
+  const iso = (s: string | null) => (s ? new Date(s).toISOString() : null);
+  beforeEach(async () => {
+    await db.exec(`
+      insert into auth.users (id, email, raw_user_meta_data) values ('${CAROL}', 'carol@example.com', '{"display_name":"Carol"}'), ('${AL}', 'al2@example.com', '{"display_name":"Al"}');
+      insert into public.teams (id, name, division) values ('0003', 'H.N.I.C', 'Gold');
+      insert into public.team_managers values ('0003', '${CAROL}'), ('0001', '${AL}');
+      insert into public.nfl_players (id, name, position, nfl_team) values
+        ('WR-BUF', 'Buf WR', 'WR', 'BUF'), ('WR-MIA', 'Mia WR', 'WR', 'MIA'), ('WR-KC1', 'KC WR 1', 'WR', 'KC'), ('WR-KC2', 'KC WR 2', 'WR', 'KC'),
+        ('WR-LV1', 'LV WR', 'WR', 'LV'), ('RB-NYG', 'NYG RB', 'RB', 'NYG'), ('TE-NYG', 'NYG TE', 'TE', 'NYG');`);
+  });
+
+  test("lock timing (ET): preseason FCFS from 2 days before the first game; each player locks at his own kickoff until the week's last game; Monday 10 PM waivers until Wednesday 5 PM; then FCFS; closed after the season", async () => {
+    await db.exec(`insert into public.season_settings (season, team_count, buy_in, prizes, waivers) values (2027, 12, 360, '{}', '{"live": true, "closeAt": "2028-01-02T13:00:00-05:00"}');
+      insert into public.nfl_games (season, week, game_key, home, away, kickoff) values
+        (2027, 1, 'BUF@NYJ', 'NYJ', 'BUF', '2027-09-10T00:15:00Z'),   -- Thursday 8:15 PM ET
+        (2027, 1, 'DET@MIA', 'MIA', 'DET', '2027-09-12T17:00:00Z'),   -- Sunday 1:00 PM ET
+        (2027, 1, 'KC@LV', 'LV', 'KC', '2027-09-14T00:15:00Z'),       -- Monday 8:15 PM ET (last game)
+        (2027, 2, 'NYG@MIA', 'MIA', 'NYG', '2027-09-21T17:00:00Z')`);
+    assert.equal((await status(2027, "WR-BUF", "2027-09-07T16:00:00Z")).status, "closed", "Tuesday before: not open yet");
+    assert.deepEqual(await status(2027, "WR-BUF", "2027-09-08T12:00:00Z"), { status: "fcfs", until: null, reason: null }, "2 days before: first-come-first-served (no preseason waivers)");
+    const thu = await status(2027, "WR-BUF", "2027-09-10T00:16:00Z");
+    assert.deepEqual([thu.status, iso(thu.until)], ["claims", "2027-09-14T04:15:00.000Z"], "Buffalo kicked off Thursday: locked until the week's last game is over");
+    assert.equal((await status(2027, "WR-MIA", "2027-09-10T00:16:00Z")).status, "fcfs", "Miami plays Sunday: still free");
+    assert.equal((await status(2027, "WR-MIA", "2027-09-12T17:01:00Z")).status, "claims", "...until his own kickoff");
+    const mon = await status(2027, "RB-NYG", "2027-09-14T02:00:00Z");   // Monday 10:00 PM ET
+    assert.deepEqual([mon.status, iso(mon.until)], ["claims", "2027-09-15T21:00:00.000Z"], "Monday 10 PM: everyone on waivers until Wednesday 5 PM");
+    assert.match(mon.reason!, /On waivers: claims process Wed 5:00 PM/);
+    assert.equal((await status(2027, "RB-NYG", "2027-09-14T01:59:00Z")).status, "fcfs", "a minute before Monday 10 PM (NYG on bye in week 1)");
+    assert.equal((await status(2027, "WR-BUF", "2027-09-15T21:00:00Z")).status, "fcfs", "Wednesday 5 PM: first-come-first-served");
+    assert.equal((await status(2027, "WR-BUF", "2028-01-02T18:01:00Z")).status, "closed", "after the season's close");
+    // Dropped players: claims only for 24 hours.
+    await db.exec(`insert into public.transactions (season, team_id, type, status, players_out) values (2027, '0001', 'drop', 'processed', '{WR-MIA}')`);
+    const ts = (await db.query<{ created_at: string }>(`select created_at from public.transactions where 'WR-MIA' = any(players_out)`)).rows[0]!.created_at;
+    const later = new Date(Date.parse(ts) + 23 * 3600e3).toISOString(), after = new Date(Date.parse(ts) + 25 * 3600e3).toISOString();
+    await db.exec(`update public.nfl_games set kickoff = '2026-01-01' where season = 2027 and week = 1`);   // move week 1 out of the way of now
+    await db.exec(`delete from public.nfl_games where season = 2027 and week = 2; insert into public.nfl_games (season, week, game_key, home, away, kickoff) values (2027, 2, 'NYG@MIA', 'MIA', 'NYG', '${new Date(Date.parse(ts) + 30 * 86400e3).toISOString()}')`);
+    const d23 = await status(2027, "WR-MIA", later), d25 = await status(2027, "WR-MIA", after);
+    assert.equal(d23.status === "claims" && d23.reason === "Dropped in the last 24 hours" || d23.reason?.startsWith("On waivers"), true, "within 24 hours of the drop: claims only");
+    assert.notEqual(d25.reason, "Dropped in the last 24 hours");
+  });
+
+  // A live season whose weekly waiver window is moved away from "now", so moves are FCFS today.
+  const liveSeason = async (extra = {}) => {
+    const d = Number((await db.query<{ d: number }>(`select extract(isodow from now() at time zone 'America/New_York')::int as d`)).rows[0]!.d);
+    const settings = { live: true, rosterMax: 3, waiversStart: { isodow: ((d + 1) % 7) + 1, time: "00:00" }, process: { isodow: ((d + 2) % 7) + 1, time: "00:00" }, ...extra };
+    await db.query(`insert into public.season_settings (season, team_count, buy_in, prizes, waivers) values (2028, 12, 360, '{}', $1::jsonb)`, [JSON.stringify(settings)]);
+    await db.exec(`insert into public.nfl_games (season, week, game_key, home, away, kickoff) values
+        (2028, 1, 'KC@LV', 'LV', 'KC', now() - interval '1 hour'),        -- kicked off: KC and LV players are locked
+        (2028, 1, 'NYG@MIA', 'MIA', 'NYG', now() + interval '2 days'),
+        (2028, 1, 'BUF@DET', 'DET', 'BUF', now() + interval '2 days')`);
+  };
+  const move = (who: Who, team: string, add: string | null, drop: string | null = null) => rows(db, who, `select public.roster_move(2028, $1, $2, $3) as id`, [team, add, drop]);
+  const roster = (team: string) => db.query<{ player_id: string }>(`select player_id from public.roster_entries where season = 2028 and team_id = '${team}' order by player_id`).then(r => r.rows.map(x => x.player_id));
+
+  test("first-come-first-served: add, drop, add+drop, drop-only; roster max; 24-hour drop lock; locked players; 2026 is MFL's", async () => {
+    await liveSeason();
+    await move(user(ALICE), "0001", "WR-MIA");
+    assert.deepEqual(await roster("0001"), ["WR-MIA"]);
+    assert.deepEqual(await rows(db, user(BOB), `select type, via, created_by, players_in from public.transactions where season = 2028`), [{ type: "add", via: "free_agent", created_by: ALICE, players_in: ["WR-MIA"] }]);
+    await assert.rejects(move(user(BOB), "0001", "RB-NYG"), /only move players on your own team/);
+    await move(user(AL), "0001", "RB-NYG");                                  // the co-owner, same rights
+    await move(user(ALICE), "0001", "TE-NYG");
+    await assert.rejects(move(user(ALICE), "0001", "WR-BUF"), /roster is full \(3 players\)/);
+    await move(user(ALICE), "0001", "WR-BUF", "TE-NYG");                     // add + drop
+    await move(user(ALICE), "0001", null, "WR-BUF");                         // a newly acquired player can be dropped at once; drop-only
+    assert.deepEqual(await roster("0001"), ["RB-NYG", "WR-MIA"]);
+    await assert.rejects(move(user(BOB), "0002", "TE-NYG"), /Dropped in the last 24 hours \(claims only until/);
+    await assert.rejects(move(user(BOB), "0002", "WR-KC1"), /Locked: his game has kicked off \(claims only/);
+    await assert.rejects(move(user(BOB), "0002", "WR-MIA"), /already on a roster/);
+    await db.exec(`insert into public.roster_entries (season, team_id, player_id) values (2028, '0002', 'WR-KC2')`);
+    await assert.rejects(move(user(BOB), "0002", null, "WR-KC2"), /Locked: his game has kicked off/);
+    await move(user(COMMISH), "0002", null, "WR-KC2");                       // the commissioner fixing another team isn't bound by timing
+    assert.equal(((await rows(db, user(BOB), `select via from public.transactions where 'WR-KC2' = any(players_out)`))[0] as { via?: string }).via ?? null, "commissioner");
+    await assert.rejects(rows(db, user(ALICE), `select public.roster_move(${S}, '0001', 'QB-FA')`), /made on MFL/);
+    await denied(db, anon, `select public.roster_move(2028, '0001', 'WR-BUF')`, /permission denied/);
+    await denied(db, user(ALICE), `insert into public.roster_entries (season, team_id, player_id) values (2028, '0001', 'WR-BUF')`, /row-level security/);
+  });
+
+  test("waiver order: ascending points; ties by head-to-head, then win %, division win %", async () => {
+    await liveSeason();
+    await db.exec(`insert into public.standings (season, team_id, wins, losses, points_for) values (2028, '0001', 1, 0, 100), (2028, '0002', 0, 1, 100), (2028, '0003', 1, 0, 80);
+      insert into public.score_weeks (season, week, status) values (2028, 1, 'final');
+      insert into public.matchups (season, week, home_team, away_team, home_score, away_score) values (2028, 1, '0001', '0002', 100, 90)`);
+    const order = await rows(db, user(BOB), `select place, team_id, h2h_pct::float as h2h from public.waiver_order(2028)`);
+    assert.deepEqual(order.map(o => (o as { team_id: string }).team_id), ["0003", "0002", "0001"], "fewest points first; 0002 lost the tied head-to-head");
+  });
+
+  test("claims: secret until processed; either owner ranks them; rounds in the same order; roster-full skips; lost when claimed first; not reached; undo; audit", async () => {
+    await liveSeason({ rounds: 2 });
+    await db.exec(`insert into public.standings (season, team_id, points_for) values (2028, '0001', 300), (2028, '0002', 100), (2028, '0003', 200);
+      insert into public.roster_entries (season, team_id, player_id) values (2028, '0003', 'WR-MIA'), (2028, '0003', 'RB-NYG'), (2028, '0003', 'TE-NYG')`);
+    const claim = (who: Who, team: string, add: string, drop: string | null = null) =>
+      rows(db, who, `select public.waiver_claim(2028, $1, $2, $3) as id`, [team, add, drop]).then(r => Number((r[0] as { id: number }).id));
+    await assert.rejects(claim(user(ALICE), "0001", "WR-BUF"), /free agent right now: add him directly/);
+    const a1 = await claim(user(ALICE), "0001", "WR-KC1"), a2 = await claim(user(ALICE), "0001", "WR-LV1");
+    await claim(user(BOB), "0002", "WR-KC1"); await claim(user(BOB), "0002", "WR-KC2");
+    const c1 = await claim(user(CAROL), "0003", "WR-LV1");                       // roster full, no drop: skipped
+    await claim(user(CAROL), "0003", "WR-KC2", "TE-NYG");
+    await claim(user(BOB), "0002", "WR-BUF").catch(() => {});                    // FCFS player: refused (see above)
+    await assert.rejects(claim(user(BOB), "0001", "WR-LV1"), /only claim for your own team/);
+    assert.equal((await rows(db, user(BOB), `select * from public.waiver_claims where team_id = '0001'`)).length, 0, "others' pending claims are secret");
+    await rows(db, user(AL), `select public.waiver_reorder(2028, '0001', array[${a2}, ${a1}]::bigint[])`);   // Al moves LV1 first
+    assert.deepEqual(await rows(db, user(ALICE), `select id::int, rank, updated_by from public.waiver_claims where team_id = '0001' order by rank`),
+      [{ id: a2, rank: 1, updated_by: AL }, { id: a1, rank: 2, updated_by: AL }]);
+    await denied(db, user(ALICE), `select public.run_waivers_now(2028)`, /Only the commissioner/);
+    const run = Number(((await rows(db, user(COMMISH), `select public.run_waivers_now(2028) as id`)) as { id: number }[])[0]!.id);
+    // Order: 0002 (100), 0003 (200), 0001 (300). Round 1: Bob gets KC1; Carol's LV1 skipped (full), KC2 (with drop) wins; Alice gets LV1.
+    // Round 2: Bob's KC2 is gone (lost); Alice's KC1 is gone (lost).
+    const res = await rows(db, user(BOB), `select team_id, add_player, status, result from public.waiver_claims order by team_id, rank`);
+    assert.deepEqual(res, [
+      { team_id: "0001", add_player: "WR-LV1", status: "won", result: "Round 1" },
+      { team_id: "0001", add_player: "WR-KC1", status: "lost", result: "Claimed by Stealers" },
+      { team_id: "0002", add_player: "WR-KC1", status: "won", result: "Round 1" },
+      { team_id: "0002", add_player: "WR-KC2", status: "lost", result: "Claimed by H.N.I.C" },
+      { team_id: "0003", add_player: "WR-LV1", status: "skipped", result: "Roster full (3) and no drop" },
+      { team_id: "0003", add_player: "WR-KC2", status: "won", result: "Round 1" }]);
+    assert.deepEqual(await roster("0003"), ["RB-NYG", "WR-KC2", "WR-MIA"]);
+    assert.deepEqual(await rows(db, user(BOB), `select team_order, kind, won from public.waiver_runs`), [{ team_order: ["0002", "0003", "0001"], kind: "forced", won: 3 }]);
+    assert.equal((await rows(db, user(BOB), `select * from public.transactions where via = 'waiver'`)).length, 3, "the log shows waiver moves");
+    // Undo: rosters back, claims pending again.
+    assert.match(String(((await rows(db, user(COMMISH), `select public.undo_waiver_run(${run}) as r`)) as { r: string }[])[0]!.r), /Undone/);
+    assert.deepEqual(await roster("0003"), ["RB-NYG", "TE-NYG", "WR-MIA"]);
+    assert.equal((await rows(db, user(COMMISH), `select * from public.waiver_claims where status = 'pending'`)).length, 6);
+    assert.deepEqual((await db.query<{ action: string }>(`select action from public.audit_log where action like 'waivers:%' order by id`)).rows.map(r => r.action), ["waivers:run", "waivers:undo"]);
+  });
+
+  test("claim rounds are capped; extra claims aren't reached", async () => {
+    await liveSeason({ rounds: 1 });
+    const claim = (team: string, add: string, who: Who) => rows(db, who, `select public.waiver_claim(2028, '${team}', '${add}')`);
+    await claim("0002", "WR-KC1", user(BOB)); await claim("0002", "WR-KC2", user(BOB));
+    await rows(db, user(COMMISH), `select public.run_waivers_now(2028)`);
+    assert.deepEqual(await rows(db, user(BOB), `select add_player, status, result from public.waiver_claims order by rank`),
+      [{ add_player: "WR-KC1", status: "won", result: "Round 1" }, { add_player: "WR-KC2", status: "lost", result: "Not reached in 1 rounds" }]);
+  });
+
+  test("reversing a drop: only when reported within 30 minutes; audited; the 24-hour drop lock goes away", async () => {
+    await liveSeason();
+    await move(user(ALICE), "0001", "WR-MIA");
+    const drop = Number(((await move(user(ALICE), "0001", null, "WR-MIA")) as { id: number }[])[0]!.id);
+    await denied(db, user(ALICE), `select public.reverse_drop(${drop})`, /Only the commissioner/);
+    await denied(db, user(COMMISH), `select public.reverse_drop(${drop}, now() + interval '31 minutes')`, /within 30 minutes/);
+    await rows(db, user(COMMISH), `select public.reverse_drop(${drop}, now() + interval '20 minutes')`);
+    assert.deepEqual(await roster("0001"), ["WR-MIA"]);
+    assert.deepEqual((await db.query<{ action: string }>(`select action from public.audit_log where action like 'waivers:%'`)).rows.map(r => r.action), ["waivers:reverse_drop"]);
+    assert.equal(((await rows(db, user(ALICE), `select status from public.transactions where id = ${drop}`))[0] as { status?: string }).status ?? null, "reversed");
+  });
+
+  test("the schedule processes once per week after Wednesday 5 PM ET, only for live seasons", async () => {
+    await db.exec(`insert into public.season_settings (season, team_count, buy_in, prizes, waivers) values (2027, 12, 360, '{}', '{"live": true}');
+      insert into public.nfl_games (season, week, game_key, home, away, kickoff) values (2027, 1, 'KC@LV', 'LV', 'KC', '2027-09-10T00:15:00Z'), (2027, 2, 'NYG@MIA', 'MIA', 'NYG', '2027-09-19T17:00:00Z')`);
+    const tick = (at: string) => db.query<{ r: string }>(`select private.waivers_tick('${at}'::timestamptz) as r`).then(r => r.rows[0]!.r);
+    assert.equal(await tick("2027-09-15T20:05:00Z"), "nothing to do", "Wednesday 4:05 PM ET: not yet");
+    assert.equal(await tick("2027-09-15T21:05:00Z"), "2027 ", "Wednesday 5:05 PM ET: runs");
+    assert.equal(await tick("2027-09-15T22:05:00Z"), "nothing to do", "once per week");
+    assert.deepEqual((await db.query(`select kind, cycle from public.waiver_runs`)).rows.map(r => (r as { kind: string }).kind), ["scheduled"]);
+    assert.equal(await tick("2027-12-15T22:05:00Z"), "2027 ", "EST (December): Wednesday 5 PM ET = 22:00 UTC");
+    await denied(db, user(COMMISH), `select private.waivers_tick()`, /permission denied/);
+  });
+});
+
 describe("server jobs (service_role)", () => {
   test("bypass RLS and can touch the heartbeat; nobody else can", async () => {
     assert.equal(await affected(db, service, `insert into public.heartbeats (name) values ('nightly') on conflict (name) do update set at = now()`), 1);

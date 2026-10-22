@@ -110,6 +110,11 @@
     }, 0);
   }
 
+  // One "Pools" nav item; the two pools are tabs.
+  var poolTabs = function (page) {
+    return '<div class="weeks pl-tabs" aria-label="Pools"><a class="wk' + (page === "survivor" ? " active" : "") + '" href="#survivor">Survivor</a><a class="wk' + (page === "confidence" ? " active" : "") + '" href="#confidence">Confidence</a></div>';
+  };
+
   // ---- Survivor ----------------------------------------------------------------------
   function survivorHtml() {
     var d = st.data, now = Date.now(), cfgS = (d.pools || {}).survivor || { start_week: 1, end_week: 17 };
@@ -166,7 +171,7 @@
           return '<div class="pl-game">' + btn(g.away) + '<span class="muted small">@</span>' + btn(g.home) + '<span class="muted small pl-kick">' + (started(g, now) ? "🔒 " : "") + esc(fmtKick(g.kickoff)) + "</span></div>";
         }).join("") + "</div>" + msgHtml() + "</div>";
     }
-    return '<section class="pl"><h2>Survivor</h2>' + head + pick + board + "</section>";
+    return '<section class="pl"><h2>Survivor</h2>' + poolTabs("survivor") + head + pick + board + "</section>";
   }
 
   // ---- Confidence --------------------------------------------------------------------
@@ -236,7 +241,7 @@
       return "<li><span>" + esc(t.name) + (a ? ' <span class="muted small">$' + esc(Number(a.amount).toFixed(0)) + " " + (a.status === "final" ? "" : "projected") + "</span>" : "") + "</span><b>" + esc(totals[t.id] || 0) + "</b></li>";
     }).join("") + "</ol></div>";
 
-    return '<section class="pl"><h2>Confidence Pool</h2>' + head + weekChips() + '<div class="po-cols"><div>' + editor + grid + "</div><div>" + standings + "</div></div></section>";
+    return '<section class="pl"><h2>Confidence Pool</h2>' + poolTabs("confidence") + head + weekChips() + '<div class="po-cols"><div>' + editor + grid + "</div><div>" + standings + "</div></div></section>";
   }
 
   function msgHtml() { var m = st.msg; st.msg = null; return m ? '<p class="acct-msg ' + (m.err ? "err" : "ok") + '">' + esc(m.err || m.ok) + "</p>" : ""; }

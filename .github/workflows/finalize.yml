@@ -94,6 +94,8 @@ jobs:
             exit 0
           fi
           node scripts/sync-mfl-rosters.mts 2026
+          # TEMPORARY (2026): MFL's add/drops, waiver claims and trades into the site's transactions log.
+          node scripts/import-mfl-transactions.mts 2026
 
       # TEMPORARY (2026 shadow season): our engine vs MFL each week, and publish scores,
       # mirrored lineups, matchups and standings to Supabase. Delete after the migration.

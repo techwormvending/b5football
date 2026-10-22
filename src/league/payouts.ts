@@ -101,6 +101,8 @@ export function computePayouts(input: {
   guillotineOverrides?: Map<number, string>;     // week -> eliminated team (commissioner's pick)
   /** Pool results (pools.ts): Survivor winners, Confidence season totals. */
   pools?: { survivor?: { winners: string[]; decided: boolean }; pickem?: { totals: { team_id: string; points: number }[]; complete: boolean } };
+  /** Regular-season standings, best first: the league tiebreaker for a tied playoff game. */
+  standingsOrder?: string[];
 }): { awards: AwardRow[]; eliminations: Elimination[]; flags: Flag[]; empire: Empire; alive: string[] } {
   const { settings: s, teams } = input;
   const P = s.prizes;
@@ -182,8 +184,18 @@ export function computePayouts(input: {
       for (const g of games) {
         if (g.home_score == null || g.away_score == null) continue;
         if (Math.abs(g.home_score - g.away_score) < 0.005) {
-          undecided = true;
-          flags.push({ kind: "playoff_tie", week, teams: [g.home_team, g.away_team], message: `Week ${week}: ${g.away_team} and ${g.home_team} tied at ${g.home_score.toFixed(2)}. Pick the winner.` });
+          // A tie splits this game's round money; the league tiebreaker (regular-season standing) decides who advances.
+          for (const x of splitEven(amount, [g.home_team, g.away_team])) add({ kind, week, place: null, label: label + " (tie: split)", team_id: x.team_id, amount: x.amount, status: status(week) });
+          const order = input.standingsOrder ?? [];
+          const ra = order.indexOf(g.home_team), rb = order.indexOf(g.away_team);
+          if (ra < 0 || rb < 0) {
+            undecided = true;
+            flags.push({ kind: "playoff_tie", week, teams: [g.home_team, g.away_team], message: `Week ${week}: ${g.away_team} and ${g.home_team} tied at ${g.home_score.toFixed(2)}. The round money is split; pick who advances (no standings to break the tie).` });
+            continue;
+          }
+          const adv = ra < rb ? g.home_team : g.away_team;
+          winners.add(adv);
+          flags.push({ kind: "playoff_tie", week, teams: [g.home_team, g.away_team], message: `Week ${week}: ${g.away_team} and ${g.home_team} tied at ${g.home_score.toFixed(2)}. Round money split; ${adv} advances on the tiebreaker (better regular-season standing).` });
           continue;
         }
         const win = g.home_score > g.away_score ? g.home_team : g.away_team;

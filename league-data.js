@@ -536,10 +536,14 @@ window.LEAGUE = {
   // First season managers set lineups on My Team (Supabase). Before that, My Team shows the roster and a note.
   lineupsFrom: 2027,
 
+  // Shown on the Rules page as "Rules last updated …". Change it whenever the bylaws or scoring text changes.
+  rulesUpdated: "2026-10-22",
   bylaws: [
     "Two divisions, Black and Gold. Head-to-head, weeks 1–14 regular season, playoffs through week 17.",
-    "Waivers are first-come, first-served. Standings tiebreakers are set by the commissioner.",
-    "Major rule changes are voted on at the end of the season. Simple majority passes.",
-    "TODO: trade review policy, playoff seeding, entry fee and payouts."
+    "Player locks: each player locks at his own NFL game's kickoff (any day, including international games).",
+    "Waivers: free agents go on waivers Monday 10 PM ET. Claims process Wednesday 5 PM ET, worst-to-first by total points scored. After that it's first-come, first-served until each player's kickoff.",
+    "Entry fee $360 per team. Weekly high score pays $35 every week, weeks 1–17 (playoff weeks included). Full prize list on the Payouts page.",
+    "Major rule changes are voted on at the end of the season. Simple majority passes (one vote per team).",
+    "TODO: trade review policy and playoff seeding."
   ]
 };

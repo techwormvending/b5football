@@ -17,6 +17,8 @@
     if (cr) return { page: "chat", week: null, room: cr[1], tv: !!cr[2] };
     var bt = /^board\/(\d+)$/.exec(key);
     if (bt) return { page: "board", week: null, thread: Number(bt[1]) };
+    var pt = /^players\/(free-agents|claims|order|results|log|commish)$/.exec(key);
+    if (pt) return { page: "players", week: null, tab: pt[1] };
     var lw = /^live\/(\d{1,2})$/.exec(key);
     if (lw) return { page: "live", week: Number(lw[1]) };
     var pw = /^(confidence|pool)\/(\d{1,2})$/.exec(key);

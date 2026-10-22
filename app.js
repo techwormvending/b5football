@@ -228,7 +228,8 @@
         <section><h2>Scoring</h2><div class="grid">${groups}</div></section>
         <section><h2>Roster</h2><div class="card">${esc(L.roster)}</div></section>
         <section><h2>Bylaws</h2><div class="card"><ul class="checks">
-          ${L.bylaws.map(b => `<li>${esc(b)}</li>`).join("")}</ul></div></section>`;
+          ${L.bylaws.map(b => `<li>${esc(b)}</li>`).join("")}</ul></div></section>
+        ${L.rulesUpdated ? `<p class="muted small">Rules last updated ${esc(fmtDate(L.rulesUpdated))}.</p>` : ""}`;
     },
 
     traditions() {
@@ -252,7 +253,8 @@
     commish() { return `<div id="acctRoot"></div>`; },
     live() { return `<div id="lvRoot"></div>`; },
     board() { return `<div id="bdRoot"></div>`; },
-    chat() { return `<div id="chRoot"></div>`; }
+    chat() { return `<div id="chRoot"></div>`; },
+    players() { return `<div id="plRoot"></div>`; }
   };
 
   // ---- Countdown ------------------------------------------------------
@@ -283,10 +285,11 @@
     if (window.B5Live) window.B5Live.stop();   // leaves Realtime and its timers when you leave #live
     if (window.B5Board) window.B5Board.stop();
     if (window.B5Chat) window.B5Chat.stop();
+    if (window.B5Players) window.B5Players.stop();
     document.body.dataset.page = page;   // lets a page restyle the frame (the chat hides the footer)
     view.innerHTML = pages[page]();
     document.querySelectorAll(".nav a[href^='#']").forEach(a =>
-      a.classList.toggle("active", a.getAttribute("href") === "#" + (page === "commish-payouts" ? "commish" : page)));
+      a.classList.toggle("active", a.getAttribute("href") === "#" + (page === "commish-payouts" ? "commish" : page === "confidence" ? "survivor" : page)));
     if (page === "schedule") centerWeek();
     nav.classList.remove("open");
     if (page === "home") startClock();
@@ -295,6 +298,7 @@
     if (window.B5Board) window.B5Board.badge();   // unread count on the nav item (signed-in members)
     if (page === "chat" && window.B5Chat) window.B5Chat.start(document.getElementById("chRoot"), r);
     else if (window.B5Chat) window.B5Chat.badge();
+    if (page === "players" && window.B5Players) window.B5Players.start(document.getElementById("plRoot"), r);
     if (page === "teams" && window.B5Payouts) {
       window.B5Payouts.teamWinnings().then(w => {
         view.querySelectorAll("[data-roster]").forEach(el => {

@@ -93,7 +93,26 @@ describe("playoffs", () => {
     assert.equal(champTotal, 420);
     assert.equal(r.awards.reduce((s, a) => s + a.amount, 0), 4 * 60 + 2 * 120 + 240);
   });
-  test("a tied playoff game is flagged, not decided; the commissioner's winners advance", () => {
+  test("a tied playoff game splits that round's money; the better regular-season standing advances", () => {
+    const tied = bracket.map(g => g.week === 15 && g.home_team === "0001" ? { ...g, away_score: 100 } : g);
+    const g = tied.find(x => x.week === 15 && x.home_team === "0001")!;
+    // 0001 ranked above its opponent: 0001 advances (and goes on to win, as in the bracket above).
+    const order = ["0001", g.away_team, ...TEAMS.filter(t => t !== "0001" && t !== g.away_team)];
+    const r = run([], { matchups: tied, standingsOrder: order });
+    assert.deepEqual(of(r, "playoff_r1").filter(a => [g.home_team, g.away_team].includes(a.team_id)).map(a => [a.team_id, a.amount]).sort(),
+      [["0001", 30], [g.away_team, 30]].sort(), "$60 split $30/$30");
+    assert.deepEqual(of(r, "champion").map(a => a.team_id), ["0001"], "0001 advanced on the tiebreaker");
+    assert.equal(r.awards.reduce((s, a) => s + a.amount, 0), 4 * 60 + 2 * 120 + 240, "splitting never changes the total paid");
+    assert.match(r.flags.find(f => f.kind === "playoff_tie")!.message, /Round money split; 0001 advances on the tiebreaker/);
+    // The other team ranked higher: it advances instead.
+    const flipped = run([], { matchups: tied, standingsOrder: [g.away_team, ...order.filter(t => t !== g.away_team)] });
+    assert.equal(of(flipped, "playoff_r2").some(a => a.team_id === "0001"), false);
+    // A tied championship: co-champions split the $240; the tiebreaker names the champion (Empire).
+    const champTie = tied.map(x => x.week === 17 ? { ...x, home_score: 100, away_score: 100 } : x);
+    const c = run([], { matchups: champTie, standingsOrder: order });
+    assert.deepEqual(of(c, "champion").map(a => a.amount), [120, 120]);
+  });
+  test("a tied playoff game with no standings to break it is flagged; the commissioner's winners advance", () => {
     const tied = bracket.map(g => g.week === 15 && g.home_team === "0001" ? { ...g, away_score: 100 } : g);
     const r = run([], { matchups: tied });
     assert.deepEqual(r.flags.map(f => [f.kind, f.week]), [["playoff_tie", 15]]);

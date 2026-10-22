@@ -551,3 +551,29 @@ body.chat-tv main.wrap { max-width: none; padding: 12px 20px 0; }
 .ch.tv .ch-draft b { font-size: 28px; }
 .ch.tv .ch-draft span { font-size: 22px; }
 .ch.tv .ch-imgs img { max-width: min(100%, 480px); max-height: 360px; }
+.pl-tabs .wk { min-width: auto; padding: 0 14px; height: 34px; font-size: 14px; }
+
+/* Players (#players): free agents, claims, waiver order */
+.fa-tools { display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; }
+.fa-tools input[type=search] { width: 100%; padding: 10px 12px; font-size: 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,.18); background: var(--ink-deep); color: var(--chalk); }
+.fa-pos { display: flex; gap: 6px; flex-wrap: wrap; }
+.fa-pos .wk { min-width: auto; padding: 0 12px; height: 32px; font-size: 13px; }
+.fa-list, .cl-list { list-style: none; margin: 0; padding: 0; }
+.fa-row, .cl-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,.08); }
+.fa-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.fa-main b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fa-row .pos { min-width: 38px; text-align: center; }
+.fa-fcfs { color: #6fd08c; }
+.fa-claims { color: var(--gold); }
+.fa-closed, .fa-rostered { color: #9aa; }
+.fa-confirm { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; padding: 8px 0 2px; }
+.pl-drop { display: flex; flex-direction: column; gap: 4px; font-size: 13px; flex: 1 1 220px; }
+.pl-drop select { padding: 8px; font-size: 15px; border-radius: 6px; background: var(--ink-deep); color: var(--chalk); border: 1px solid rgba(255,255,255,.18); }
+.cl-handle { cursor: grab; touch-action: none; font-size: 20px; padding: 4px 6px; user-select: none; color: var(--gold); }
+.cl-row.dragging { opacity: .55; }
+.cl-row.drop-before { box-shadow: inset 0 3px 0 var(--gold); }
+.cl-btns { display: flex; gap: 4px; }
+.cl-btns button { min-width: 36px; height: 36px; border-radius: 6px; border: 1px solid rgba(255,255,255,.18); background: transparent; color: var(--chalk); font-size: 14px; cursor: pointer; }
+.cl-won { color: #6fd08c; font-weight: 600; }
+.cl-lost, .cl-skipped { color: #e88; }
+tr.me td { color: var(--gold); font-weight: 600; }

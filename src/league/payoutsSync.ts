@@ -89,7 +89,8 @@ export async function refreshPayouts(sb: SbConfig, season: number, fetchImpl: ty
     matchups: matchups.map(m => ({ ...m, home_score: num(m.home_score), away_score: num(m.away_score) })),
     overrides,
     guillotineOverrides: new Map(gOver.map(g => [g.week, g.team_id])),
-    pools
+    pools,
+    standingsOrder: (await get<{ team_id: string }[]>(`standings?season=eq.${season}&rank=not.is.null&select=team_id&order=rank`)).map(x => x.team_id)
   });
   const flags = [...r.flags, ...poolFlags];
   const res = await fetchImpl(sbBase(sb) + "rpc/replace_auto_payouts", {

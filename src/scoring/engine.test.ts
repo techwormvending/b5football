@@ -274,3 +274,31 @@ describe("engine", () => {
     assert.equal(scoreStatLine("WR", { receptions: 6, recYds: 87 }, ppr).total, 14);
   });
 });
+
+// Tier boundaries for total yards (MFL league 22689 rules export, checked 2026-10-23). The top tier
+// starts from a base and adds 2 per full step. MFL counts passing yards in a QB's total (its own
+// official scores prove it: Josh Allen's 41 and Bryce Young's 38 in week 1 only add up with them).
+describe("total-yards tier boundaries", () => {
+  const yds = (pos: Position, rush: number, pass = 0) => scoreStatLine(pos, { rushYds: rush, passYds: pass }).total;
+  test("QB 199 / 200 / 249 / 250 = 3 / 5 / 5 / 7", () => {
+    assert.deepEqual([yds("QB", 199), yds("QB", 200), yds("QB", 249), yds("QB", 250)], [3, 5, 5, 7]);
+  });
+  test("QB passing yards count toward the total (MFL's official scores)", () => {
+    assert.equal(yds("QB", 20, 230), 7, "250 total = 5 + 2");
+  });
+  test("RB 99 / 100 / 124 / 125 = 6 / 8 / 8 / 10", () => {
+    assert.deepEqual([yds("RB", 99), yds("RB", 100), yds("RB", 124), yds("RB", 125)], [6, 8, 8, 10]);
+  });
+  test("WR 99 / 100 / 125 = 4 / 6 / 8", () => {
+    assert.deepEqual([yds("WR", 99), yds("WR", 100), yds("WR", 125)], [4, 6, 8]);
+  });
+  test("TE 74 / 75 / 99 / 100 = 4 / 6 / 6 / 8", () => {
+    assert.deepEqual([yds("TE", 74), yds("TE", 75), yds("TE", 99), yds("TE", 100)], [4, 6, 6, 8]);
+  });
+  test("QBs get no reception points; defensive 2-pt returns 2 each; OPPOPS 2 only at 0 offensive points", () => {
+    assert.equal(scoreStatLine("QB", { receptions: 5 }).total, 0);
+    const def = { passYdsAllowed: 250, rushYdsAllowed: 120, offensiveTdsAllowed: 2 };
+    assert.equal(scoreStatLine("DEF", { ...def, opponentPoints: 14, defTwoPtReturns: 2 }).total, 4);
+    assert.equal(scoreStatLine("DEF", { ...def, offensiveTdsAllowed: 0, opponentPoints: 0 }).total, 10, "8 no offensive TDs + 2 scoreless");
+  });
+});
