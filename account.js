@@ -123,8 +123,10 @@
       A.api(cfg, s, "shadow_results?season=eq." + Number(L.season) + "&select=week,team_id,mfl_score,our_score,matched,details&order=week,team_id", {}, f),
       A.api(cfg, s, "live_compare?season=eq." + Number(L.season) + "&select=week,team_id,our_points,mfl_points,players,diff_since,checked_at&order=week.desc,team_id&limit=36", {}, f),
       A.api(cfg, s, "board_settings?select=auto_recap,auto_awards", {}, f),
-      A.api(cfg, s, "board_threads?source_key=like.announcement:*&select=id,source_key", {}, f)
+      A.api(cfg, s, "board_threads?source_key=like.announcement:*&select=id,source_key", {}, f),
+      A.api(cfg, s, "league_settings?select=max_owners_per_team", {}, f)
     ]).then(function (r) {
+      cm.maxOwners = (r[11] && r[11].ok && r[11].data && r[11].data[0] && r[11].data[0].max_owners_per_team) || 2;
       cm.board = (r[9] && r[9].ok && r[9].data && r[9].data[0]) || null;
       cm.crossposted = {};
       ((r[10] && r[10].ok && r[10].data) || []).forEach(function (t) { cm.crossposted[t.source_key] = t.id; });
@@ -189,11 +191,20 @@
         '<button class="btn" type="submit">Assign team</button>' +
         '<p class="muted small">Works for your own account too. As a team\'s manager you follow the same lineup rules as everyone else; commissioner changes that touch your team are written to the audit log.</p></form>'
       : "";
-    var mgrs = cm.managers.length ? '<ul class="checks">' + cm.managers.map(function (x) {
-      var who = cm.accounts.filter(function (a) { return a.id === x.user_id; })[0];
-      return "<li><b>" + esc(teamName(x.team_id)) + "</b>: " + esc(who ? who.label : (x.profiles && x.profiles.display_name) || x.user_id) +
-        ' <button class="linkish" type="button" data-cm="unassign" data-team="' + esc(x.team_id) + '" data-user="' + esc(x.user_id) + '">remove from team</button></li>';
-    }).join("") + "</ul>" : '<p class="muted">No managers have joined yet.</p>';
+    // One line per team: "Mac Daddies — Adam & Mike", each owner removable on his own.
+    var byTeam = {}, maxOwners = cm.maxOwners || 2;
+    cm.managers.forEach(function (x) { (byTeam[x.team_id] = byTeam[x.team_id] || []).push(x); });
+    var mgrs = cm.managers.length ? '<ul class="checks">' + Object.keys(byTeam).sort().map(function (team) {
+      var list = byTeam[team];
+      var names = list.map(function (x) { return (x.profiles && x.profiles.display_name) || "(no name)"; }).join(" & ");
+      return "<li><b>" + esc(teamName(team)) + "</b> — " + esc(names) + (list.length >= maxOwners ? ' <span class="tag">' + list.length + "/" + maxOwners + " owners</span>" : "") +
+        "<ul>" + list.map(function (x) {
+          var who = cm.accounts.filter(function (a) { return a.id === x.user_id; })[0];
+          return "<li>" + esc(who ? who.label : (x.profiles && x.profiles.display_name) || x.user_id) +
+            ' <button class="linkish" type="button" data-cm="unassign" data-team="' + esc(x.team_id) + '" data-user="' + esc(x.user_id) + '">remove from team</button></li>';
+        }).join("") + "</ul></li>";
+    }).join("") + "</ul>" + '<p class="muted small">Up to ' + esc(maxOwners) + " owners per team, each with his own login; an account owns one team. Removing one owner leaves the other.</p>"
+      : '<p class="muted">No managers have joined yet.</p>';
 
     root.innerHTML = "<section><h2>Commissioner</h2>" + m + poolImportHtml(cm.poolImports || []) + '<div class="card"><h3>Payouts</h3><p>Fees, payouts, manual awards, overrides and CSV export: <a href="#commish-payouts">open the payout tools</a>.</p></div>' + keep + boardHtml() + liveCompareHtml(cm.live || []) + shadow +
       '<div class="card"><h3>Invite a manager</h3>' + seedTeams +
@@ -203,7 +214,7 @@
       '<label class="acct-check"><input type="checkbox" name="is_commissioner"> Commissioner</label>' +
       '<label class="acct-check"><input type="checkbox" name="send" checked> Email a sign-in link now</label>' +
       '<button class="btn" type="submit">Add invite</button></form>' +
-      '<p class="muted small">Only invited emails can create an account. Their team and role are applied when they first sign in. ' +
+      '<p class="muted small">Only invited emails can create an account. Their team and role are applied when they first sign in. Inviting to a team that already has an owner adds a co-owner (up to ' + esc(cm.maxOwners || 2) + " per team). " +
       "Removing an invite stops new sign-ups; to cut off someone who already joined, also remove them from their team.</p></div>" +
       '<div class="card"><h3>Invites</h3>' + invites + "</div>" +
       '<div class="card"><h3>Team managers</h3>' + mgrs + assign + "</div></section>";
@@ -393,7 +404,7 @@
       var out = {};
       (r.ok && r.data || []).forEach(function (x) {
         var n = x.profiles && x.profiles.display_name;
-        if (n) out[x.team_id] = out[x.team_id] ? out[x.team_id] + ", " + n : n;
+        if (n) out[x.team_id] = out[x.team_id] ? out[x.team_id] + " & " + n : n;   // co-owners: "Adam & Mike"
       });
       return out;
     }, function () { return {}; });

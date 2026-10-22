@@ -78,7 +78,7 @@ describe("every table is protected", () => {
 
 test("no default grants leak: anon only ever has SELECT, and only on public-data tables", async () => {
   const PUBLIC = new Set(["teams", "nfl_players", "nfl_games", "roster_entries", "score_weeks", "player_scores", "matchups", "standings", "announcements",
-    "season_settings", "team_scores", "awards", "guillotine", "survivor_status", "confidence_scores", "score_events", "player_injuries"]);
+    "season_settings", "team_scores", "awards", "guillotine", "survivor_status", "confidence_scores", "score_events", "player_injuries", "league_settings"]);
   const g = (await db.query<{ table_name: string; privilege_type: string }>(`
     select table_name, privilege_type from information_schema.role_table_grants
     where table_schema = 'public' and grantee = 'anon'`)).rows;
@@ -168,7 +168,7 @@ describe("a manager's own team", () => {
   test("can't write league data or read commissioner tables", async () => {
     assert.equal(await affected(db, user(ALICE), `update public.standings set wins = 99`), 0);
     await denied(db, user(ALICE), `insert into public.standings (season, team_id) values (2027, '0001')`);
-    await denied(db, user(ALICE), `insert into public.team_managers values ('0002', '${ALICE}')`);
+    await denied(db, user(ALICE), `insert into public.team_managers values ('0002', '${ALICE}')`, /row-level security|already owns/);
     await denied(db, user(ALICE), `insert into public.roster_entries (season, team_id, player_id) values (${S}, '0001', 'QB-FA')`);
     assert.deepEqual(await rows(db, user(ALICE), `select * from public.score_overrides`), []);
     assert.deepEqual(await rows(db, user(ALICE), `select * from public.audit_log`), []);
@@ -421,10 +421,12 @@ describe("commissioner who also manages a team (Mac Daddies, 0011)", () => {
   });
 
   test("assigning or removing himself as a team's manager is logged; assigning others isn't", async () => {
-    await as(db, user(COMMISH), tx => tx.query(`insert into public.team_managers values ('0002', '${COMMISH}')`));
-    await as(db, user(COMMISH), tx => tx.query(`delete from public.team_managers where team_id = '0002' and user_id = '${COMMISH}'`));
-    await as(db, user(COMMISH), tx => tx.query(`insert into public.team_managers values ('0002', '${ALICE}')`));
-    assert.deepEqual((await audit()).map(a => a.action), ["own_team:team_managers:insert", "own_team:team_managers:delete"]);
+    // (An account owns one team, so he leaves his own team and rejoins it.)
+    await as(db, user(COMMISH), tx => tx.query(`delete from public.team_managers where team_id = '${MINE}' and user_id = '${COMMISH}'`));
+    await as(db, user(COMMISH), tx => tx.query(`insert into public.team_managers values ('${MINE}', '${COMMISH}')`));
+    await db.exec(`insert into auth.users (id, email) values ('00000000-0000-0000-0000-0000000000d1', 'dan@example.com')`);
+    await as(db, user(COMMISH), tx => tx.query(`insert into public.team_managers values ('0002', '00000000-0000-0000-0000-0000000000d1')`));
+    assert.deepEqual((await audit()).map(a => a.action), ["own_team:team_managers:delete", "own_team:team_managers:insert"]);
   });
 
   test("server jobs touching his team aren't logged as commissioner actions", async () => {
@@ -569,6 +571,15 @@ describe("pools: survivor and confidence picks", () => {
     await assert.rejects(sv(user(ALICE), "0001", W, "PIT"), /doesn't play in week/);
     await assert.rejects(sv(user(ALICE), "0001", 7, "ARI"), /duplicate key|unique/, "ARI already used this season");
     await sv(user(ALICE), "0001", 7, "DET");
+  });
+
+  test("picks belong to the team: each save goes in the team's activity log, with who made it", async () => {
+    await sv(user(ALICE), "0001", W, "DET");
+    await sv(user(ALICE), "0001", W, "ARI");
+    await conf(user(ALICE), "0001", [{ game_key: "DET@ARI", pick: "DET", points: 2 }]);
+    const act = await rows(db, user(ALICE), `select actor, kind, week, details from public.team_activity where team_id = '0001' order by id`) as { actor: string; kind: string; details: { picks: { nfl_team?: string; game?: string }[] } }[];
+    assert.deepEqual(act.map(a => [a.actor, a.kind, a.details.picks.map(p => p.nfl_team ?? p.game).join(",")]),
+      [[ALICE, "survivor", "DET"], [ALICE, "survivor", "ARI"], [ALICE, "confidence", "DET@ARI"]]);
   });
 
   test("survivor: a pick whose game has started can't be changed or deleted", async () => {
@@ -792,6 +803,118 @@ describe("Live page (public read)", () => {
     await db.exec(`update public.nfl_games set season = 2027`);
     assert.equal(await tick("2026-10-23 12:15Z"), "not the 2026 shadow season");
     for (const who of [anon, user(COMMISH)]) await denied(db, who, `select private.mfl_lineups_tick()`, /permission denied/);
+  });
+});
+
+describe("co-owners (up to 2 per team)", () => {
+  const AL = "00000000-0000-0000-0000-0000000000a2";     // Alice's co-owner (NSFW, 0001)
+  const MIKE = "00000000-0000-0000-0000-0000000000a3";   // the commissioner's co-owner (Mac Daddies, 0011)
+  const NEW = "00000000-0000-0000-0000-0000000000a4";
+  beforeEach(async () => {
+    await db.exec(`
+      update public.profiles set display_name = 'Alice' where id = '${ALICE}';
+      update public.profiles set display_name = 'Adam' where id = '${COMMISH}';
+      insert into auth.users (id, email, raw_user_meta_data) values ('${AL}', 'al@example.com', '{"display_name":"Al"}'),
+        ('${MIKE}', 'mike@example.com', '{"display_name":"Mike"}'), ('${NEW}', 'new@example.com', '{"display_name":"Nate"}');
+      insert into public.teams (id, name, division) values ('0011', 'Mac Daddies', 'Gold');
+      insert into public.team_managers values ('0011', '${COMMISH}'), ('0011', '${MIKE}'), ('0001', '${AL}');`);
+  });
+  const owners = (team: string) => db.query<{ user_id: string }>(`select user_id from public.team_managers where team_id = '${team}' order by user_id`).then(r => r.rows.map(x => x.user_id));
+
+  test("at most 2 owners per team (a league setting), one team per account; enforced by the database", async () => {
+    await assert.rejects(db.query(`insert into public.team_managers values ('0001', '${NEW}')`), /NSFW already has 2 owners \((Al & Alice|Alice & Al)\)\. Remove one first/);
+    await assert.rejects(db.query(`insert into public.team_managers values ('0002', '${AL}')`), /already owns NSFW/);
+    await assert.rejects(as(db, user(COMMISH), tx => tx.query(`insert into public.team_managers values ('0001', '${NEW}')`)), /already has 2 owners/, "the commissioner can't go over it either");
+    assert.equal(await affected(db, user(ALICE), `update public.league_settings set max_owners_per_team = 3`), 0, "managers can't change the limit");
+    assert.equal(await affected(db, user(COMMISH), `update public.league_settings set max_owners_per_team = 3`), 1);
+    await db.query(`insert into public.team_managers values ('0001', '${NEW}')`);
+    assert.equal((await owners("0001")).length, 3);
+    assert.equal((await rows(db, anon, `select max_owners_per_team from public.league_settings`)).length, 1);
+  });
+
+  test("removing one owner leaves the other", async () => {
+    assert.equal(await affected(db, user(COMMISH), `delete from public.team_managers where team_id = '0001' and user_id = '${AL}'`), 1);
+    assert.deepEqual(await owners("0001"), [ALICE]);
+    await db.query(`insert into public.team_managers values ('0001', '${NEW}')`);
+    assert.equal((await owners("0001")).length, 2, "the freed spot can be filled");
+  });
+
+  test("invites: inviting to a team with one owner adds a co-owner; a 3rd is refused with a clear message", async () => {
+    const invite = (email: string, team: string) => as(db, user(COMMISH), tx => tx.query(`insert into public.invites (email, team_id) values ($1, $2)`, [email, team]));
+    await invite("new@example.com", "0002");                    // existing account: linked to Stealers at once
+    assert.deepEqual((await owners("0002")).sort(), [BOB, NEW].sort());
+    await assert.rejects(invite("someone@example.com", "0002"), /Stealers already has 2 owners \(.+\)\. Remove one first/);
+    await assert.rejects(invite("al@example.com", "0002"), /al@example.com already owns NSFW/);
+    // Invites not yet accepted hold a spot too.
+    await db.exec(`delete from public.team_managers where user_id = '${NEW}'`);
+    await invite("future@example.com", "0002");
+    await assert.rejects(invite("another@example.com", "0002"), /already has 2 owners \(counting invites not yet accepted\)|already has 2 owners/);
+    // If a team fills up before an invited person's first sign-in, the account is still created (just not linked).
+    await db.exec(`insert into public.team_managers values ('0002', '${NEW}')`);
+    await db.exec(`insert into auth.users (id, email) values ('00000000-0000-0000-0000-0000000000f1', 'future@example.com')`);
+    assert.equal((await db.query(`select 1 from public.profiles where id = '00000000-0000-0000-0000-0000000000f1'`)).rows.length, 1);
+    assert.equal((await owners("0002")).length, 2);
+  });
+
+  test("both owners can set the lineup; the last save wins; a save over the other owner's newer change is refused until forced", async () => {
+    const save = (who: Who, players: (string | null)[], expected: number | null) =>
+      as(db, who, tx => tx.query(`select slot, player_id from public.save_lineup($1, $2, '0001', $3::text[], $4)`, [S, W, players, expected]));
+    const meta = () => db.query<{ version: number; changed_by: string }>(`select version, changed_by from public.lineup_meta where team_id = '0001'`).then(r => r.rows[0]);
+    const lineup = (qb: string | null, rb: string | null) => [qb, rb, null, null, null, null, null, null, null];
+    await save(user(ALICE), lineup("QB-DET", null), 0);               // Alice loaded version 0: QB in, RB (seeded) out
+    assert.deepEqual(await meta(), { version: 1, changed_by: ALICE });
+    await assert.rejects(save(user(AL), lineup(null, "RB-DET"), 0), /Lineup changed by Alice at \d{1,2}:\d{2} [AP]M since you opened it/,
+      "Al's page still shows version 0: warned, nothing saved");
+    assert.deepEqual((await db.query(`select player_id from public.lineup_slots where team_id = '0001' and week = ${W} order by slot`)).rows, [{ player_id: "QB-DET" }]);
+    await save(user(AL), lineup(null, "RB-DET"), null);               // "Save anyway": last save wins
+    assert.deepEqual(await meta(), { version: 2, changed_by: AL });
+    await save(user(AL), lineup(null, null), 1);                      // his own newer change isn't a conflict
+    assert.deepEqual(await meta(), { version: 3, changed_by: AL });
+    const act = await rows(db, user(ALICE), `select actor, kind, details from public.team_activity where team_id = '0001' order by id`) as { actor: string; kind: string; details: { in?: unknown[]; out?: unknown[] } }[];
+    assert.deepEqual(act.map(a => [a.actor, a.kind, (a.details.in ?? []).length, (a.details.out ?? []).length]),
+      [[ALICE, "lineup", 1, 1], [AL, "lineup", 1, 1], [AL, "lineup", 0, 1]], "one entry per save, with what came in and went out");
+    assert.equal((await rows(db, user(BOB), `select * from public.team_activity where team_id = '0001'`)).length, 0, "another team's log is private");
+    assert.equal((await rows(db, user(COMMISH), `select * from public.team_activity where team_id = '0001'`)).length, 3);
+    assert.equal((await rows(db, user(BOB), `select * from public.lineup_meta where team_id = '0001'`)).length, 0);
+  });
+
+  test("server jobs (the 2026 MFL mirror) don't write the activity log", async () => {
+    await as(db, service, tx => tx.query(`insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '0001', 0, 'QB-DET')`));
+    assert.equal((await db.query(`select * from public.team_activity`)).rows.length, 0);
+  });
+
+  test("the commissioner flag is per person: his co-owner gets no commissioner powers but runs their team", async () => {
+    await db.exec(`insert into public.nfl_players (id, name, position, nfl_team) values ('QB-MD', 'Mac QB', 'QB', 'DET');
+      insert into public.roster_entries (season, team_id, player_id) values (${S}, '0011', 'QB-MD')`);
+    assert.deepEqual(await rows(db, user(MIKE), `select is_commissioner from public.profiles where id = '${MIKE}'`), [{ is_commissioner: false }]);
+    assert.equal((await rows(db, user(MIKE), `select * from public.invites`)).length, 0);
+    await denied(db, user(MIKE), `insert into public.invites (email) values ('x@example.com')`, /row-level security/);
+    await denied(db, user(MIKE), `insert into public.team_managers values ('0002', '${NEW}')`, /row-level security/);
+    assert.equal(await affected(db, user(MIKE), `update public.league_settings set max_owners_per_team = 4`), 0);
+    assert.equal(await affected(db, user(MIKE), `update public.standings set wins = 9`), 0);
+    assert.equal((await rows(db, user(MIKE), `select * from public.audit_log`)).length, 0);
+    await denied(db, user(MIKE), `update public.profiles set is_commissioner = true where id = '${MIKE}'`, /commissioner|row-level/).catch(async () =>
+      assert.deepEqual(await rows(db, user(MIKE), `select is_commissioner from public.profiles where id = '${MIKE}'`), [{ is_commissioner: false }]));
+    await denied(db, user(MIKE), `select public.run_pool_import()`, /Only the commissioner|permission denied/);
+    // ...but the team is theirs too: Mike sets Mac Daddies' lineup like Adam does.
+    await as(db, user(MIKE), tx => tx.query(`select public.save_lineup(${S}, ${W}, '0011', array['QB-MD',null,null,null,null,null,null,null,null])`));
+    assert.deepEqual(await rows(db, user(COMMISH), `select actor, kind from public.team_activity where team_id = '0011'`), [{ actor: MIKE, kind: "lineup" }]);
+  });
+
+  test("league votes: one vote per team; either owner casts or changes it; nobody votes for another team", async () => {
+    const poll = Number(((await rows(db, user(COMMISH), `insert into public.league_polls (title, options) values ('Add a 2nd flex?', '{Yes,No}') returning id`)) as { id: number }[])[0]!.id);
+    await rows(db, user(ALICE), `insert into public.league_votes (poll_id, team_id, choice) values (${poll}, '0001', 1)`);
+    await denied(db, user(AL), `insert into public.league_votes (poll_id, team_id, choice) values (${poll}, '0001', 2)`, /duplicate/);
+    assert.equal(await affected(db, user(AL), `update public.league_votes set choice = 2 where poll_id = ${poll} and team_id = '0001'`), 1, "Al changes the team's vote");
+    await denied(db, user(BOB), `insert into public.league_votes (poll_id, team_id, choice) values (${poll}, '0001', 1)`, /row-level security/);
+    await rows(db, user(BOB), `insert into public.league_votes (poll_id, team_id, choice) values (${poll}, '0002', 1)`);
+    await denied(db, user(BOB), `update public.league_votes set choice = 3 where team_id = '0002'`, /Not one of the options/);
+    const v = await rows(db, user(COMMISH), `select team_id, choice, voted_by from public.league_votes where poll_id = ${poll} order by team_id`);
+    assert.deepEqual(v, [{ team_id: "0001", choice: 2, voted_by: AL }, { team_id: "0002", choice: 1, voted_by: BOB }], "2 teams, 2 votes");
+    await denied(db, user(ALICE), `insert into public.league_polls (title, options) values ('x', '{a,b}')`, /row-level security/);
+    await db.exec(`update public.league_polls set closes_at = now() - interval '1 minute'`);
+    await denied(db, user(BOB), `update public.league_votes set choice = 2 where team_id = '0002'`, /closed/);
+    await denied(db, anon, `select * from public.league_votes`, /permission denied/);
   });
 });
 

@@ -260,6 +260,56 @@
     }).catch(function (e) { st.wk = { error: "Couldn't load this week's lineup: " + e.message }; });
   }
 
+  // ---- Team activity (co-owners: lineups and picks belong to the team) -------------
+  /** One activity entry as text: who changed what. names: user id -> name; players: id -> name. */
+  function activityText(a, names, players) {
+    var who = (a.actor && names[a.actor]) || (a.actor ? "An owner" : "Server");
+    var d = a.details || {}, wk = a.week != null ? "week " + a.week + " " : "";
+    var nm = function (id) { return (players && players[id]) || id; };
+    if (a.kind === "lineup") {
+      var ins = (d.in || []).map(function (x) { return nm(x.player); }), outs = (d.out || []).map(function (x) { return nm(x.player); });
+      var moved = ins.filter(function (x) { return outs.indexOf(x) >= 0; });
+      ins = ins.filter(function (x) { return moved.indexOf(x) < 0; }); outs = outs.filter(function (x) { return moved.indexOf(x) < 0; });
+      var parts = (ins.length ? ["in: " + ins.join(", ")] : []).concat(outs.length ? ["out: " + outs.join(", ")] : []).concat(moved.length ? ["moved: " + moved.join(", ")] : []);
+      return who + " changed the " + wk + "lineup" + (parts.length ? " (" + parts.join("; ") + ")" : "");
+    }
+    if (a.kind === "survivor") {
+      var last = (d.picks || [])[(d.picks || []).length - 1] || {};
+      return last.op === "delete" ? who + " removed the " + wk + "Survivor pick" : who + " picked " + last.nfl_team + " in Survivor (" + wk.trim() + ")";
+    }
+    var n = (d.picks || []).length;
+    return who + " updated the " + wk + "Confidence picks (" + n + " change" + (n === 1 ? "" : "s") + ")";
+  }
+  /** "Lineup last changed by Mike, 2:14 PM" */
+  function lastChangedText(meta, names) {
+    if (!meta || !meta.changed_at) return "";
+    return "Lineup last changed by " + ((meta.changed_by && names[meta.changed_by]) || "an owner") + ", " +
+      new Date(meta.changed_at).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" });
+  }
+  /** The database's "changed by X at T since you opened it" refusal (another owner saved first). */
+  var isConflict = function (msg) { return /since you opened it/.test(String(msg || "")); };
+
+  function loadActivity(teamId) {
+    var s = st.me && st.me.session;
+    if (!s) return Promise.resolve();
+    return Promise.all([
+      A.api(cfg, s, "team_activity?team_id=eq." + encodeURIComponent(teamId) + "&select=id,season,week,kind,actor,at,details&order=at.desc&limit=8", {}, f),
+      A.api(cfg, s, "team_managers?select=user_id,profiles(display_name)", {}, f)
+    ]).then(function (r) {
+      st.names = {};
+      ((r[1].ok && r[1].data) || []).forEach(function (x) { st.names[x.user_id] = (x.profiles && x.profiles.display_name) || ""; });
+      st.activity = r[0].ok ? r[0].data || [] : null;
+    });
+  }
+  function activityHtml() {
+    if (!st.activity || !st.activity.length) return "";
+    var players = {};
+    ((st.lu && st.lu.roster) || []).forEach(function (p) { players[p.id] = p.name; });
+    return '<div class="card mt-activity"><h3>Team activity</h3><ul class="checks">' + st.activity.map(function (a) {
+      return "<li>" + esc(activityText(a, st.names || {}, players)) + ' <span class="muted small">' + esc(fmtKick(Date.parse(a.at))) + "</span></li>";
+    }).join("") + '</ul><p class="muted small">Lineups and picks belong to the team: either owner can change them, and the last save wins.</p></div>';
+  }
+
   // ---- Lineup editor (open seasons) ----------------------------------------------
   function luInfo(p) {
     var lu = st.lu, k = p ? kickoffFor(lu.weekGames, p.nfl) : null;
@@ -295,6 +345,7 @@
     var status = lu.saved ? "Saved." : lu.carried ? "Carried over from week " + lu.carried + ". Save to confirm it." : "Not set yet.";
     var first = lu.weekGames.length ? Math.min.apply(null, lu.weekGames.map(function (g) { return Date.parse(g.kickoff); })) : null;
     return '<div class="card lu-edit"><h3>Week ' + esc(lu.week) + " lineup</h3>" +
+      (lu.meta && lu.meta.changed_at ? '<p class="small lu-last">' + esc(lastChangedText(lu.meta, st.names || {})) + "</p>" : "") +
       '<p class="muted small lu-status">' + esc(status) + " " +
       esc(first && Date.now() < first ? "First game " + fmtKick(first) + " ET. Each player locks at his own kickoff." : "Players lock at their own kickoff.") + "</p>" +
       rows + '<div class="lu-actions"><button class="btn" data-mt="save" type="button">Save lineup</button>' +
@@ -312,7 +363,8 @@
       return Promise.all([
         api("roster_entries?select=player_id,acquired,nfl_players(name,position,nfl_team)" + base),
         week == null ? Promise.resolve({ ok: true, data: [] }) : api("lineup_slots?select=slot,player_id&week=eq." + week + base),
-        week == null || week < 2 ? Promise.resolve({ ok: true, data: [] }) : api("lineup_slots?select=slot,player_id&week=eq." + (week - 1) + base)
+        week == null || week < 2 ? Promise.resolve({ ok: true, data: [] }) : api("lineup_slots?select=slot,player_id&week=eq." + (week - 1) + base),
+        week == null ? Promise.resolve({ ok: true, data: [] }) : api("lineup_meta?select=version,changed_by,changed_at&week=eq." + week + base)
       ]).then(function (r) {
         var bad = r.filter(function (x) { return !x.ok; })[0];
         if (bad) throw new Error(bad.error);
@@ -324,7 +376,9 @@
             var p = x.nfl_players || {};
             return { id: x.player_id, name: p.name || x.player_id, pos: p.position, nfl: p.nfl_team, acquired: x.acquired || "" };
           }).sort(byPos),
-          draft: d.draft, saved: d.saved, carried: d.carried, savedIds: savedIds, msg: st.lu && st.lu.keepMsg || null
+          draft: d.draft, saved: d.saved, carried: d.carried, savedIds: savedIds, msg: st.lu && st.lu.keepMsg || null,
+          // The version this page loaded: saving over someone else's newer change is refused until confirmed.
+          meta: (r[3].data || [])[0] || null, version: ((r[3].data || [])[0] || { version: 0 }).version
         };
       });
     }).catch(function (e) { st.lu = { error: "Couldn't load your lineup: " + e.message }; });
@@ -351,7 +405,7 @@
     var open = lineupsOpen(L);
     var rosterNote = L.rosters && L.rosters.asOf ? "As of " + fmtDate(L.rosters.asOf) + (L.rosters.week ? " (week " + L.rosters.week + ")" : "") + "." : "";
     rootEl.innerHTML = '<section class="mt">' + msgHtml(notice || st.msg) + headerHtml(t) +
-      '<div class="mt-cols"><div>' + (open ? editorHtml() : shadowLineupHtml() + closedHtml()) + "</div><div>" +
+      '<div class="mt-cols"><div>' + (open ? editorHtml() : shadowLineupHtml() + closedHtml()) + activityHtml() + "</div><div>" +
       (open ? rosterHtml(st.lu && st.lu.roster || [], "")
         : st.dbRosters ? rosterHtml(st.dbRosters[t.id] || [], "Current roster (synced nightly).")
         : rosterHtml(leagueRoster(L, t.id), rosterNote)) + "</div></div></section>";
@@ -359,9 +413,10 @@
   }
 
   function show(rootEl) {
-    if (!lineupsOpen(L) && st.me && teamById(st.teamId)) return loadShadowWeek(st.teamId).then(function () { render(rootEl); });
+    var act = st.me && teamById(st.teamId) ? loadActivity(st.teamId).catch(function () {}) : Promise.resolve();
+    if (!lineupsOpen(L) && st.me && teamById(st.teamId)) return Promise.all([loadShadowWeek(st.teamId), act]).then(function () { render(rootEl); });
     if (!lineupsOpen(L) || !st.me || !teamById(st.teamId)) { render(rootEl); return Promise.resolve(); }
-    return loadLineup(st.teamId).then(function () { render(rootEl); });
+    return Promise.all([loadLineup(st.teamId), act]).then(function () { render(rootEl); });
   }
 
   var bound = null;
@@ -391,16 +446,25 @@
       var b = e.target.closest("[data-mt='save']");
       if (!b || !st.lu) return;
       b.disabled = true;
+      var send = function (s, expected) {
+        return A.api(cfg, s, "rpc/save_lineup", { method: "POST", body: JSON.stringify({
+          p_season: Number(L.season), p_week: st.lu.week, p_team: st.teamId, p_players: st.lu.draft, p_expected_version: expected
+        }) }, f);
+      };
       A.current(cfg, { storage: storage, fetchImpl: f, now: Date.now() }).then(function (s) {
         if (!s) throw new Error("You've been signed out. Sign in again.");
         st.me.session = s;
-        return A.api(cfg, s, "rpc/save_lineup", { method: "POST", body: JSON.stringify({
-          p_season: Number(L.season), p_week: st.lu.week, p_team: st.teamId, p_players: st.lu.draft
-        }) }, f);
+        return send(s, st.lu.version).then(function (r) {
+          // The other owner saved after this page loaded: say who and when, and let this owner decide.
+          if (r.ok || !isConflict(r.error)) return r;
+          if (root.confirm(r.error + ".\n\nSave your lineup anyway? It replaces theirs (the last save wins).")) return send(s, null);
+          st.lu.keepMsg = { err: r.error + ". Your changes weren't saved; this is the lineup as it is now." };
+          return { ok: true, reloaded: true };
+        });
       }).then(function (r) {
         if (!r.ok) throw new Error(r.error);
-        st.lu.keepMsg = { ok: "Lineup saved " + fmtKick(Date.now()) + " ET." };
-        return loadLineup(st.teamId);
+        if (!r.reloaded) st.lu.keepMsg = { ok: "Lineup saved " + fmtKick(Date.now()) + " ET." };
+        return Promise.all([loadLineup(st.teamId), loadActivity(st.teamId)]);
       }).catch(function (err) {
         // The database names players by ID; show names.
         var text = String(err.message || "");
@@ -410,5 +474,5 @@
     });
   }
 
-  root.B5MyTeam = { start: start, lineupListHtml: lineupListHtml, statusText: statusText, loadRosters: loadRosters, rostersFromRows: rostersFromRows, lineupsOpen: lineupsOpen, recordFor: recordFor, leagueRoster: leagueRoster, pickWeek: pickWeek, draftFrom: draftFrom, kickoffFor: kickoffFor };
+  root.B5MyTeam = { start: start, activityText: activityText, lastChangedText: lastChangedText, isConflict: isConflict, lineupListHtml: lineupListHtml, statusText: statusText, loadRosters: loadRosters, rostersFromRows: rostersFromRows, lineupsOpen: lineupsOpen, recordFor: recordFor, leagueRoster: leagueRoster, pickWeek: pickWeek, draftFrom: draftFrom, kickoffFor: kickoffFor };
 })(typeof globalThis !== "undefined" ? globalThis : this);

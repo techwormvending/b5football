@@ -91,3 +91,25 @@ test("matchup status: no week row = not started; live (with delay note); final; 
   assert.equal(T({ status: "final" }), "Final");
   assert.equal(T({ status: "pending_review" }), "Final (awaiting commissioner sign-off)");
 });
+
+test("co-owners: team activity reads as who changed what; last change; the other owner's newer save is recognized", () => {
+  const X = ctx.B5MyTeam as unknown as {
+    activityText(a: unknown, names: Record<string, string>, players: Record<string, string>): string;
+    lastChangedText(meta: unknown, names: Record<string, string>): string;
+    isConflict(msg: string): boolean;
+  };
+  const names = { u1: "Adam", u2: "Mike" }, players = { p1: "Jared Goff", p2: "Matthew Stafford", p3: "Jahmyr Gibbs" };
+  assert.equal(X.activityText({ kind: "lineup", week: 7, actor: "u2", details: { in: [{ slot: 0, player: "p1" }], out: [{ slot: 0, player: "p2" }] } }, names, players),
+    "Mike changed the week 7 lineup (in: Jared Goff; out: Matthew Stafford)");
+  assert.equal(X.activityText({ kind: "lineup", week: 7, actor: "u1", details: { in: [{ slot: 2, player: "p3" }], out: [{ slot: 1, player: "p3" }] } }, names, players),
+    "Adam changed the week 7 lineup (moved: Jahmyr Gibbs)");
+  assert.equal(X.activityText({ kind: "survivor", week: 8, actor: "u1", details: { picks: [{ op: "insert", nfl_team: "DET" }, { op: "update", nfl_team: "KC" }] } }, names, players),
+    "Adam picked KC in Survivor (week 8)");
+  assert.equal(X.activityText({ kind: "confidence", week: 8, actor: "u2", details: { picks: [{}, {}, {}] } }, names, players),
+    "Mike updated the week 8 Confidence picks (3 changes)");
+  assert.match(X.lastChangedText({ changed_by: "u2", changed_at: "2026-10-25T18:14:00Z" }, names), /^Lineup last changed by Mike, Sun 2:14 PM$/);
+  assert.equal(X.lastChangedText(null, names), "");
+  assert.equal(X.isConflict("Lineup changed by Mike at 2:14 PM since you opened it"), true);
+  assert.equal(X.isConflict("Player x is locked: his game has kicked off"), false);
+  assert.match(fs.readFileSync(path.resolve(import.meta.dirname, "../../myteam.js"), "utf8"), /p_expected_version: expected/, "saves send the version the page loaded");
+});
