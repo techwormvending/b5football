@@ -34,12 +34,12 @@
       if (!s) { me = null; return null; }
       return Promise.all([
         A.api(cfg, s, "profiles?id=eq." + encodeURIComponent(s.user.id) + "&select=display_name,is_commissioner", {}, f),
-        A.api(cfg, s, "team_managers?user_id=eq." + encodeURIComponent(s.user.id) + "&select=team_id,teams(name)", {}, f)
+        A.api(cfg, s, "team_managers?user_id=eq." + encodeURIComponent(s.user.id) + "&select=team_id", {}, f)
       ]).then(function (r) {
         me = {
           session: s,
           profile: (r[0].ok && r[0].data && r[0].data[0]) || null,
-          teams: ((r[1].ok && r[1].data) || []).map(function (t) { return { team_id: t.team_id, name: t.teams ? t.teams.name : t.team_id }; })
+          teams: ((r[1].ok && r[1].data) || []).map(function (t) { return { team_id: t.team_id, name: window.B5Team.name(t.team_id) }; })
         };
         return me;
       });
@@ -67,7 +67,7 @@
     }
     var p = me.profile || {};
     var teams = me.teams.length
-      ? me.teams.map(function (t) { return esc(t.name); }).join(", ")
+      ? me.teams.map(function (t) { return window.B5Team.link(t.team_id); }).join(", ")
       : (p.is_commissioner ? "None" : "Not assigned to a team yet. Ask the commissioner.");
     root.innerHTML = "<section><h2>Account</h2>" +
       (notice && notice.signedIn ? '<p class="acct-msg ok">You\'re signed in.</p>' : "") + m +
@@ -78,12 +78,37 @@
       '<form class="acct-form" data-acct="name"><label>Display name<input name="display_name" maxlength="40" required value="' + esc(p.display_name) + '"></label>' +
       '<p class="muted small">Shown to the league as your team\'s manager.</p>' +
       '<button class="btn ghost" type="submit">Save name</button></form>' +
-      '<button class="btn ghost" type="button" data-acct="signout">Sign out</button></div></section>';
+      '<button class="btn ghost" type="button" data-acct="signout">Sign out</button></div>' + contactForm(p) + "</section>";
+  }
+
+  // Owner contact info (owner_contacts: your row only; members see the fields you mark "League members"
+  // on your team's profile; the commissioner always sees everything).
+  var contact = null;
+  function loadContact() {
+    contact = null;
+    if (!me || !(me.teams.length || (me.profile && me.profile.is_commissioner))) return Promise.resolve();
+    return A.api(cfg, me.session, "owner_contacts?user_id=eq." + encodeURIComponent(me.session.user.id) + "&select=*", {}, f)
+      .then(function (r) { contact = (r.ok && r.data && r.data[0]) || {}; });
+  }
+  function contactForm() {
+    if (!contact) return "";
+    var c = contact;
+    var vis = function (name, on) {
+      return '<select name="' + name + '" aria-label="Who sees it"><option value="1"' + (on !== false ? " selected" : "") + '>League members</option><option value="0"' + (on === false ? " selected" : "") + ">Hidden</option></select>";
+    };
+    var phone = window.B5TeamPage ? window.B5TeamPage.formatPhone(c.phone) || c.phone || "" : c.phone || "";
+    return '<form class="card acct-form contact-form" data-acct="contact"><h3>Contact info</h3>' +
+      '<p class="muted small">Shown on your team\'s profile to signed-in league members only (never to visitors). Set a field to Hidden to keep it from members; the commissioner always sees it.</p>' +
+      '<div class="cf-row"><label>Email<input name="email" type="email" autocomplete="email" inputmode="email" maxlength="254" value="' + esc(c.email || "") + '"></label>' + vis("email_visible", c.email_visible) + "</div>" +
+      '<div class="cf-row"><label>Cell phone (US)<input name="phone" type="tel" autocomplete="tel-national" inputmode="tel" maxlength="20" placeholder="(412) 555-0123" value="' + esc(phone) + '"></label>' + vis("phone_visible", c.phone_visible) + "</div>" +
+      '<div class="cf-row"><label>Personal website<input name="website" type="url" inputmode="url" maxlength="300" placeholder="https://…" value="' + esc(c.website || "") + '"></label>' + vis("website_visible", c.website_visible) + "</div>" +
+      '<button class="btn ghost" type="submit">Save contact info</button>' +
+      (me.teams.length ? ' <a class="linkish" href="' + esc(window.B5Team.href(me.teams[0].team_id)) + '">See your team\'s profile</a>' : "") + "</form>";
   }
 
   function startAccount(root) {
     root.innerHTML = '<section><h2>Account</h2><p class="muted">Loading…</p></section>';
-    load().then(function () { refreshNav(); renderAccount(root); }, function () { renderAccount(root, { err: "Couldn't load your account." }); });
+    load().then(function () { refreshNav(); return loadContact().catch(function () {}); }).then(function () { renderAccount(root); }, function () { renderAccount(root, { err: "Couldn't load your account." }); });
     root.addEventListener("submit", function (e) {
       var form = e.target.closest("[data-acct]");
       if (!form) return;
@@ -98,6 +123,17 @@
         A.api(cfg, me.session, "profiles?id=eq." + encodeURIComponent(me.session.user.id), {
           method: "PATCH", body: JSON.stringify({ display_name: String(fd.get("display_name") || "").trim() }), headers: { Prefer: "return=minimal" }
         }, f).then(function (r) { return load().then(function () { renderAccount(root, r.ok ? { ok: "Name saved." } : { err: r.error }); }); });
+      } else if (form.dataset.acct === "contact") {
+        var web = String(fd.get("website") || "").trim();
+        if (web && !/^https:\/\//i.test(web)) { if (btn) btn.disabled = false; renderAccount(root, { err: "Website must start with https://" }); return; }
+        A.api(cfg, me.session, "owner_contacts?on_conflict=user_id", {
+          method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+          body: JSON.stringify({ user_id: me.session.user.id, email: String(fd.get("email") || "").trim() || null, phone: String(fd.get("phone") || "").trim() || null, website: web || null,
+            email_visible: fd.get("email_visible") === "1", phone_visible: fd.get("phone_visible") === "1", website_visible: fd.get("website_visible") === "1" })
+        }, f).then(function (r) {
+          if (r.ok && r.data && r.data[0]) contact = r.data[0];
+          renderAccount(root, r.ok ? { ok: "Contact info saved." } : { err: String(r.error || "").replace(/^.*?: /, "") || "Couldn't save." });
+        });
       }
     });
     root.addEventListener("click", function (e) {
@@ -147,8 +183,9 @@
     });
   }
 
-  function teamName(id) {
-    for (var i = 0; i < cm.teams.length; i++) if (cm.teams[i].id === id) return cm.teams[i].name;
+  var tlink = function (id) { return id ? window.B5Team.link(id, { logo: false }) : ""; };
+  function plainTeam(id) {
+    if (window.B5Team.has(id)) return window.B5Team.name(id);
     return id || "";
   }
 
@@ -168,13 +205,13 @@
       }).join("") : "<li>No heartbeats yet.</li>") + "</ul></div>";
 
     var shadow = shadowHtml(cm.shadow);
-    var teamOpts = '<option value="">No team</option>' + cm.teams.map(function (t) { return '<option value="' + esc(t.id) + '">' + esc(t.name) + "</option>"; }).join("");
+    var teamOpts = '<option value="">No team</option>' + cm.teams.map(function (t) { return window.B5Team.option(t.id); }).join("");
     var seedTeams = cm.teams.length ? "" :
-      '<p class="acct-msg err">No teams in the database yet. <button class="btn ghost" type="button" data-cm="seed-teams">Add the ' + esc((L.teams || []).length) + " teams from the site</button></p>";
+      '<p class="acct-msg err">No teams in the database yet. <button class="btn ghost" type="button" data-cm="seed-teams">Add the ' + esc(window.B5Team.ids().length) + " teams from the site</button></p>";
 
     var invites = cm.invites.length ? '<div class="table-wrap"><table class="cm-table"><thead><tr><th>Email</th><th>Team</th><th>Role</th><th>Status</th><th></th></tr></thead><tbody>' +
       cm.invites.map(function (i) {
-        return "<tr><td>" + esc(i.email) + "</td><td>" + esc(teamName(i.team_id)) + "</td><td>" + (i.is_commissioner ? "Commissioner" : "Manager") +
+        return "<tr><td>" + esc(i.email) + "</td><td>" + tlink(i.team_id) + "</td><td>" + (i.is_commissioner ? "Commissioner" : "Manager") +
           "</td><td>" + (i.accepted_at ? '<span class="tag">Joined</span> ' + esc(et(i.accepted_at)) : "Invited " + esc(et(i.invited_at)) + '<br><span class="muted small">Not signed in yet</span>') + "</td>" +
           '<td class="cm-actions"><button class="btn ghost" type="button" data-cm="send" data-email="' + esc(i.email) + '">Send link</button>' +
           '<button class="btn ghost" type="button" data-cm="remove-invite" data-email="' + esc(i.email) + '">Remove</button></td></tr>';
@@ -185,9 +222,7 @@
         '<label>Account<select name="user_id" required><option value="">Pick an account</option>' + cm.accounts.map(function (a) {
           return '<option value="' + esc(a.id) + '">' + esc(a.label) + "</option>";
         }).join("") + "</select></label>" +
-        '<label>Team<select name="team_id" required><option value="">Pick a team</option>' + cm.teams.map(function (t) {
-          return '<option value="' + esc(t.id) + '">' + esc(t.name) + "</option>";
-        }).join("") + "</select></label>" +
+        '<label>Team<select name="team_id" required><option value="">Pick a team</option>' + cm.teams.map(function (t) { return window.B5Team.option(t.id); }).join("") + "</select></label>" +
         '<button class="btn" type="submit">Assign team</button>' +
         '<p class="muted small">Works for your own account too. As a team\'s manager you follow the same lineup rules as everyone else; commissioner changes that touch your team are written to the audit log.</p></form>'
       : "";
@@ -197,7 +232,7 @@
     var mgrs = cm.managers.length ? '<ul class="checks">' + Object.keys(byTeam).sort().map(function (team) {
       var list = byTeam[team];
       var names = list.map(function (x) { return (x.profiles && x.profiles.display_name) || "(no name)"; }).join(" & ");
-      return "<li><b>" + esc(teamName(team)) + "</b> — " + esc(names) + (list.length >= maxOwners ? ' <span class="tag">' + list.length + "/" + maxOwners + " owners</span>" : "") +
+      return "<li><b>" + tlink(team) + "</b> — " + esc(names) + (list.length >= maxOwners ? ' <span class="tag">' + list.length + "/" + maxOwners + " owners</span>" : "") +
         "<ul>" + list.map(function (x) {
           var who = cm.accounts.filter(function (a) { return a.id === x.user_id; })[0];
           return "<li>" + esc(who ? who.label : (x.profiles && x.profiles.display_name) || x.user_id) +
@@ -229,7 +264,7 @@
       var c = x.compare || {}, mm = c.mismatches || [];
       return "<li><b>Week " + esc(x.week) + "</b>: " + (x.status === "ok" ? '<span class="tag">Imported</span> ' : '<span class="tag cm-bad">Failed</span> ') + esc(et(x.succeeded_at || x.attempted_at)) +
         (x.attempts > 1 ? " (" + esc(x.attempts) + " attempts)" : "") + '<br><span class="muted small">' + esc(x.message || "") + "</span>" +
-        (mm.length ? "<ul>" + mm.map(function (z) { return "<li>" + esc(teamName(z.team_id)) + " " + esc(z.what) + " total: ours " + esc(z.ours) + ", MFL " + esc(z.mfl) + "</li>"; }).join("") + "</ul>" : "") + "</li>";
+        (mm.length ? "<ul>" + mm.map(function (z) { return "<li>" + tlink(z.team_id) + " " + esc(z.what) + " total: ours " + esc(z.ours) + ", MFL " + esc(z.mfl) + "</li>"; }).join("") + "</ul>" : "") + "</li>";
     }).join("") + "</ul>" : '<p class="muted">No imports yet.</p>';
     return '<div class="card"><h3>Confidence Pool: official MFL import</h3>' + warn +
       '<p class="muted small">Tuesdays 6:00 AM ET the official MFL picks replace the TEST picks for the week that just finished; then our totals are checked against MFL\'s results.</p>' +
@@ -261,7 +296,7 @@
     var diff = rows.filter(function (x) { return x.diff_since; });
     var items = rows.map(function (x) {
       var p = x.players || [];
-      return "<li><b>" + esc(teamName(x.team_id)) + "</b>: ours " + esc(n(x.our_points)) + ", MFL " + esc(n(x.mfl_points)) +
+      return "<li><b>" + tlink(x.team_id) + "</b>: ours " + esc(n(x.our_points)) + ", MFL " + esc(n(x.mfl_points)) +
         (x.diff_since ? ' <span class="tag cm-bad">Differs for ' + esc(mins(x.diff_since)) + " min</span>" : ' <span class="tag">Match</span>') +
         (p.length ? "<ul>" + p.map(function (z) {
           return "<li>" + esc(z.name || z.mfl_id || z.player_id) + ": ours " + esc(n(z.ours)) + ", MFL " + esc(n(z.mfl)) +
@@ -290,7 +325,7 @@
       if (!bad.length) return '<li><span class="tag">Exact</span> ' + esc(head) + "</li>";
       return '<li><details><summary><span class="tag cm-bad">Check</span> ' + esc(head) + "</summary>" + bad.map(function (r) {
         var d = r.details || {};
-        return "<p><b>" + esc(teamName(r.team_id)) + "</b>: ours " + esc(fmt(r.our_score)) + " vs MFL " + esc(fmt(r.mfl_score)) + "</p><ul>" +
+        return "<p><b>" + tlink(r.team_id) + "</b>: ours " + esc(fmt(r.our_score)) + " vs MFL " + esc(fmt(r.mfl_score)) + "</p><ul>" +
           (d.diffs || []).map(function (x) {
             return "<li>" + esc(x.name) + " (" + esc(x.position || "?") + "): ours " + esc(fmt(x.ours)) + " vs MFL " + esc(fmt(x.mfl)) +
               (x.note ? " · " + esc(x.note) : "") +
@@ -334,8 +369,8 @@
         e.preventDefault();
         var ad = new FormData(af), row = { team_id: ad.get("team_id"), user_id: ad.get("user_id") };
         act(A.api(cfg, me.session, "team_managers", { method: "POST", body: JSON.stringify(row), headers: { Prefer: "return=minimal" } }, f).then(function (r) {
-          if (!r.ok) return { ok: false, error: /duplicate|unique/i.test(r.error) ? "That account already manages " + teamName(row.team_id) + "." : r.error };
-          return { msgOk: "Assigned to " + teamName(row.team_id) + "." };
+          if (!r.ok) return { ok: false, error: /duplicate|unique/i.test(r.error) ? "That account already manages " + plainTeam(row.team_id) + "." : r.error };
+          return { msgOk: "Assigned to " + plainTeam(row.team_id) + "." };
         }).then(function (r) { return load().then(function () { refreshNav(); return r; }); }));
         return;
       }
@@ -376,7 +411,7 @@
         act(A.api(cfg, me.session, "invites?email=eq." + encodeURIComponent(b.dataset.email), { method: "DELETE" }, f)
           .then(function (r) { return r.ok ? { msgOk: "Invite removed." } : r; }));
       } else if (kind === "unassign") {
-        if (!window.confirm("Remove this manager from " + teamName(b.dataset.team) + "?")) return;
+        if (!window.confirm("Remove this manager from " + plainTeam(b.dataset.team) + "?")) return;
         act(A.api(cfg, me.session, "team_managers?team_id=eq." + encodeURIComponent(b.dataset.team) + "&user_id=eq." + encodeURIComponent(b.dataset.user), { method: "DELETE" }, f)
           .then(function (r) { return r.ok ? { msgOk: "Manager removed from the team." } : r; }));
       } else if (kind === "crosspost") {
@@ -390,7 +425,7 @@
       } else if (kind === "seed-teams") {
         var divs = {};
         (L.divisions || []).forEach(function (d) { divs[d.id] = d.name; });
-        var rows = (L.teams || []).map(function (t) { return { id: t.id, name: t.name, division: divs[t.division] || t.division, logo_url: t.logo || null }; });
+        var rows = window.B5Team.seedRows().map(function (t) { return { id: t.id, name: t.name, division: divs[t.division] || t.division, logo_url: t.logo }; });   // teamlink-ok: commissioner's one-time seeding of the teams table
         act(A.api(cfg, me.session, "teams", { method: "POST", body: JSON.stringify(rows), headers: { Prefer: "resolution=merge-duplicates,return=minimal" } }, f)
           .then(function (r) { return r.ok ? { msgOk: "Added " + rows.length + " teams." } : r; }));
       }

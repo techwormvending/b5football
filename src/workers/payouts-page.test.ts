@@ -6,6 +6,7 @@ import path from "node:path";
 import vm from "node:vm";
 
 const ctx: Record<string, unknown> = { LEAGUE: { season: 2026, teams: [{ id: "0001", name: "NSFW" }, { id: "0002", name: "Stealers" }] } };
+vm.runInNewContext(fs.readFileSync(path.resolve(import.meta.dirname, "../../teamlink.js"), "utf8"), ctx);
 vm.runInNewContext(fs.readFileSync(path.resolve(import.meta.dirname, "../../payouts.js"), "utf8"), ctx);
 type Award = { kind: string; week: number | null; place: number | null; team_id: string; amount: number; status: string; source: string; label?: string; note?: string };
 const P = ctx.B5Payouts as {

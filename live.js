@@ -26,16 +26,11 @@
   var season = Number(L.season);
   var SLOTS = L.lineupSlots || ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "K", "DEF"];
   var STALE_MS = 3 * 60000, WINDOW_MS = 4.5 * 3600000, BIG = 6;
-  var teamById = function (id) { return (L.teams || []).filter(function (t) { return t.id === id; })[0] || { id: id, name: id }; };
+  var T = root.B5Team;   // team names, logos and profile links (teamlink.js)
   var fmtKick = function (iso) { return iso ? new Date(iso).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" }) : ""; };
   var fmtTime = function (iso) { return iso ? new Date(iso).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" }) : ""; };
   var pts = function (x) { var r = Math.round(Number(x || 0) * 100) / 100; return r.toFixed(Math.round(r * 100) % 10 ? 2 : 1); };
   var num = function (x) { return String(Math.round(Number(x || 0) * 100) / 100); };   // breakdown lines: "→ 10", "→ 4.7"
-  var initials = function (n) { return String(n || "").split(/\s+/).filter(function (w) { return w && !/^the$/i.test(w); }).slice(0, 2).map(function (w) { return w[0]; }).join("").toUpperCase(); };
-  var logo = function (t) {
-    return t.logo ? '<img class="logo sm" src="' + esc(t.logo) + '" alt="" loading="lazy" onerror="this.outerHTML=\'<div class=&quot;logo sm&quot;>' + esc(initials(t.name)) + '</div>\'">'
-      : '<div class="logo sm">' + esc(initials(t.name)) + "</div>";
-  };
 
   // ---- Pure helpers (tested in src/workers/live-page.test.ts) ------------------------
   /** One NFL game's state: "pre" (not kicked off), "live", "final". */
@@ -249,17 +244,19 @@
   function cardsHtml(d) {
     var now = Date.now(), sel = pairKey(selected());
     var cards = d.matchups.slice().sort(byAway).map(function (m) {
-      var a = teamById(m.away_team), h = teamById(m.home_team);
-      var pa = progress(teamSlots(d, a.id), d.games, now), ph = progress(teamSlots(d, h.id), d.games, now);
+      var a = m.away_team, h = m.home_team;
+      var pa = progress(teamSlots(d, a), d.games, now), ph = progress(teamSlots(d, h), d.games, now);
       var sa = Number(m.away_score || 0), sh = Number(m.home_score || 0), cs = cardStatus(d.sw, pa, ph);
       var lead = cs.key === "upcoming" || sa === sh ? null : sa > sh ? "a" : "h";
-      var row = function (t, s, p, isLead) {
-        return '<div class="lv-row' + (isLead ? " lead" : "") + '">' + logo(t) + '<div class="lv-name"><b>' + esc(t.name) + '</b><span class="muted small">' + esc(progressText(p)) + "</span>" + warnHtml(p) +
+      var row = function (id, s, p, isLead) {
+        return '<div class="lv-row' + (isLead ? " lead" : "") + '">' + T.logo(id) + '<div class="lv-name">' + T.link(id, { logo: false, bold: true }) + '<span class="muted small">' + esc(progressText(p)) + "</span>" + warnHtml(p) +
           '</div><span class="lv-pts">' + esc(pts(s)) + "</span></div>";
       };
       var isSel = pairKey(m) === sel;
-      return '<a class="card lv-card lv-' + cs.key + (isSel ? " sel" : "") + '" href="#live/' + esc(d.week) + "/" + esc(a.id) + '" data-lv-team="' + esc(a.id) + '"' + (isSel ? ' aria-current="true"' : "") + '>' +
-        '<span class="tag lv-st">' + esc(cs.text) + "</span>" + row(a, sa, pa, lead === "a") + row(h, sh, ph, lead === "h") + "</a>";
+      // The card selects the matchup (a cover link under it); the team names on top open the teams.
+      return '<div class="card lv-card has-cover lv-' + cs.key + (isSel ? " sel" : "") + '"' + (isSel ? ' aria-current="true"' : "") + '>' +
+        '<a class="card-cover" href="#live/' + esc(d.week) + "/" + esc(a) + '" data-lv-team="' + esc(a) + '" aria-label="Show this matchup"></a>' +
+        '<span class="tag lv-st">' + esc(cs.text) + "</span>" + row(a, sa, pa, lead === "a") + row(h, sh, ph, lead === "h") + "</div>";
     }).join("");
     return cards ? '<div class="lv-board">' + cards + "</div>" : '<div class="card muted">No matchups for week ' + esc(d.week) + ".</div>";
   }
@@ -300,13 +297,13 @@
   function detailHtml(d, m, dt) {
     if (!m) return "";
     if (!dt || dt.key !== d.week + ":" + pairKey(m)) return '<div class="card muted">Loading the matchup…</div>';
-    var a = teamById(m.away_team), h = teamById(m.home_team), now = Date.now();
-    var side = function (t) { return lineupView(teamSlots(d, t.id), dt.roster.filter(function (r) { return r.team === t.id; }), dt.scores, d.games, now, dt.injuries); };
+    var a = m.away_team, h = m.home_team, now = Date.now();
+    var side = function (id) { return lineupView(teamSlots(d, id), dt.roster.filter(function (r) { return r.team === id; }), dt.scores, d.games, now, dt.injuries); };
     var va = side(a), vh = side(h);
-    var pa = progress(teamSlots(d, a.id), d.games, now), ph = progress(teamSlots(d, h.id), d.games, now), cs = cardStatus(d.sw, pa, ph);
+    var pa = progress(teamSlots(d, a), d.games, now), ph = progress(teamSlots(d, h), d.games, now), cs = cardStatus(d.sw, pa, ph);
     var lead = cs.key === "upcoming" || va.total === vh.total ? null : va.total > vh.total ? "a" : "h";
-    var ht = function (t, v, p, isLead) {
-      return '<div class="lv-ht' + (isLead ? " lead" : "") + '">' + logo(t) + "<b>" + esc(t.name) + '</b><span class="lv-big">' + esc(pts(v.total)) + '</span><span class="muted small">' + esc(progressText(p)) + "</span>" + warnHtml(p) + "</div>";
+    var ht = function (id, v, p, isLead) {
+      return '<div class="lv-ht' + (isLead ? " lead" : "") + '">' + T.logo(id) + T.link(id, { logo: false, bold: true }) + '<span class="lv-big">' + esc(pts(v.total)) + '</span><span class="muted small">' + esc(progressText(p)) + "</span>" + warnHtml(p) + "</div>";
     };
     var head = '<div class="card lv-head"><span class="tag lv-st">' + esc(cs.text) + (d.sw && d.sw.status === "pending_review" ? " · awaiting commissioner sign-off" : "") + "</span>" +
       '<div class="lv-vs">' + ht(a, va, pa, lead === "a") + ht(h, vh, ph, lead === "h") + "</div></div>";
@@ -322,15 +319,14 @@
     dt.roster.forEach(function (r) { names[r.id] = r.name; });
     d.slots.forEach(function (s) { if (s.player_id) names[s.player_id] = s.name; });
     var ids = function (v) { return v.starters.filter(function (s) { return s.player; }).map(function (s) { return s.player.id; }); };
-    var plays = feed(dt.events, [{ team: a.id, ids: ids(va) }, { team: h.id, ids: ids(vh) }]);
+    var plays = feed(dt.events, [{ team: a, ids: ids(va) }, { team: h, ids: ids(vh) }]);
     var feedHtml = '<div class="card"><h3>Scoring plays</h3>' + (plays.length ? '<ul class="lv-feed">' + plays.map(function (e) {
-      var t = teamById(e.team);
       return '<li class="' + (e.big ? "big" : "") + '"><span class="lv-ft small muted">' + esc(e.detail || "") + (e.detail ? " · " : "") + esc(fmtTime(e.at)) + "</span>" +
-        '<span class="lv-fw">' + esc(t.name) + " · <b>" + esc(names[e.player_id] || e.player_id) + "</b>" + (e.big ? ' <span class="tag">Big play</span>' : "") + "</span>" +
+        '<span class="lv-fw">' + T.link(e.team, { logo: false }) + " · <b>" + esc(names[e.player_id] || e.player_id) + "</b>" + (e.big ? ' <span class="tag">Big play</span>' : "") + "</span>" +
         '<span class="lv-fd ' + (e.delta < 0 ? "down" : "up") + '">' + (e.delta > 0 ? "+" : "") + esc(num(e.delta)) + "</span>" +
         '<span class="lv-fl small">' + esc(e.lines.map(function (l) { return l.text + " (" + (l.delta > 0 ? "+" : "") + num(l.delta) + ")"; }).join("; ")) + "</span></li>";
     }).join("") + "</ul>" : '<p class="muted small">No scoring plays yet. Plays are recorded as they happen during games (from week 7 of 2026 on).</p>') + "</div>";
-    return '<h3 class="lv-detail-h">' + esc(a.name) + " vs " + esc(h.name) + "</h3>" + head + lineups + feedHtml;
+    return '<h3 class="lv-detail-h">' + T.link(a, { logo: false }) + " vs " + T.link(h, { logo: false }) + "</h3>" + head + lineups + feedHtml;
   }
 
   // One page: the shell (title, label, week links) is built once per week; the other parts are
@@ -428,7 +424,7 @@
     }).catch(function (e) { if (st.el === el) el.innerHTML = '<section class="lv"><h2>Live</h2><p class="acct-msg err">Couldn\'t load: ' + esc(e.message) + "</p></section>"; });
 
     rootEl.addEventListener("click", function (e) {
-      var card = e.target.closest("a.lv-card[data-lv-team]");
+      var card = e.target.closest("a.card-cover[data-lv-team]");
       if (card && !(e.metaKey || e.ctrlKey || e.shiftKey)) { e.preventDefault(); select(card.dataset.lvTeam); return; }
       var b = e.target.closest("[data-lv-player]"); if (!b) return;
       var id = b.dataset.lvPlayer;

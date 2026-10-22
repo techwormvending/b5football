@@ -51,6 +51,9 @@ async function seed(db: PGlite) {
 
 const rows = async (db: PGlite, who: Who, sql: string, params: unknown[] = []) =>
   (await as(db, who, tx => tx.query(sql, params))).rows;
+// Rows as plain records (the newer test blocks read fields directly).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const rowsT = async (db: PGlite, who: Who, sql: string, params: unknown[] = []) => (await rows(db, who, sql, params)) as Record<string, any>[];
 const affected = async (db: PGlite, who: Who, sql: string, params: unknown[] = []) =>
   (await as(db, who, tx => tx.query(sql, params))).affectedRows ?? 0;
 const denied = (db: PGlite, who: Who, sql: string, re: RegExp = /row-level security|permission denied|only the commissioner|locked|not on team|cannot play|must be pending/i) =>
@@ -78,7 +81,7 @@ describe("every table is protected", () => {
 
 test("no default grants leak: anon only ever has SELECT, and only on public-data tables", async () => {
   const PUBLIC = new Set(["teams", "nfl_players", "nfl_games", "roster_entries", "score_weeks", "player_scores", "matchups", "standings", "announcements",
-    "season_settings", "team_scores", "awards", "guillotine", "survivor_status", "confidence_scores", "score_events", "player_injuries", "league_settings"]);
+    "season_settings", "team_scores", "awards", "guillotine", "survivor_status", "confidence_scores", "score_events", "player_injuries", "league_settings", "draft_picks"]);
   const g = (await db.query<{ table_name: string; privilege_type: string }>(`
     select table_name, privilege_type from information_schema.role_table_grants
     where table_schema = 'public' and grantee = 'anon'`)).rows;
@@ -1346,6 +1349,308 @@ describe("add/drop and waivers", () => {
     assert.deepEqual((await db.query(`select kind, cycle from public.waiver_runs`)).rows.map(r => (r as { kind: string }).kind), ["scheduled"]);
     assert.equal(await tick("2027-12-15T22:05:00Z"), "2027 ", "EST (December): Wednesday 5 PM ET = 22:00 UTC");
     await denied(db, user(COMMISH), `select private.waivers_tick()`, /permission denied/);
+  });
+});
+
+describe("team profiles: owner contact info (private)", () => {
+  const CAROL = "00000000-0000-0000-0000-0000000000c3";   // owns 0003
+  const AL = "00000000-0000-0000-0000-0000000000a2";      // Alice's co-owner
+  const NOBODY = "00000000-0000-0000-0000-0000000000e0";  // signed in, no team
+  beforeEach(async () => {
+    await db.exec(`
+      insert into auth.users (id, email, raw_user_meta_data) values ('${CAROL}', 'carol@example.com', '{"display_name":"Carol"}'),
+        ('${AL}', 'al2@example.com', '{"display_name":"Al"}'), ('${NOBODY}', 'x@example.com', '{}');
+      insert into public.teams (id, name, division) values ('0003', 'H.N.I.C', 'Gold');
+      insert into public.team_managers values ('0003', '${CAROL}'), ('0001', '${AL}');`);
+  });
+  const save = (who: Who, f: Record<string, unknown>) =>
+    as(db, who, tx => tx.query(`insert into public.owner_contacts (email, email_visible, phone, phone_visible, website, website_visible)
+      values ($1, coalesce($2, true), $3, coalesce($4, true), $5, coalesce($6, true))`,
+      [f.email ?? null, f.email_visible ?? null, f.phone ?? null, f.phone_visible ?? null, f.website ?? null, f.website_visible ?? null]));
+  const contacts = (who: Who, team: string) => rowsT(db, who, `select user_id, email, phone, website, hidden from public.team_contacts($1) order by user_id`, [team]);
+
+  test("validated: US phone formatted to 10 digits, https websites only, real-looking emails", async () => {
+    await save(user(ALICE), { email: " alice@example.com ", phone: "+1 (412) 555-0123", website: "https://alice.example.com/me" });
+    assert.deepEqual(await rowsT(db, user(ALICE), `select email, phone, website from public.owner_contacts`), [{ email: "alice@example.com", phone: "4125550123", website: "https://alice.example.com/me" }]);
+    await assert.rejects(save(user(BOB), { phone: "555-0123" }), /10-digit US phone/);
+    await assert.rejects(save(user(BOB), { phone: "(112) 555-0123" }), /10-digit US phone/);
+    await assert.rejects(save(user(BOB), { website: "http://bob.example.com" }), /https/);
+    await assert.rejects(save(user(BOB), { website: "javascript:alert(1)" }), /https/);
+    await assert.rejects(save(user(BOB), { website: 'https://x.com/"><script>' }), /https|check constraint/);
+    await assert.rejects(save(user(BOB), { email: "not-an-email" }), /email/);
+  });
+
+  test("logged out: nothing at all; signed-in non-members: nothing", async () => {
+    await save(user(ALICE), { email: "alice@example.com", phone: "4125550123" });
+    await denied(db, anon, `select * from public.owner_contacts`, /permission denied/);
+    await assert.rejects(as(db, anon, tx => tx.query(`select * from public.team_contacts('0001')`)), /permission denied/);
+    assert.deepEqual(await rowsT(db, user(NOBODY), `select * from public.owner_contacts`), []);
+    assert.deepEqual(await contacts(user(NOBODY), "0001"), []);
+  });
+
+  test("members see only the fields marked visible; the owner and the commissioner see everything", async () => {
+    await save(user(ALICE), { email: "alice@example.com", phone: "4125550123", phone_visible: false, website: "https://alice.example.com" });
+    const bob = await contacts(user(BOB), "0001");
+    assert.deepEqual(bob.map(r => [r.user_id, r.email, r.phone, r.website, r.hidden]),
+      [[ALICE, "alice@example.com", null, "https://alice.example.com", []], [AL, null, null, null, []]], "both owners listed; the hidden phone is null");
+    assert.deepEqual(await rowsT(db, user(BOB), `select * from public.owner_contacts`), [], "the table itself: only your own row");
+    const commish = await contacts(user(COMMISH), "0001");
+    assert.deepEqual([commish[0]!.phone, commish[0]!.hidden], ["4125550123", ["phone"]], "the commissioner always sees everything (with what's hidden)");
+    assert.equal((await rowsT(db, user(COMMISH), `select user_id from public.owner_contacts`)).length, 1);
+    assert.equal((await contacts(user(ALICE), "0001"))[0]!.phone, "4125550123", "you see your own hidden fields");
+    assert.equal((await contacts(user(AL), "0001"))[0]!.phone, null, "...but your co-owner doesn't");
+  });
+
+  test("you can only edit your own row", async () => {
+    await save(user(ALICE), { email: "alice@example.com" });
+    assert.equal(await affected(db, user(BOB), `update public.owner_contacts set email = 'evil@example.com'`), 0);
+    assert.equal(await affected(db, user(BOB), `delete from public.owner_contacts`), 0);
+    await as(db, user(BOB), tx => tx.query(`insert into public.owner_contacts (user_id, email) values ('${ALICE}', 'bob@example.com')`));
+    const all = (await db.query<{ user_id: string; email: string }>(`select user_id, email from public.owner_contacts order by email`)).rows;
+    assert.deepEqual(all.map(r => [r.user_id, r.email]), [[ALICE, "alice@example.com"], [BOB, "bob@example.com"]], "a forged user_id becomes your own");
+    await as(db, user(BOB), tx => tx.query(`update public.owner_contacts set user_id = '${ALICE}', email = 'b2@example.com'`));
+    assert.deepEqual((await db.query<{ user_id: string }>(`select user_id from public.owner_contacts where email = 'b2@example.com'`)).rows.map(r => r.user_id), [BOB], "a row can't be moved to someone else");
+    assert.equal(await affected(db, user(ALICE), `update public.owner_contacts set email_visible = false`), 1);
+  });
+});
+
+describe("direct messages (participants only)", () => {
+  const CAROL = "00000000-0000-0000-0000-0000000000c3";
+  const AL = "00000000-0000-0000-0000-0000000000a2";
+  beforeEach(async () => {
+    await db.exec(`
+      insert into auth.users (id, email, raw_user_meta_data) values ('${CAROL}', 'carol@example.com', '{"display_name":"Carol"}'), ('${AL}', 'al2@example.com', '{"display_name":"Al"}');
+      insert into public.teams (id, name, division) values ('0003', 'H.N.I.C', 'Gold');
+      insert into public.team_managers values ('0003', '${CAROL}'), ('0001', '${AL}');`);
+  });
+  const open = async (who: Who, to: { user?: string; team?: string }) =>
+    Number((await rowsT(db, who, `select public.dm_open($1::uuid, $2) as id`, [to.user ?? null, to.team ?? null]))[0]!.id);
+  const say = (who: Who, conv: number, body: string, images = "[]") =>
+    as(db, who, tx => tx.query(`insert into public.dm_messages (conversation_id, body, images) values ($1, $2, $3::jsonb)`, [conv, body, images]));
+  const read = (who: Who, conv: number) => rowsT(db, who, `select body from public.dm_messages where conversation_id = $1 order by id`, [conv]).then(r => r.map(x => x.body));
+
+  test("1-to-1: only the two people read it; the commissioner can't; one conversation per pair", async () => {
+    const c = await open(user(ALICE), { user: BOB });
+    assert.equal(await open(user(BOB), { user: ALICE }), c, "the same conversation from either side");
+    await say(user(ALICE), c, "Want Gibbs?");
+    await say(user(BOB), c, "Maybe");
+    assert.deepEqual(await read(user(BOB), c), ["Want Gibbs?", "Maybe"]);
+    assert.deepEqual(await read(user(CAROL), c), [], "another member: nothing");
+    assert.deepEqual(await read(user(AL), c), [], "not even Alice's co-owner");
+    assert.deepEqual(await read(user(COMMISH), c), [], "the commissioner: nothing");
+    assert.deepEqual(await rowsT(db, user(COMMISH), `select id from public.dm_conversations`), []);
+    await assert.rejects(say(user(CAROL), c, "hi"), /row-level security/);
+    await assert.rejects(say(user(COMMISH), c, "hi"), /row-level security/);
+    await denied(db, anon, `select * from public.dm_messages`, /permission denied/);
+    await assert.rejects(as(db, anon, tx => tx.query(`select public.dm_open('${ALICE}', null)`)), /permission denied/);
+  });
+
+  test("1-to-team: both co-owners take part; author and team set by the database; edit only your own", async () => {
+    const c = await open(user(CAROL), { team: "0001" });
+    await as(db, user(CAROL), tx => tx.query(`insert into public.dm_messages (conversation_id, body, author_id, is_bot) values ($1, 'Trade?', '${ALICE}', true)`, [c]));
+    const [m] = await rowsT(db, user(ALICE), `select id, author_id, author_team, is_bot from public.dm_messages where conversation_id = ${c}`);
+    assert.deepEqual([m!.author_id, m!.author_team, m!.is_bot], [CAROL, "0003", false], "forged author/bot overwritten");
+    assert.deepEqual(await read(user(AL), c), ["Trade?"], "the co-owner sees it too");
+    await say(user(AL), c, "Sure");
+    assert.deepEqual(await read(user(BOB), c), []);
+    assert.equal(await affected(db, user(ALICE), `update public.dm_messages set body = 'x' where id = ${m!.id}`), 0, "not your message");
+    assert.equal(await affected(db, user(CAROL), `update public.dm_messages set body = 'Trade??' where id = ${m!.id}`), 1);
+    await assert.rejects(as(db, user(ALICE), tx => tx.query(`select public.dm_open(null, '0001')`)), /your own team/);
+  });
+
+  test("report shares it with the commissioner (audited) until he resolves it", async () => {
+    const c = await open(user(ALICE), { user: BOB });
+    await say(user(ALICE), c, "something bad");
+    await assert.rejects(as(db, user(CAROL), tx => tx.query(`select public.dm_report(${c}, 'x')`)), /not in that conversation/);
+    await as(db, user(BOB), tx => tx.query(`select public.dm_report(${c}, 'harassment')`));
+    assert.deepEqual((await read(user(COMMISH), c))[0], "something bad", "reported: the commissioner can read it");
+    assert.match((await read(user(ALICE), c)).at(-1)!, /reported to the commissioner/, "both sides are told");
+    assert.equal(await affected(db, user(COMMISH), `delete from public.dm_messages where conversation_id = ${c} and body = 'something bad'`), 1, "and moderate it");
+    await assert.rejects(as(db, user(ALICE), tx => tx.query(`select public.dm_resolve(${c})`)), /Only the commissioner/);
+    await as(db, user(COMMISH), tx => tx.query(`select public.dm_resolve(${c})`));
+    assert.deepEqual(await read(user(COMMISH), c), [], "private again");
+    const audit = (await db.query<{ action: string }>(`select action from public.audit_log where action like 'dm:%' order by id`)).rows.map(r => r.action);
+    assert.deepEqual(audit, ["dm:report", "dm:resolve"]);
+  });
+
+  test("unread counts and rate limit", async () => {
+    const c = await open(user(ALICE), { user: BOB });
+    await say(user(ALICE), c, "1"); await say(user(ALICE), c, "2");
+    assert.deepEqual(await rowsT(db, user(BOB), `select conversation_id, unread from public.dm_unread()`), [{ conversation_id: String(c), unread: 2 }].map(x => ({ ...x, conversation_id: c })));
+    await as(db, user(BOB), tx => tx.query(`insert into public.dm_reads (conversation_id) values (${c})`));
+    assert.equal((await rowsT(db, user(BOB), `select unread from public.dm_unread()`))[0]!.unread, 0);
+    await assert.rejects(as(db, user(CAROL), tx => tx.query(`insert into public.dm_reads (conversation_id) values (${c})`)), /row-level security/);
+    for (let i = 0; i < 18; i++) await say(user(ALICE), c, "x" + i);
+    await assert.rejects(say(user(ALICE), c, "too many"), /Slow down/);
+  });
+
+  test("images: uploads in dm-images are readable only by the conversation", async () => {
+    const c = await open(user(ALICE), { user: BOB });
+    const name = `${ALICE}/11111111-1111-1111-1111-111111111111.png`;
+    await as(db, user(ALICE), tx => tx.query(`insert into storage.objects (bucket_id, name) values ('dm-images', $1)`, [name]));
+    await assert.rejects(as(db, user(BOB), tx => tx.query(`insert into storage.objects (bucket_id, name) values ('dm-images', '${ALICE}/x.png')`)), /row-level security/, "only into your own folder");
+    const sees = (who: Who) => rowsT(db, who, `select name from storage.objects where bucket_id = 'dm-images'`).then(r => r.length);
+    assert.equal(await sees(user(BOB)), 0, "not before it's in a message");
+    await say(user(ALICE), c, "", JSON.stringify([`storage:${name}`]));
+    assert.equal(await sees(user(ALICE)), 1);
+    assert.equal(await sees(user(BOB)), 1, "the other participant");
+    assert.equal(await sees(user(CAROL)), 0, "anyone else: no");
+    assert.equal(await sees(user(COMMISH)), 0, "the commissioner: no (not reported)");
+    assert.equal(await sees(anon), 0);
+  });
+});
+
+describe("trades", () => {
+  const CAROL = "00000000-0000-0000-0000-0000000000c3";   // owns 0003
+  const AL = "00000000-0000-0000-0000-0000000000a2";      // Alice's co-owner
+  const T = 2028;
+  beforeEach(async () => {
+    await db.exec(`
+      insert into auth.users (id, email, raw_user_meta_data) values ('${CAROL}', 'carol@example.com', '{"display_name":"Carol"}'), ('${AL}', 'al2@example.com', '{"display_name":"Al"}');
+      insert into public.teams (id, name, division) values ('0003', 'H.N.I.C', 'Gold'), ('0004', 'Mac Daddies', 'Black');
+      insert into public.team_managers values ('0003', '${CAROL}'), ('0001', '${AL}'), ('0004', '${COMMISH}');
+      insert into public.nfl_players (id, name, position, nfl_team) values
+        ('WR-BUF', 'Buf WR', 'WR', 'BUF'), ('WR-MIA', 'Mia WR', 'WR', 'MIA'), ('WR-KC1', 'KC WR', 'WR', 'KC'), ('RB-NYG', 'NYG RB', 'RB', 'NYG'), ('TE-NYG', 'NYG TE', 'TE', 'NYG'), ('RB-MIA', 'Mia RB', 'RB', 'MIA');
+      insert into public.season_settings (season, team_count, buy_in, prizes, waivers, trades) values (${T}, 12, 360, '{}', '{"live": true, "rosterMax": 3}', '{"live": true}');
+      insert into public.nfl_games (season, week, game_key, home, away, kickoff) values
+        (${T}, 1, 'KC@LV', 'LV', 'KC', now() - interval '1 hour'),
+        (${T}, 1, 'NYG@MIA', 'MIA', 'NYG', now() + interval '2 days'),
+        (${T}, 1, 'BUF@DET', 'DET', 'BUF', now() + interval '2 days'),
+        (${T}, 12, 'BUF@MIA', 'MIA', 'BUF', now() + interval '60 days');
+      insert into public.roster_entries (season, team_id, player_id) values
+        (${T}, '0001', 'WR-BUF'), (${T}, '0001', 'WR-KC1'), (${T}, '0001', 'RB-NYG'),
+        (${T}, '0002', 'WR-MIA'), (${T}, '0002', 'TE-NYG'), (${T}, '0004', 'RB-MIA');
+      select private.ensure_draft_picks(${T + 1}, 2);`);
+  });
+  const pick = async (team: string, round: number) => Number((await db.query<{ id: number }>(`select id from public.draft_picks where season = ${T + 1} and original_team = '${team}' and round = ${round}`)).rows[0]!.id);
+  const propose = (who: Who, from: string, to: string, give: string[], get: string[], extra: { givePicks?: number[]; getPicks?: number[]; drops?: string[]; season?: number } = {}) =>
+    rowsT(db, who, `select public.trade_propose($1, $2, $3, $4, $5, $6, $7, $8, 'let''s deal') as id`,
+      [extra.season ?? T, from, to, give, get, extra.givePicks ?? [], extra.getPicks ?? [], extra.drops ?? []]).then(r => Number(r[0]!.id));
+  const roster = (team: string, season = T) => db.query<{ player_id: string }>(`select player_id from public.roster_entries where season = ${season} and team_id = '${team}' order by player_id`).then(r => r.rows.map(x => x.player_id));
+  const status = (id: number) => db.query<{ status: string }>(`select status from public.trades where id = ${id}`).then(r => r.rows[0]!.status);
+  const notices = (id: number) => db.query<{ body: string }>(`select m.body from public.dm_messages m join public.trades t on t.conversation_id = m.conversation_id where t.id = ${id} order by m.id`).then(r => r.rows.map(x => x.body));
+
+  test("full flow: propose, the other team accepts with a drop, the commissioner approves; rosters, picks, transactions, notices, board post", async () => {
+    const p1 = await pick("0001", 1);
+    // Alice gives Buf WR + her 1st for Bob's Mia WR and Nyg TE: Alice goes 3 -> 4 (needs a drop), Bob 2 -> 1.
+    await assert.rejects(propose(user(ALICE), "0001", "0002", ["WR-BUF"], ["WR-MIA", "TE-NYG"], { givePicks: [p1] }), /NSFW would have 4 players \(max 3\): add 1 drop/);
+    const id = await propose(user(ALICE), "0001", "0002", ["WR-BUF"], ["WR-MIA", "TE-NYG"], { givePicks: [p1], drops: ["RB-NYG"] });
+    assert.equal(await status(id), "proposed");
+    assert.match((await notices(id))[0]!, /Trade proposed by .*NSFW get Mia WR \(WR\), NYG TE \(TE\); Stealers get Buf WR \(WR\), 2029 round 1 pick\. NSFW drop NYG RB/);
+    await assert.rejects(as(db, user(ALICE), tx => tx.query(`select public.trade_respond(${id}, true)`)), /other team's owners/, "the proposer can't accept his own");
+    await assert.rejects(as(db, user(COMMISH), tx => tx.query(`select public.trade_decide(${id}, true)`)), /Only accepted trades/, "not before it's accepted");
+    await as(db, user(BOB), tx => tx.query(`select public.trade_respond(${id}, true)`));
+    assert.equal(await status(id), "accepted");
+    assert.deepEqual(await roster("0001"), ["RB-NYG", "WR-BUF", "WR-KC1"], "nothing moves before the commissioner approves");
+    await assert.rejects(as(db, user(BOB), tx => tx.query(`select public.trade_decide(${id}, true)`)), /Only the commissioner/);
+    await as(db, user(COMMISH), tx => tx.query(`select public.trade_decide(${id}, true, 'Fair')`));
+    assert.equal(await status(id), "approved");
+    assert.deepEqual(await roster("0001"), ["TE-NYG", "WR-KC1", "WR-MIA"]);
+    assert.deepEqual(await roster("0002"), ["WR-BUF"]);
+    assert.equal((await db.query<{ owner_team: string }>(`select owner_team from public.draft_picks where id = ${p1}`)).rows[0]!.owner_team, "0002");
+    const tx = (await db.query<{ type: string; team_id: string; via: string; players_in: string[]; players_out: string[] }>(`select type, team_id, via, players_in, players_out from public.transactions where trade_id = ${id} order by id`)).rows;
+    assert.deepEqual(tx.map(x => [x.type, x.team_id, x.via, x.players_in, x.players_out]),
+      [["trade", "0001", "trade", ["WR-MIA", "TE-NYG"], ["WR-BUF"]], ["drop", "0001", "trade", [], ["RB-NYG"]]], "a trade isn't a roster move (via trade)");
+    assert.equal((await db.query(`select 1 from public.board_threads where source_key = 'trade:${id}' and is_bot`)).rows.length, 1, "posted to the Board");
+    const n = await notices(id);
+    assert.match(n.at(-1)!, /Approved by the commissioner.*Note: Fair.*Rosters are updated/);
+    assert.ok(n.some(x => /Stealers accepted/.test(x)));
+    assert.match((await rowsT(db, user(BOB), `select body from public.dm_messages`)).map(r => r.body).join("|"), /Approved/, "both teams get the notices");
+    assert.equal((await rowsT(db, user(CAROL), `select body from public.dm_messages`)).length, 0, "no one else does");
+    const [a] = (await db.query<{ action: string; details: { commissioner_party: boolean } }>(`select action, details from public.audit_log where action like '%trades:%'`)).rows;
+    assert.deepEqual([a!.action, a!.details.commissioner_party], ["trades:approve", false]);
+  });
+
+  test("the receiving team adds drops when it would go over the max; the dropped player is claims-only for 24 hours", async () => {
+    await db.exec(`delete from public.roster_entries where season = ${T} and team_id = '0004'`);
+    await db.exec(`insert into public.roster_entries (season, team_id, player_id) values (${T}, '0002', 'RB-MIA')`);
+    const id = await propose(user(ALICE), "0001", "0002", ["WR-BUF"], []);
+    await assert.rejects(as(db, user(BOB), tx => tx.query(`select public.trade_respond(${id}, true)`)), /Stealers would have 4 players \(max 3\): add 1 drop/);
+    await as(db, user(BOB), tx => tx.query(`select public.trade_respond(${id}, true, '{RB-MIA}')`));
+    await as(db, user(COMMISH), tx => tx.query(`select public.trade_decide(${id}, true)`));
+    assert.deepEqual(await roster("0002"), ["TE-NYG", "WR-BUF", "WR-MIA"]);
+    const s = (await db.query<{ reason: string }>(`select reason from private.move_status(${T}, 'RB-MIA', now())`)).rows[0]!;
+    assert.match(s.reason, /Dropped in the last 24 hours/);
+  });
+
+  test("locks, deadline, ownership and who may act", async () => {
+    await assert.rejects(propose(user(ALICE), "0001", "0002", ["WR-KC1"], ["WR-MIA"]), /KC WR is locked: his game has started/);
+    await assert.rejects(propose(user(ALICE), "0001", "0002", ["WR-MIA"], []), /Mia WR isn't on NSFW/);
+    await assert.rejects(propose(user(BOB), "0001", "0002", ["WR-BUF"], []), /your own team/);
+    await assert.rejects(propose(user(ALICE), "0001", "0002", [], ["WR-MIA"], { getPicks: [await pick("0003", 1)] }), /isn't owned by Stealers/);
+    // Pending trades are private to the two teams (and the commissioner).
+    const id = await propose(user(AL), "0001", "0002", ["WR-BUF"], ["WR-MIA"]);
+    assert.equal((await rowsT(db, user(CAROL), `select id from public.trades`)).length, 0);
+    assert.equal((await rowsT(db, user(ALICE), `select id from public.trades`)).length, 1, "the co-owner who didn't propose sees it");
+    await denied(db, anon, `select * from public.trades`, /permission denied/);
+    await denied(db, user(ALICE), `update public.trades set status = 'approved'`, /permission denied/);
+    // A player locked after the proposal: accepting fails until the week is over.
+    await db.exec(`update public.nfl_games set kickoff = now() - interval '5 minutes' where season = ${T} and game_key = 'NYG@MIA'`);
+    await assert.rejects(as(db, user(BOB), tx => tx.query(`select public.trade_respond(${id}, true)`)), /Mia WR is locked/);
+    await db.exec(`update public.nfl_games set kickoff = now() + interval '2 days' where season = ${T} and game_key = 'NYG@MIA'`);
+    // Deadline: the kickoff of week 12's first game.
+    await db.exec(`update public.nfl_games set kickoff = now() - interval '1 minute' where season = ${T} and week = 12`);
+    await assert.rejects(as(db, user(BOB), tx => tx.query(`select public.trade_respond(${id}, true)`)), /trade deadline has passed/);
+    await assert.rejects(propose(user(ALICE), "0001", "0002", ["WR-BUF"], []), /trade deadline has passed/);
+    await db.exec(`update public.nfl_games set kickoff = now() + interval '60 days' where season = ${T} and week = 12`);
+    // Either co-owner of the receiving team answers; only the proposing team withdraws.
+    await assert.rejects(as(db, user(BOB), tx => tx.query(`select public.trade_withdraw(${id})`)), /proposing team/);
+    await as(db, user(ALICE), tx => tx.query(`select public.trade_withdraw(${id})`));
+    assert.equal(await status(id), "withdrawn");
+    await assert.rejects(as(db, user(BOB), tx => tx.query(`select public.trade_respond(${id}, true)`)), /This trade is withdrawn/);
+  });
+
+  test("decline, reject with a note, expiry after 7 days", async () => {
+    const a = await propose(user(ALICE), "0001", "0002", ["WR-BUF"], ["WR-MIA"]);
+    await as(db, user(BOB), tx => tx.query(`select public.trade_respond(${a}, false)`));
+    assert.equal(await status(a), "declined");
+    const b = await propose(user(ALICE), "0001", "0002", ["WR-BUF"], ["WR-MIA"]);
+    await as(db, user(BOB), tx => tx.query(`select public.trade_respond(${b}, true)`));
+    await as(db, user(COMMISH), tx => tx.query(`select public.trade_decide(${b}, false, 'Lopsided')`));
+    assert.equal(await status(b), "rejected");
+    assert.match((await notices(b)).at(-1)!, /Rejected by the commissioner\. Note: Lopsided/);
+    assert.deepEqual(await roster("0001"), ["RB-NYG", "WR-BUF", "WR-KC1"]);
+    const c = await propose(user(ALICE), "0001", "0002", ["WR-BUF"], ["WR-MIA"]);
+    const exp = (await db.query<{ d: number }>(`select extract(epoch from expires_at - proposed_at) / 86400 as d from public.trades where id = ${c}`)).rows[0]!.d;
+    assert.equal(Math.round(Number(exp)), 7);
+    await db.exec(`update public.trades set expires_at = now() - interval '1 minute' where id = ${c}`);
+    await assert.rejects(as(db, user(BOB), tx => tx.query(`select public.trade_respond(${c}, true)`)), /This trade is expired/, "refused at once");
+    assert.equal(Number((await rowsT(db, service, `select private.expire_trades() as n`))[0]!.n), 1, "the hourly job expires it and tells both teams");
+    assert.equal(await status(c), "expired");
+    assert.match((await notices(c)).at(-1)!, /expired/);
+  });
+
+  test("the commissioner's own team: flagged and audited as his own", async () => {
+    const id = await propose(user(COMMISH), "0004", "0002", ["RB-MIA"], ["WR-MIA"]);
+    assert.equal((await db.query<{ commissioner_party: boolean }>(`select commissioner_party from public.trades where id = ${id}`)).rows[0]!.commissioner_party, true);
+    await as(db, user(BOB), tx => tx.query(`select public.trade_respond(${id}, true)`));
+    assert.match((await notices(id)).at(-1)!, /commissioner is a party/);
+    await as(db, user(COMMISH), tx => tx.query(`select public.trade_decide(${id}, true)`));
+    const [a] = (await db.query<{ action: string; details: { commissioner_party: boolean } }>(`select action, details from public.audit_log where action like '%trades:%'`)).rows;
+    assert.deepEqual([a!.action, a!.details.commissioner_party], ["own_team:trades:approve", true]);
+  });
+
+  test("2026 (MFL is official): test trades, labelled, and approval changes nothing", async () => {
+    await db.exec(`insert into public.season_settings (season, team_count, buy_in, prizes) values (${S}, 12, 360, '{}') on conflict (season) do nothing;
+      update public.season_settings set trades = '{"live": false}' where season = ${S}`);
+    const id = await propose(user(ALICE), "0001", "0002", ["QB-DET"], ["QB-ARI"], { season: S });
+    assert.equal((await db.query<{ test: boolean }>(`select test from public.trades where id = ${id}`)).rows[0]!.test, true);
+    await as(db, user(BOB), tx => tx.query(`select public.trade_respond(${id}, true)`));
+    await as(db, user(COMMISH), tx => tx.query(`select public.trade_decide(${id}, true)`));
+    assert.equal(await status(id), "approved");
+    assert.deepEqual(await roster("0001", S), ["QB-DET", "QB-KC", "RB-DET"], "rosters untouched");
+    const n = await notices(id);
+    assert.ok(n.every(x => x.startsWith("[TEST trade: MFL is official for 2026]")), "every notice is labelled TEST");
+    assert.equal((await db.query(`select 1 from public.board_threads where source_key = 'trade:${id}'`)).rows.length, 0, "not posted to the Board");
+    assert.equal((await db.query(`select 1 from public.transactions where trade_id = ${id}`)).rows.length, 0);
+  });
+
+  test("tradable assets: a team's players with lock status and its future picks (members only)", async () => {
+    const a = await rowsT(db, user(BOB), `select kind, id, locked_until is not null as locked, label from public.trade_assets(${T}, '0001')`);
+    assert.deepEqual(a.filter(x => x.kind === "player").map(x => [x.id, x.locked]).sort(), [["RB-NYG", false], ["WR-BUF", false], ["WR-KC1", true]]);
+    assert.deepEqual(a.filter(x => x.kind === "pick").map(x => x.label), ["2029 round 1", "2029 round 2"]);
+    await assert.rejects(as(db, anon, tx => tx.query(`select * from public.trade_assets(${T}, '0001')`)), /permission denied/);
+    assert.equal((await rowsT(db, anon, `select id from public.draft_picks`)).length, 8, "pick ownership is public, like rosters");
   });
 });
 

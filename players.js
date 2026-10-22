@@ -19,7 +19,8 @@
   };
   var f = function (u, i) { return root.fetch(u, i); };
   var season = Number(L.season), POS = ["QB", "RB", "WR", "TE", "K", "DEF"];
-  var teamName = function (id) { var t = (L.teams || []).filter(function (x) { return x.id === id; })[0]; return t ? t.name : id || ""; };
+  var TL = function () { return root.B5Team; };   // team names and profile links (teamlink.js)
+  var tlink = function (id) { return TL().link(id, { logo: false }); };
   var when = function (iso) { return iso ? new Date(iso).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" }) : ""; };
   var whenDate = function (iso) { return iso ? new Date(iso).toLocaleString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : ""; };
 
@@ -41,15 +42,16 @@
     out.splice(Math.max(0, Math.min(out.length, to)), 0, x);
     return out;
   }
-  /** A transaction as a line: "Mac Daddies added Joe Burrow, dropped Bo Nix (waiver claim)". */
-  function txnText(t, names) {
+  /** A transaction as a line: "Mac Daddies added Joe Burrow, dropped Bo Nix (waiver claim)". html: team names as TeamLinks. */
+  function txnText(t, names, html) {
+    var tn = function (id) { return html ? tlink(id) : TL().name(id); }, tx = function (x) { return html ? esc(x) : x; };
     var nm = function (id) { return names[id] || (/^mfl:/.test(id) ? "MFL player " + id.slice(4) : id); };
     var parts = [];
-    if (t.type === "trade") return teamName(t.team_id) + " traded " + (t.players_out || []).map(nm).join(", ") + " to " + teamName(t.partner_team_id) + " for " + (t.players_in || []).map(nm).join(", ");
+    if (t.type === "trade") return tn(t.team_id) + tx(" traded " + (t.players_out || []).map(nm).join(", ") + " to ") + tn(t.partner_team_id) + tx(" for " + (t.players_in || []).map(nm).join(", ") + (t.via === "mfl" ? " (on MFL)" : ""));
     if ((t.players_in || []).length) parts.push("added " + t.players_in.map(nm).join(", "));
     if ((t.players_out || []).length) parts.push("dropped " + t.players_out.map(nm).join(", "));
-    var via = { waiver: "waiver claim", commissioner: "by the commissioner", mfl: "on MFL", free_agent: "" }[t.via] || "";
-    return teamName(t.team_id) + " " + parts.join(", ") + (via ? " (" + via + ")" : "") + (t.status === "reversed" ? " — reversed" : "");
+    var via = { waiver: "waiver claim", commissioner: "by the commissioner", mfl: "on MFL", trade: "part of a trade", free_agent: "" }[t.via] || "";
+    return tn(t.team_id) + tx(" " + parts.join(", ") + (via ? " (" + via + ")" : "") + (t.status === "reversed" ? " — reversed" : ""));
   }
   /** The weekly calendar in words, from the season's settings. */
   function calendarText(w) {
@@ -89,7 +91,7 @@
       st.fa = ok(r[1]); st.live = st.fa.length ? !!st.fa[0].live : !!st.settings.live;
       st.roster = ok(r[2]).map(function (x) { var n = x.nfl_players || {}; return { id: x.player_id, name: n.name || x.player_id, pos: n.position, nfl: n.nfl_team }; });
       st.claims = ok(r[3]); st.order = ok(r[4]); st.runs = ok(r[5]); st.txns = ok(r[6]);
-      st.people = {}; ok(r[7]).forEach(function (x) { st.people[x.user_id] = (x.profiles && x.profiles.display_name) || teamName(x.team_id); });
+      st.people = {}; ok(r[7]).forEach(function (x) { st.people[x.user_id] = (x.profiles && x.profiles.display_name) || TL().name(x.team_id); });
       // Names for every player the claims and transactions mention.
       st.names = {};
       st.fa.forEach(function (p) { st.names[p.player_id] = p.name; });
@@ -107,11 +109,11 @@
   }
 
   // ---- Render --------------------------------------------------------------------------------
-  var TABS = [["free-agents", "Free agents"], ["claims", "My claims"], ["order", "Waiver order"], ["results", "Results"], ["log", "Transactions"]];
+  var TABS = [["free-agents", "Free agents"], ["claims", "My claims"], ["order", "Waiver order"], ["results", "Results"], ["log", "Transactions"], ["trades", "Trades", "#trades"]];
   function tabsHtml() {
     var list = TABS.concat(isCommish() ? [["commish", "Commish"]] : []);
     return '<div class="weeks pl-tabs" role="tablist">' + list.map(function (t) {
-      return '<a class="wk' + (st.tab === t[0] ? " active" : "") + '" href="#players/' + t[0] + '">' + esc(t[1]) + "</a>";
+      return '<a class="wk' + (st.tab === t[0] ? " active" : "") + '" href="' + (t[2] || "#players/" + t[0]) + '">' + esc(t[1]) + "</a>";
     }).join("") + "</div>";
   }
   function bannerHtml() {
@@ -163,7 +165,7 @@
   function orderHtml() {
     return '<div class="card"><h3>Waiver order</h3><p class="muted small">Fewest total points first; ties: head-to-head, then win %, then division win %. The same order every round; recalculated at each run.</p>' +
       '<div class="table-wrap"><table><thead><tr><th>#</th><th>Team</th><th class="num">Points</th><th class="num">Record</th></tr></thead><tbody>' +
-      st.order.map(function (o) { return "<tr" + (o.team_id === myTeam() ? ' class="me"' : "") + "><td>" + esc(o.place) + "</td><td>" + esc(teamName(o.team_id)) + '</td><td class="num">' + esc(Number(o.points_for).toFixed(1)) + '</td><td class="num">' + esc(o.wins + "-" + o.losses + (o.ties ? "-" + o.ties : "")) + "</td></tr>"; }).join("") +
+      st.order.map(function (o) { return "<tr" + (o.team_id === myTeam() ? ' class="me"' : "") + "><td>" + esc(o.place) + "</td><td>" + tlink(o.team_id) + '</td><td class="num">' + esc(Number(o.points_for).toFixed(1)) + '</td><td class="num">' + esc(o.wins + "-" + o.losses + (o.ties ? "-" + o.ties : "")) + "</td></tr>"; }).join("") +
       "</tbody></table></div></div>";
   }
   function resultsHtml() {
@@ -171,10 +173,10 @@
     if (!runs.length) return '<div class="card muted">No waiver runs yet.</div>';
     return runs.map(function (r) {
       var rankOf = { won: 0, lost: 1, skipped: 2 };
-      var cs = st.claims.filter(function (c) { return c.run_id === r.id; }).sort(function (a, b) { return (rankOf[a.status] || 3) - (rankOf[b.status] || 3) || teamName(a.team_id).localeCompare(teamName(b.team_id)); });
+      var cs = st.claims.filter(function (c) { return c.run_id === r.id; }).sort(function (a, b) { return (rankOf[a.status] || 3) - (rankOf[b.status] || 3) || TL().name(a.team_id).localeCompare(TL().name(b.team_id)); });
       return '<div class="card"><h3>Waivers ' + esc(whenDate(r.ran_at)) + (r.kind === "forced" ? ' <span class="tag">run by the commissioner</span>' : "") + "</h3>" +
         '<ul class="checks">' + cs.map(function (c) {
-          return "<li><b>" + esc(teamName(c.team_id)) + "</b>: " + esc(st.names[c.add_player] || c.add_player) + (c.drop_player ? " (drop " + esc(st.names[c.drop_player] || c.drop_player) + ")" : "") +
+          return "<li><b>" + tlink(c.team_id) + "</b>: " + esc(st.names[c.add_player] || c.add_player) + (c.drop_player ? " (drop " + esc(st.names[c.drop_player] || c.drop_player) + ")" : "") +
             ' — <span class="cl-' + esc(c.status) + '">' + esc(c.status) + "</span>" + (c.result ? ' <span class="muted small">' + esc(c.result) + "</span>" : "") + "</li>";
         }).join("") + "</ul></div>";
     }).join("");
@@ -183,14 +185,14 @@
     if (!st.txns.length) return '<div class="card muted">No transactions yet.</div>';
     return '<div class="card"><ul class="checks tx-log">' + st.txns.map(function (t) {
       var canReverse = isCommish() && t.status === "processed" && (t.players_out || []).length && t.type !== "trade" && t.via !== "mfl";
-      return "<li>" + esc(txnText(t, st.names)) + ' <span class="muted small">' + esc(whenDate(t.created_at)) + (t.created_by && st.people[t.created_by] ? " · " + esc(st.people[t.created_by]) : "") + "</span>" +
+      return "<li>" + txnText(t, st.names, true) + ' <span class="muted small">' + esc(whenDate(t.created_at)) + (t.created_by && st.people[t.created_by] ? " · " + esc(st.people[t.created_by]) : "") + "</span>" +
         (canReverse ? ' <button class="linkish" type="button" data-pl="reverse" data-id="' + t.id + '">Reverse drop</button>' : "") + "</li>";
     }).join("") + "</ul></div>";
   }
   function commishHtml() {
     var pending = st.claims.filter(function (c) { return c.status === "pending"; });
     return '<div class="card"><h3>Pending claims, all teams (' + pending.length + ")</h3>" +
-      (pending.length ? '<ul class="checks">' + pending.map(function (c) { return "<li><b>" + esc(teamName(c.team_id)) + "</b> #" + c.rank + ": " + esc(st.names[c.add_player] || c.add_player) + (c.drop_player ? " (drop " + esc(st.names[c.drop_player] || c.drop_player) + ")" : "") + "</li>"; }).join("") + "</ul>" : '<p class="muted">None.</p>') +
+      (pending.length ? '<ul class="checks">' + pending.map(function (c) { return "<li><b>" + tlink(c.team_id) + "</b> #" + c.rank + ": " + esc(st.names[c.add_player] || c.add_player) + (c.drop_player ? " (drop " + esc(st.names[c.drop_player] || c.drop_player) + ")" : "") + "</li>"; }).join("") + "</ul>" : '<p class="muted">None.</p>') +
       (st.live ? '<button type="button" class="btn" data-pl="run">Process waivers now</button>' : '<p class="muted small">Processing opens with live claims (' + esc(season + 1) + "); MFL runs " + esc(season) + "'s waivers.</p>") + "</div>" +
       '<div class="card"><h3>Waiver runs</h3>' + (st.runs.length ? '<ul class="checks">' + st.runs.map(function (r) {
         return "<li>" + esc(whenDate(r.ran_at)) + " · " + esc(r.kind) + " · " + esc(r.won) + " won · " + esc(r.status) + (r.status === "done" ? ' <button class="linkish" type="button" data-pl="undo" data-id="' + r.id + '">Undo this run</button>' : "") + "</li>";

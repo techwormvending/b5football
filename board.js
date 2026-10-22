@@ -19,12 +19,10 @@
   var f = function (u, i) { return root.fetch(u, i); };
   var EMOJI = ["👍", "😂", "🔥", "💀", "🗑️"];
   var TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"], MAX_BYTES = 5 * 1024 * 1024, MAX_IMAGES = 4;
-  var teamById = function (id) { return (L.teams || []).filter(function (t) { return t.id === id; })[0] || null; };
-  var initials = function (n) { return String(n || "").split(/\s+/).filter(function (w) { return w && !/^the$/i.test(w); }).slice(0, 2).map(function (w) { return w[0]; }).join("").toUpperCase(); };
-  var logo = function (t, bot) {
+  var TL = function () { return root.B5Team; };   // team names, logos and profile links (teamlink.js)
+  var logo = function (team, bot) {
     if (bot) return '<div class="logo sm bd-bot" aria-hidden="true">B5</div>';
-    return t && t.logo ? '<img class="logo sm" src="' + esc(t.logo) + '" alt="" loading="lazy" onerror="this.outerHTML=\'<div class=&quot;logo sm&quot;>' + esc(initials(t.name)) + '</div>\'">'
-      : '<div class="logo sm">' + esc(initials(t ? t.name : "?")) + "</div>";
+    return team ? TL().logo(team) : '<div class="logo sm">?</div>';
   };
 
   // ---- Pure helpers (tested in src/workers/board-page.test.ts) ------------------------------
@@ -36,10 +34,13 @@
     var ms = ((ctx && ctx.mentions) || []).filter(function (m) { return m.label; });
     if (ms.length) {
       var byLabel = {};
-      ms.forEach(function (m) { var k = esc(m.label).toLowerCase(); byLabel[k] = byLabel[k] || m.me; });
+      var byHref = {};
+      ms.forEach(function (m) { var k = esc(m.label).toLowerCase(); byLabel[k] = byLabel[k] || m.me; if (m.href && /^#[\w\/%-]+$/.test(m.href)) byHref[k] = m.href; });
       var alt = ms.map(function (m) { return reEsc(esc(m.label)); }).join("|");
+      // A team @mention links to the team's profile (TeamLink); a person's is highlighted text.
       h = h.replace(new RegExp("(^|[^\\w@&;])@(" + alt + ")(?![\\w])", "gi"), function (_, pre, name) {
-        return pre + '<span class="mention' + (byLabel[name.toLowerCase()] ? " me" : "") + '">@' + name + "</span>";
+        var k = name.toLowerCase(), cls = "mention" + (byLabel[k] ? " me" : "");
+        return pre + (byHref[k] ? '<a class="' + cls + ' team-link" href="' + esc(byHref[k]) + '">@' + name + "</a>" : '<span class="' + cls + '">@' + name + "</span>");
       });
     }
     return h.replace(/\*\*(?=\S)([^*\n]*?\S)\*\*/g, "<strong>$1</strong>").replace(/(^|[^*\w])\*(?=\S)([^*\n]*?\S)\*(?![*\w])/g, "$1<em>$2</em>");
@@ -124,21 +125,23 @@
     return api("team_managers?select=team_id,user_id,profiles(display_name)").then(function (r) {
       st.names = {}; st.people = [];
       ok(r).forEach(function (x) {
-        var t = teamById(x.team_id), name = x.profiles && x.profiles.display_name || "";
-        if (!st.names[x.user_id]) st.names[x.user_id] = name || (t ? t.name : "");
-        st.people.push({ user: x.user_id, team: t ? t.name : x.team_id, team_id: x.team_id, name: name });
+        var name = x.profiles && x.profiles.display_name || "", team = TL().name(x.team_id);
+        if (!st.names[x.user_id]) st.names[x.user_id] = name || team;
+        st.people.push({ user: x.user_id, team: team, team_id: x.team_id, name: name });
       });
     });
   }
-  var authorName = function (uid, team, bot) {
+  /** "Mike · <TeamLink>" (HTML). */
+  var authorHtml = function (uid, team, bot) {
     if (bot) return "B5 Bot";
-    var t = teamById(team), n = st.names[uid];
-    return n && t && n !== t.name ? n + " · " + t.name : n || (t ? t.name : "Former member");
+    var n = st.names[uid], has = team && TL().has(team);
+    if (!has) return esc(n || "Former member");
+    return n && n !== TL().name(team) ? esc(n) + " · " + TL().link(team, { logo: false }) : TL().link(team, { logo: false });
   };
   var mentionCtx = function () {
     var me = myId(), list = [];
     st.people.forEach(function (p) {
-      list.push({ label: p.team, me: p.user === me });
+      list.push({ label: p.team, me: p.user === me, href: TL().href(p.team_id) });
       if (p.name) list.push({ label: p.name, me: p.user === me });
     });
     return { mentions: list.sort(function (a, b) { return b.label.length - a.label.length; }) };
@@ -156,11 +159,11 @@
       var v = ok(r[2])[0]; st.baseline = v ? Date.parse(v.first_at) : Date.now();
     });
   }
-  function signUrls(paths, sess) {
+  function signUrls(paths, sess, bucket) {
     sess = sess || session();
     var need = paths.filter(function (p) { return !st.signed[p]; });
     if (!need.length) return Promise.resolve();
-    return f(cfg.url + "/storage/v1/object/sign/board-images", { method: "POST",
+    return f(cfg.url + "/storage/v1/object/sign/" + (bucket || "board-images"), { method: "POST",
       headers: { apikey: cfg.publishableKey, Authorization: "Bearer " + sess.access_token, "Content-Type": "application/json" },
       body: JSON.stringify({ expiresIn: 3600, paths: need }) })
       .then(function (r) { return r.ok ? r.json() : []; })
@@ -215,10 +218,11 @@
     var me = myId(), ctx = mentionCtx();
     var rows = (st.list || []).map(function (t) {
       var unread = isUnread(t, st.reads[t.id], st.baseline, me);
-      return '<a class="bd-row' + (unread ? " unread" : "") + (t.pinned ? " pinned" : "") + '" href="#board/' + esc(t.id) + '">' + logo(teamById(t.author_team), t.is_bot) +
+      // The row opens the thread (a cover link); the author's team link sits on top.
+      return '<div class="bd-row has-cover' + (unread ? " unread" : "") + (t.pinned ? " pinned" : "") + '"><a class="card-cover" href="#board/' + esc(t.id) + '" aria-label="Open the thread"></a>' + logo(t.author_team, t.is_bot) +
         '<div class="bd-row-main"><b>' + (t.pinned ? "📌 " : "") + (t.locked ? "🔒 " : "") + inline(t.title, ctx) + "</b>" +
-        '<span class="muted small">' + esc(authorName(t.author_id, t.author_team, t.is_bot)) + " · " + esc(t.reply_count) + (t.reply_count === 1 ? " reply" : " replies") + " · " + esc(ago(t.last_activity_at)) + "</span></div>" +
-        (unread ? '<span class="bd-dot" aria-label="New"></span>' : "") + "</a>";
+        '<span class="muted small">' + authorHtml(t.author_id, t.author_team, t.is_bot) + " · " + esc(t.reply_count) + (t.reply_count === 1 ? " reply" : " replies") + " · " + esc(ago(t.last_activity_at)) + "</span></div>" +
+        (unread ? '<span class="bd-dot" aria-label="New"></span>' : "") + "</div>";
     }).join("");
     return '<section class="bd"><div class="bd-head"><h2>Board</h2><button class="btn" data-bd="new">' + (st.open ? "Cancel" : "New thread") + "</button></div>" +
       (st.msg ? '<p class="acct-msg ' + (st.msg.err ? "err" : "ok") + '">' + esc(st.msg.err || st.msg.ok) + "</p>" : "") +
@@ -241,7 +245,7 @@
     var actions = (mine && !editing ? '<button type="button" class="bd-act" data-bd="edit" data-post="' + esc(p.id) + '">Edit</button>' : "") +
       ((mine && !p.is_opener) || (isCommish() && !p.is_opener) ? '<button type="button" class="bd-act" data-bd="del" data-post="' + esc(p.id) + '">Delete</button>' : "");
     return '<article class="card bd-post' + (p.is_bot ? " bot" : "") + '" id="post-' + esc(p.id) + '">' +
-      '<div class="bd-by">' + logo(teamById(p.author_team), p.is_bot) + '<div><b>' + esc(authorName(p.author_id, p.author_team, p.is_bot)) + '</b><span class="muted small">' + esc(ago(p.created_at)) +
+      '<div class="bd-by">' + logo(p.author_team, p.is_bot) + '<div><b>' + authorHtml(p.author_id, p.author_team, p.is_bot) + '</b><span class="muted small">' + esc(ago(p.created_at)) +
       (p.edited_at ? " · edited" : "") + "</span></div></div>" + body +
       '<div class="bd-foot"><div class="bd-reacts">' + bar + '</div><div class="bd-acts">' + actions + "</div></div></article>";
   }
@@ -298,11 +302,11 @@
       return new Promise(function (res) { c.toBlob(function (b) { res(b ? new root.File([b], "photo.jpg", { type: "image/jpeg" }) : file); }, "image/jpeg", 0.85); });
     }, function () { return file; });
   }
-  function upload(file, sess) {
+  function upload(file, sess, bucket) {
     sess = sess || session();
     var ext = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" }[file.type];
     var path = sess.user.id + "/" + root.crypto.randomUUID() + "." + ext;
-    return f(cfg.url + "/storage/v1/object/board-images/" + path, { method: "POST",
+    return f(cfg.url + "/storage/v1/object/" + (bucket || "board-images") + "/" + path, { method: "POST",
       headers: { apikey: cfg.publishableKey, Authorization: "Bearer " + sess.access_token, "Content-Type": file.type, "x-upsert": "false" }, body: file })
       .then(function (r) { if (!r.ok) return r.text().then(function (t) { throw new Error(/size/i.test(t) ? "That image is over 5 MB." : /mime|type/i.test(t) ? "Images only." : "Upload failed (" + r.status + ")."); }); return "storage:" + path; });
   }
@@ -371,11 +375,11 @@
     }
     if (k === "unimg") { var c2 = st.composers[b.closest("[data-bd-compose]").dataset.bdCompose]; c2.images.splice(Number(b.dataset.i), 1); render(); }
   }
-  function removeUploads(images, sess) {
+  function removeUploads(images, sess, bucket) {
     sess = sess || session();
     var paths = (images || []).filter(function (u) { return /^storage:/.test(u); }).map(function (u) { return u.slice(8); });
     if (!paths.length) return;
-    f(cfg.url + "/storage/v1/object/board-images", { method: "DELETE",
+    f(cfg.url + "/storage/v1/object/" + (bucket || "board-images"), { method: "DELETE",
       headers: { apikey: cfg.publishableKey, Authorization: "Bearer " + sess.access_token, "Content-Type": "application/json" },
       body: JSON.stringify({ prefixes: paths }) }).catch(function () {});
   }
@@ -387,7 +391,7 @@
     var list = m ? mentionMatches(m[2], st.people) : [];
     if (!m || !list.length) { box.hidden = true; return; }
     box.innerHTML = list.map(function (p) {
-      return '<li><button type="button" data-bd-mention="' + esc(p.team) + '">' + logo(teamById(p.team_id)) + "<span><b>" + esc(p.team) + "</b>" + (p.name ? ' <span class="muted small">' + esc(p.name) + "</span>" : "") + "</span></button></li>";
+      return '<li><button type="button" data-bd-mention="' + esc(p.team) + '">' + logo(p.team_id) + "<span><b>" + esc(p.team) + "</b>" + (p.name ? ' <span class="muted small">' + esc(p.name) + "</span>" : "") + "</span></button></li>";   // teamlink-ok: @mention picker (a button: a link can't nest in it)
     }).join("");
     box.hidden = false;
     box.dataset.from = String(upto.length - m[2].length - 1);
@@ -476,7 +480,7 @@
       return shrink(file).then(function (s) { var e = checkUpload(s); if (e) throw new Error(e); return s; });
     },
     upload: upload,
-    sign: function (paths, sess) { return signUrls(paths, sess).then(function () { var out = {}; paths.forEach(function (p) { if (st.signed[p]) out[p] = st.signed[p]; }); return out; }); },
+    sign: function (paths, sess, bucket) { return signUrls(paths, sess, bucket).then(function () { var out = {}; paths.forEach(function (p) { if (st.signed[p]) out[p] = st.signed[p]; }); return out; }); },
     remove: removeUploads
   };
   root.B5Board = { start: start, stop: stop, badge: badge, media: media, formatBody: formatBody, inline: inline, checkUpload: checkUpload, checkImageUrl: checkImageUrl,

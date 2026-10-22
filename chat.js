@@ -23,13 +23,12 @@
   var f = function (u, i) { return root.fetch(u, i); };
   var B = function () { return root.B5Board; };
   var EMOJI = ["👍", "😂", "🔥", "💀", "🗑️"], PAGE = 100;
-  var teamById = function (id) { return (L.teams || []).filter(function (t) { return t.id === id; })[0] || null; };
-  var initials = function (n) { return String(n || "").split(/\s+/).filter(function (w) { return w && !/^the$/i.test(w); }).slice(0, 2).map(function (w) { return w[0]; }).join("").toUpperCase(); };
-  var logo = function (t, bot, title) {
+  var TL = function () { return root.B5Team; };   // team names, logos and profile links (teamlink.js)
+  var logo = function (team, bot, title) {
     var tt = title ? ' title="' + esc(title) + '"' : "";
     if (bot) return '<div class="logo sm bd-bot"' + tt + ">B5</div>";
-    return t && t.logo ? '<img class="logo sm" src="' + esc(t.logo) + '" alt=""' + tt + ' loading="lazy" onerror="this.outerHTML=\'<div class=&quot;logo sm&quot;>' + esc(initials(t.name)) + '</div>\'">'
-      : '<div class="logo sm"' + tt + ">" + esc(initials(t ? t.name : "?")) + "</div>";
+    if (!team || !TL().has(team)) return '<div class="logo sm"' + tt + ">?</div>";
+    return title ? '<span class="ch-logo"' + tt + ">" + TL().logo(team) + "</span>" : TL().logo(team);
   };
   var time = function (iso) { return new Date(iso).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" }); };
   var day = function (iso) { return new Date(iso).toLocaleDateString("en-US", { timeZone: "America/New_York", weekday: "short", month: "short", day: "numeric" }); };
@@ -41,10 +40,11 @@
   function draftHeader(s, now) {
     if (!s || s.status === "idle" || !s.status) return { status: "idle", title: "Draft room", sub: "Talk draft prep here. During the draft, picks and the clock show up here." };
     if (s.status === "done") return { status: "done", title: "The draft is complete", sub: "" };
-    var t = teamById(s.team_id), name = t ? t.name : s.team_id || "?", where = "Round " + s.round + ", Pick " + s.pick;
-    if (s.status === "paused") return { status: "paused", title: "⏸️ Paused: " + name + " on the clock", sub: where + " · " + fmtClock(s.paused_remaining || 0) + " left when it resumes", seconds: s.paused_remaining };
+    var has = TL() && TL().has(s.team_id), name = has ? TL().name(s.team_id) : s.team_id || "?", where = "Round " + s.round + ", Pick " + s.pick;
+    var link = has ? TL().link(s.team_id, { logo: false }) : esc(name);   // titleHtml: the same title with the team's TeamLink
+    if (s.status === "paused") return { status: "paused", title: "⏸️ Paused: " + name + " on the clock", titleHtml: "⏸️ Paused: " + link + " on the clock", sub: where + " · " + fmtClock(s.paused_remaining || 0) + " left when it resumes", seconds: s.paused_remaining, team: s.team_id };
     var left = s.clock_ends_at ? (Date.parse(s.clock_ends_at) - now) / 1000 : null;
-    return { status: "live", title: "On the clock: " + name, sub: where + (left != null ? " · " + fmtClock(left) + " left" : ""), seconds: left, team: s.team_id };
+    return { status: "live", title: "On the clock: " + name, titleHtml: "On the clock: " + link, sub: where + (left != null ? " · " + fmtClock(left) + " left" : ""), seconds: left, team: s.team_id };
   }
   /** "Mike is typing…", "Mike and Bob are typing…", "3 people are typing…" */
   function typingText(names) {
@@ -88,17 +88,19 @@
     return /Slow down/.test(e) ? "Slow down: 20 messages per 10 seconds." : /muted/.test(e) ? e : /closed/.test(e) ? "This room is closed." : /Images must/.test(e) ? "Images must be https links or uploads (up to 4)." : /check constraint/.test(e) ? "Write something (or add an image) first." : e;
   };
   var me = function () { return st.people[myId()] || { name: "", team: null }; };
-  var nameOf = function (m) {
+  /** Author line (HTML): "Mike · <TeamLink>", or the TeamLink alone, or "B5 Bot". */
+  var byHtml = function (m) {
     if (m.is_bot) return "B5 Bot";
-    var p = st.people[m.author_id], t = teamById(m.author_team);
-    return p && p.name ? p.name : t ? t.name : "Former member";
+    var p = st.people[m.author_id], has = m.author_team && TL().has(m.author_team);
+    if (p && p.name) return esc(p.name) + (has ? ' <span class="ch-team">· ' + TL().link(m.author_team, { logo: false }) + "</span>" : "");
+    return has ? TL().link(m.author_team, { logo: false }) : "Former member";
   };
-  var myLabels = function () { var p = me(), t = teamById(p.team); return [p.name, t && t.name].filter(Boolean); };
+  var myLabels = function () { var p = me(); return [p.name, p.team && TL().has(p.team) ? TL().name(p.team) : null].filter(Boolean); };
   var mentionCtx = function () {
     var list = [], mine = myId();
     Object.keys(st.people).forEach(function (u) {
-      var p = st.people[u], t = teamById(p.team);
-      if (t) list.push({ label: t.name, me: u === mine });
+      var p = st.people[u];
+      if (p.team && TL().has(p.team)) list.push({ label: TL().name(p.team), me: u === mine, href: TL().href(p.team) });
       if (p.name) list.push({ label: p.name, me: u === mine });
     });
     return { mentions: list.sort(function (a, b) { return b.label.length - a.label.length; }) };
@@ -182,8 +184,8 @@
       (isCommish() && !mine && m.author_id ? '<button type="button" data-ch="mute" data-user="' + esc(m.author_id) + '">Mute</button>' : "") + "</div>" : "";
     return (dayBreak ? '<div class="ch-day">' + esc(day(m.created_at)) + "</div>" : "") +
       '<div class="ch-msg' + (cont && !dayBreak ? " cont" : "") + (m.is_bot ? " bot" : "") + (mine ? " mine" : "") + (!mine && mentionsMe(m.body, labels) ? " at-me" : "") + '" data-ch-msg="' + m.id + '">' +
-      (cont && !dayBreak ? '<div class="ch-gut"></div>' : '<div class="ch-gut">' + logo(teamById(m.author_team), m.is_bot) + "</div>") +
-      '<div class="ch-main">' + (cont && !dayBreak ? "" : '<div class="ch-by"><b>' + esc(nameOf(m)) + '</b> <span class="muted">' + esc(time(m.created_at)) + "</span></div>") +
+      (cont && !dayBreak ? '<div class="ch-gut"></div>' : '<div class="ch-gut">' + logo(m.author_team, m.is_bot) + "</div>") +
+      '<div class="ch-main">' + (cont && !dayBreak ? "" : '<div class="ch-by"><b>' + byHtml(m) + '</b> <span class="muted">' + esc(time(m.created_at)) + "</span></div>") +
       body + (m.edited_at ? '<span class="muted ch-edited">edited</span>' : "") + (chips ? '<div class="ch-chips">' + chips + "</div>" : "") + acts + "</div></div>";
   }
   function logHtml() {
@@ -197,12 +199,12 @@
     var out = "";
     if (room.kind === "draft" || st.room === "draft") {
       var h = draftHeader(st.draft, Date.now());
-      out += '<div class="ch-draft ' + esc(h.status) + '">' + (h.team ? logo(teamById(h.team)) : "") + '<div><b data-ch-clock-title>' + esc(h.title) + '</b><span data-ch-clock>' + esc(h.sub) + "</span></div>" +
+      out += '<div class="ch-draft ' + esc(h.status) + '">' + (h.team ? logo(h.team) : "") + '<div><b data-ch-clock-title>' + (h.titleHtml || esc(h.title)) + '</b><span data-ch-clock>' + esc(h.sub) + "</span></div>" +
         (h.status === "live" && h.seconds != null && h.seconds <= 30 ? '<span class="tag ch-hurry">Hurry</span>' : "") + "</div>";
     }
     var pm = room.pinned_message_id && st.msgs.filter(function (m) { return m.id === room.pinned_message_id; })[0];
     if (room.pinned_message_id) {
-      out += '<div class="ch-pinned">📌 ' + (pm ? "<b>" + esc(nameOf(pm)) + ":</b> " + (B() ? B().formatBody(pm.body.slice(0, 200), mentionCtx()) : esc(pm.body)) : "Pinned message") +
+      out += '<div class="ch-pinned">📌 ' + (pm ? "<b>" + byHtml(pm) + ":</b> " + (B() ? B().formatBody(pm.body.slice(0, 200), mentionCtx()) : esc(pm.body)) : "Pinned message") +
         (isCommish() && !st.readOnly ? ' <button type="button" class="linkish" data-ch="unpin">Unpin</button>' : "") + "</div>";
     }
     return out;
@@ -210,7 +212,7 @@
   function onlineHtml() {
     var list = st.online;
     if (!list.length) return "";
-    return '<div class="ch-online" aria-label="Online now">' + list.slice(0, 14).map(function (p) { return logo(teamById(p.team), false, p.name + " (online)"); }).join("") +
+    return '<div class="ch-online" aria-label="Online now">' + list.slice(0, 14).map(function (p) { return logo(p.team, false, p.name + " (online)"); }).join("") +
       '<span class="muted small">' + list.length + " online</span></div>";
   }
   function roomsHtml() {
@@ -457,10 +459,10 @@
     // @mention autocomplete (the board's matcher)
     var box = ta.parentNode.querySelector(".bd-ac"), upto = ta.value.slice(0, ta.selectionStart);
     var m = /(^|\s)@([^\s@]{0,20}(?: [^\s@]{0,20})?)$/.exec(upto);
-    var people = Object.keys(st.people).map(function (u) { var p = st.people[u], t = teamById(p.team); return { team: t ? t.name : p.team, team_id: p.team, name: p.name }; });
+    var people = Object.keys(st.people).map(function (u) { var p = st.people[u]; return { team: p.team ? TL().name(p.team) : "", team_id: p.team, name: p.name }; });
     var list = m && B() ? B().mentionMatches(m[2], people) : [];
     if (!m || !list.length) { box.hidden = true; return; }
-    box.innerHTML = list.map(function (p) { return '<li><button type="button" data-ch-mention="' + esc(p.team) + '">' + logo(teamById(p.team_id)) + "<span><b>" + esc(p.team) + "</b>" + (p.name ? ' <span class="muted small">' + esc(p.name) + "</span>" : "") + "</span></button></li>"; }).join("");
+    box.innerHTML = list.map(function (p) { return '<li><button type="button" data-ch-mention="' + esc(p.team) + '">' + logo(p.team_id) + "<span><b>" + esc(p.team) + "</b>" + (p.name ? ' <span class="muted small">' + esc(p.name) + "</span>" : "") + "</span></button></li>"; }).join("");   // teamlink-ok: @mention picker (a button: a link can't nest in it)
     box.hidden = false; box.dataset.from = String(upto.length - m[2].length - 1);
   }
 

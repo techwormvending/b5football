@@ -105,17 +105,9 @@
     return rostersP;
   }
 
-  var teamById = function (id) { for (var i = 0; i < (L.teams || []).length; i++) if (L.teams[i].id === id) return L.teams[i]; return null; };
+  var TL = function () { return root.B5Team; };   // team names, logos and profile links (teamlink.js)
+  var teamOf = function (id) { return id && TL().has(id) ? { id: id, division: TL().division(id) } : null; };
   var divName = function (id) { var d = (L.divisions || []).filter(function (x) { return x.id === id; })[0]; return d ? d.name : ""; };
-  var initials = function (name) {
-    return String(name || "").split(/\s+/).filter(function (w) { return w && !/^the$/i.test(w); }).slice(0, 2)
-      .map(function (w) { return w[0]; }).join("").toUpperCase();
-  };
-  var logoHtml = function (t) {
-    return t.logo
-      ? '<img class="logo" src="' + esc(t.logo) + '" alt="" onerror="this.outerHTML=\'<div class=&quot;logo&quot;>' + esc(initials(t.name)) + '</div>\'">'
-      : '<div class="logo">' + esc(initials(t.name)) + "</div>";
-  };
   var fmtDate = function (d) { return d ? new Date(d + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : ""; };
   var fmtKick = function (ms) { return new Date(ms).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" }); };
   var ordinal = function (n) { var s = ["th", "st", "nd", "rd"], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
@@ -129,22 +121,20 @@
   function myTeams() {
     var own = ownTeams();
     if (!isCommish()) return own;
-    return own.concat((L.teams || []).map(function (t) { return t.id; }).filter(function (id) { return own.indexOf(id) < 0; }));
+    return own.concat(TL().ids().filter(function (id) { return own.indexOf(id) < 0; }));
   }
 
   function headerHtml(t) {
     var r = recordFor(L, t.id), ids = myTeams();
     var picker = ids.length > 1
       ? '<label class="mt-pick">Team <select data-mt="team">' + ids.map(function (id) {
-          var x = teamById(id) || { name: id };
-          return '<option value="' + esc(id) + '"' + (id === t.id ? " selected" : "") + ">" + esc(x.name) +
-            (ownTeams().indexOf(id) >= 0 && isCommish() ? " (your team)" : "") + "</option>";
+          return TL().option(id, id === t.id, ownTeams().indexOf(id) >= 0 && isCommish() ? " (your team)" : "");
         }).join("") + "</select></label>" +
         (isCommish() && ownTeams().indexOf(t.id) < 0 ? '<p class="tag mt-viewing">Viewing as commissioner</p>' : "")
       : "";
     var line = r ? r.w + "-" + r.l + (r.t ? "-" + r.t : "") : "";
-    return '<div class="card mt-head">' + logoHtml(t) +
-      '<div class="mt-title"><h2>' + esc(t.name) + "</h2>" +
+    return '<div class="card mt-head">' + TL().logo(t.id, "logo") +
+      '<div class="mt-title"><h2>' + TL().link(t.id, { logo: false }) + "</h2>" +
       '<div class="muted">' + esc(divName(t.division) ? divName(t.division) + " Division" : "") +
       (st.managers[t.id] ? " · " + esc(st.managers[t.id]) : "") + "</div></div>" + picker +
       (r ? '<div class="mt-stats"><div><b>' + esc(line) + "</b><span>Record</span></div>" +
@@ -393,7 +383,7 @@
         (lineupsOpen(L) ? " and set your lineup" : "") + ".</p></div></section>";
       return;
     }
-    var t = teamById(st.teamId);
+    var t = teamOf(st.teamId);
     if (!t && !st.me.profile) {   // the account lookup failed (network, expired session): don't claim "no team"
       rootEl.innerHTML = '<section><h2>My Team</h2>' + msgHtml(notice) + '<div class="card"><p class="acct-msg err">Couldn\'t load your team. Reload the page to try again.</p></div></section>';
       return;
@@ -413,9 +403,9 @@
   }
 
   function show(rootEl) {
-    var act = st.me && teamById(st.teamId) ? loadActivity(st.teamId).catch(function () {}) : Promise.resolve();
-    if (!lineupsOpen(L) && st.me && teamById(st.teamId)) return Promise.all([loadShadowWeek(st.teamId), act]).then(function () { render(rootEl); });
-    if (!lineupsOpen(L) || !st.me || !teamById(st.teamId)) { render(rootEl); return Promise.resolve(); }
+    var act = st.me && teamOf(st.teamId) ? loadActivity(st.teamId).catch(function () {}) : Promise.resolve();
+    if (!lineupsOpen(L) && st.me && teamOf(st.teamId)) return Promise.all([loadShadowWeek(st.teamId), act]).then(function () { render(rootEl); });
+    if (!lineupsOpen(L) || !st.me || !teamOf(st.teamId)) { render(rootEl); return Promise.resolve(); }
     return Promise.all([loadLineup(st.teamId), act]).then(function () { render(rootEl); });
   }
 

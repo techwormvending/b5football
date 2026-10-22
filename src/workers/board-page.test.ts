@@ -8,6 +8,7 @@ import vm from "node:vm";
 
 const read = (f: string) => fs.readFileSync(path.resolve(import.meta.dirname, "../..", f), "utf8");
 const ctx: Record<string, unknown> = { LEAGUE: { season: 2026, teams: [] } };
+vm.runInNewContext(read("teamlink.js"), ctx);
 vm.runInNewContext(read("route.js"), ctx);
 vm.runInNewContext(read("board.js"), ctx);
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

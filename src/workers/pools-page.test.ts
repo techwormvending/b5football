@@ -6,6 +6,7 @@ import path from "node:path";
 import vm from "node:vm";
 
 const ctx: Record<string, unknown> = { LEAGUE: { season: 2026, teams: [] } };
+vm.runInNewContext(fs.readFileSync(path.resolve(import.meta.dirname, "../../teamlink.js"), "utf8"), ctx);
 vm.runInNewContext(fs.readFileSync(path.resolve(import.meta.dirname, "../../pools.js"), "utf8"), ctx);
 type Row = { game: { game_key: string }; pick: string | null; points: number; locked: boolean };
 const P = ctx.B5Pools as {

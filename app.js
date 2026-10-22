@@ -8,29 +8,23 @@
   // Escape plain-text fields. Announcement bodies are intentionally raw HTML.
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const initials = (name) => name.split(/\s+/).filter(w => !/^the$/i.test(w))
-    .slice(0, 2).map(w => w[0]).join("").toUpperCase();
   const fmtDate = (d) => new Date(d + "T12:00:00").toLocaleDateString(undefined,
     { month: "short", day: "numeric", year: "numeric" });
 
-  // Team lookups + standings helpers
-  const teamById = (id) => L.teams.find(t => t.id === id);
+  // Team names, logos and links come from teamlink.js (window.B5Team); standings helpers
+  const T = window.B5Team;
   const rows = (L.standings && L.standings.rows) || [];
   const rec = (id) => { const r = rows.find(x => x[0] === id); return r && { w: r[1], l: r[2], t: r[3], pf: r[4], pa: r[5] }; };
   const standOrder = (id) => { const i = rows.findIndex(x => x[0] === id); return i < 0 ? 99 : i; };
-  const logoHtml = (t, cls = "logo") => t.logo
-    ? `<img class="${cls}" src="${esc(t.logo)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=&quot;${cls}&quot;>${esc(initials(t.name))}</div>'">`
-    : `<div class="${cls}">${esc(initials(t.name))}</div>`;
   const divName = (id) => ((L.divisions || []).find(d => d.id === id) || {}).name || "";
 
   function standingsTable() {
     if (!rows.length) return "";
     const body = rows.map((r, i) => {
-      const t = teamById(r[0]) || { name: r[0] };
       return `<tr>
         <td class="rank">${i + 1}</td>
-        <td><div class="st-team">${logoHtml(t, "logo sm")}<span>${esc(t.name)}</span></div></td>
-        <td class="muted hide-sm">${esc(divName(t.division))}</td>
+        <td><div class="st-team">${T.link(r[0])}</div></td>
+        <td class="muted hide-sm">${esc(divName(T.division(r[0])))}</td>
         <td class="num"><b>${r[1]}-${r[2]}${r[3] ? "-" + r[3] : ""}</b></td>
         <td class="num">${Number(r[4]).toFixed(1)}</td>
         <td class="num hide-sm">${Number(r[5]).toFixed(1)}</td>
@@ -67,19 +61,19 @@
 
   function gameCard(g, week) {
     const [aId, aPts, hId, hPts] = g;
-    const a = teamById(aId) || { name: aId }, h = teamById(hId) || { name: hId };
     const done = played(g);
-    const side = (t, pts, opp) => `
+    const side = (id, pts, opp) => `
       <div class="g-side${done && pts > opp ? " win" : ""}">
-        ${logoHtml(t, "logo sm")}<span class="g-name">${esc(t.name)}</span>
+        <span class="g-name">${T.link(id)}</span>
         <span class="g-pts">${done ? Number(pts).toFixed(1) : "–"}</span>
       </div>`;
-    const divGame = a.division && a.division === h.division;
+    const divGame = T.division(aId) && T.division(aId) === T.division(hId);
     const round = roundName(week);
-    return `<a class="card game" href="#live/${esc(week)}/${esc(aId)}">
-      ${side(a, aPts, hPts)}${side(h, hPts, aPts)}
-      <div class="g-meta muted">${done ? (sched.liveWeeks && sched.liveWeeks.has(week) ? "Live" : "Final") : "Upcoming"}${round ? ` · ${esc(round)}` : divGame ? ` · ${esc(divName(a.division))} division game` : ""}</div>
-    </a>`;
+    // The whole card opens the matchup (a cover link); the team names on top open the teams.
+    return `<div class="card game has-cover"><a class="card-cover" href="#live/${esc(week)}/${esc(aId)}" aria-label="Open the week ${esc(week)} matchup"></a>
+      ${side(aId, aPts, hPts)}${side(hId, hPts, aPts)}
+      <div class="g-meta muted">${done ? (sched.liveWeeks && sched.liveWeeks.has(week) ? "Live" : "Final") : "Upcoming"}${round ? ` · ${esc(round)}` : divGame ? ` · ${esc(divName(T.division(aId)))} division game` : ""}</div>
+    </div>`;
   }
 
   // Playoffs: LEAGUE.playoffs (8 teams; quarterfinals week 15, semifinals 16, championship 17).
@@ -170,25 +164,25 @@
               <span class="muted nfl" title="${esc(acq(how))}">${esc(nfl)}</span></li>`).join("")}
           </ul></details>`;
       };
-      const card = t => {
-        const r = rec(t.id);
+      const card = id => {
+        const r = rec(id), titles = T.titles(id);
         return `
         <div class="card team-card">
           <div class="team">
-            ${logoHtml(t)}
+            <a href="${esc(T.href(id))}" tabindex="-1" aria-hidden="true">${T.logo(id, "logo")}</a>
             <div>
-              <h3>${esc(t.name)}</h3>
-              <div class="muted"><span data-mgr="${esc(t.id)}">${esc(t.manager)}</span>${r ? ` · ${r.w}-${r.l}${r.t ? "-" + r.t : ""}` : ""}</div>
-              ${t.titles ? `<div class="rings" title="${t.titles} title(s)">${"🏆".repeat(t.titles)}</div>` : ""}
+              <h3>${T.link(id, { logo: false })}</h3>
+              <div class="muted"><span data-mgr="${esc(id)}">${esc(T.manager(id))}</span>${r ? ` · ${r.w}-${r.l}${r.t ? "-" + r.t : ""}` : ""}</div>
+              ${titles ? `<div class="rings" title="${titles} title(s)">${"🏆".repeat(titles)}</div>` : ""}
             </div>
           </div>
-          <div data-roster="${esc(t.id)}">${rosterHtml(t.id)}</div>
+          <div data-roster="${esc(id)}">${rosterHtml(id)}</div>
         </div>`;
       };
-      const divs = (L.divisions && L.divisions.length) ? L.divisions : [{ id: null, name: "The " + L.teams.length }];
+      const divs = (L.divisions && L.divisions.length) ? L.divisions : [{ id: null, name: "The " + T.ids().length }];
       return divs.map(d => {
-        const ts = L.teams.filter(t => d.id === null || t.division === d.id)
-          .sort((a, b) => standOrder(a.id) - standOrder(b.id));
+        const ts = T.ids().filter(id => d.id === null || T.division(id) === d.id)
+          .sort((a, b) => standOrder(a) - standOrder(b));
         return `<section><h2>${esc(d.id === null ? d.name : d.name + " Division")}</h2>
           <div class="grid teams-grid">${ts.map(card).join("")}</div></section>`;
       }).join("") + (L.rosters ? `<p class="muted small rosters-asof">Rosters as of ${fmtDate(L.rosters.asOf)} (week ${esc(L.rosters.week)})</p>` : "");
@@ -198,16 +192,16 @@
       const rows = L.champions.map(c => `
         <tr>
           <td class="yr">${esc(c.year)}</td>
-          <td class="champ">🏆 ${esc(c.champion)}</td>
-          <td>${esc(c.runnerUp)}</td>
-          <td>${esc(c.lastPlace)}</td>
+          <td class="champ">🏆 ${T.linkName(c.champion, { logo: false })}</td>
+          <td>${T.linkName(c.runnerUp, { logo: false })}</td>
+          <td>${T.linkName(c.lastPlace, { logo: false })}</td>
           <td class="muted">${esc(c.note)}</td>
         </tr>`).join("");
       // Title leaderboard computed from the champions list
       const counts = {};
       L.champions.forEach(c => { if (c.champion && c.champion !== "TBD") counts[c.champion] = (counts[c.champion] || 0) + 1; });
       const board = Object.entries(counts).sort((a, b) => b[1] - a[1])
-        .map(([n, k]) => `<tr><td class="champ">${esc(n)}</td><td class="yr">${k}</td></tr>`).join("");
+        .map(([n, k]) => `<tr><td class="champ">${T.linkName(n)}</td><td class="yr">${k}</td></tr>`).join("");
       return `
         <section><h2>Champions</h2>
           <div class="card table-wrap"><table>
@@ -254,7 +248,12 @@
     live() { return `<div id="lvRoot"></div>`; },
     board() { return `<div id="bdRoot"></div>`; },
     chat() { return `<div id="chRoot"></div>`; },
-    players() { return `<div id="plRoot"></div>`; }
+    players() { return `<div id="plRoot"></div>`; },
+    // Rendered by team.js (team profile), dm.js (direct messages), trades.js (trades)
+    team() { return `<div id="tpRoot"></div>`; },
+    dm() { return `<div id="dmRoot"></div>`; },
+    trade() { return `<div id="trRoot"></div>`; },
+    trades() { return `<div id="trRoot"></div>`; }
   };
 
   // ---- Countdown ------------------------------------------------------
@@ -286,10 +285,13 @@
     if (window.B5Board) window.B5Board.stop();
     if (window.B5Chat) window.B5Chat.stop();
     if (window.B5Players) window.B5Players.stop();
+    if (window.B5TeamPage) window.B5TeamPage.stop();
+    if (window.B5DM) window.B5DM.stop();
+    if (window.B5Trades) window.B5Trades.stop();
     document.body.dataset.page = page;   // lets a page restyle the frame (the chat hides the footer)
     view.innerHTML = pages[page]();
     document.querySelectorAll(".nav a[href^='#']").forEach(a =>
-      a.classList.toggle("active", a.getAttribute("href") === "#" + (page === "commish-payouts" ? "commish" : page === "confidence" ? "survivor" : page)));
+      a.classList.toggle("active", a.getAttribute("href") === "#" + (page === "commish-payouts" ? "commish" : page === "confidence" ? "survivor" : page === "team" ? "teams" : page === "trade" || page === "trades" ? "players" : page)));
     if (page === "schedule") centerWeek();
     nav.classList.remove("open");
     if (page === "home") startClock();
@@ -299,6 +301,10 @@
     if (page === "chat" && window.B5Chat) window.B5Chat.start(document.getElementById("chRoot"), r);
     else if (window.B5Chat) window.B5Chat.badge();
     if (page === "players" && window.B5Players) window.B5Players.start(document.getElementById("plRoot"), r);
+    if (page === "team" && window.B5TeamPage) window.B5TeamPage.start(document.getElementById("tpRoot"), r);
+    if ((page === "trade" || page === "trades") && window.B5Trades) window.B5Trades.start(document.getElementById("trRoot"), r);
+    if (page === "dm" && window.B5DM) window.B5DM.start(document.getElementById("dmRoot"), r);
+    if (window.B5DM) window.B5DM.badge();   // unread direct messages on the ✉ nav item
     if (page === "teams" && window.B5Payouts) {
       window.B5Payouts.teamWinnings().then(w => {
         view.querySelectorAll("[data-roster]").forEach(el => {

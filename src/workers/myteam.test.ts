@@ -15,6 +15,7 @@ interface MyTeam {
   kickoffFor(games: { home: string; away: string; kickoff: string }[], team: string): number | null;
 }
 const ctx: Record<string, unknown> = {};
+vm.runInNewContext(fs.readFileSync(path.resolve(import.meta.dirname, "../../teamlink.js"), "utf8"), ctx);
 vm.runInNewContext(fs.readFileSync(path.resolve(import.meta.dirname, "../../myteam.js"), "utf8"), ctx);
 const M = ctx.B5MyTeam as MyTeam;
 const plain = <T>(x: T): T => JSON.parse(JSON.stringify(x));   // VM-realm objects -> this realm, for deepEqual

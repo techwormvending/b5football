@@ -17,6 +17,12 @@
     if (cr) return { page: "chat", week: null, room: cr[1], tv: !!cr[2] };
     var bt = /^board\/(\d+)$/.exec(key);
     if (bt) return { page: "board", week: null, thread: Number(bt[1]) };
+    var tm = /^team\/(\w{1,12})$/.exec(key);
+    if (tm) return { page: "team", week: null, team: tm[1] };
+    var tr = /^trade\/(\w{1,12})$/.exec(key);
+    if (tr) return { page: "trade", week: null, team: tr[1] };
+    var dm = /^dm\/(\d{1,12})$/.exec(key);
+    if (dm) return { page: "dm", week: null, conv: Number(dm[1]) };
     var pt = /^players\/(free-agents|claims|order|results|log|commish)$/.exec(key);
     if (pt) return { page: "players", week: null, tab: pt[1] };
     var lw = /^live\/(\d{1,2})$/.exec(key);

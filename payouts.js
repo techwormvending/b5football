@@ -14,7 +14,8 @@
   };
   var f = function (u, i) { return root.fetch(u, i); };
   var season = Number(L.season);
-  var teamName = function (id) { var t = (L.teams || []).filter(function (x) { return x.id === id; })[0]; return t ? t.name : id || ""; };
+  var TL = function () { return root.B5Team; };   // team names and profile links (teamlink.js)
+  var tlink = function (id) { return TL().link(id, { logo: false }); };
   var cents = function (n) { return Math.round(Number(n || 0) * 100); };
   var money = function (n) {
     var c = cents(n), neg = c < 0; c = Math.abs(c);
@@ -46,11 +47,11 @@
   /** Ledger per team: winnings (final), paid out, owed = final winnings - paid. */
   function balances(awards, payments, fees) {
     var win = winningsByTeam(awards), out = [];
-    (L.teams || []).forEach(function (t) {
-      var paid = sum(payments.filter(function (p) { return p.team_id === t.id; }));
-      var fee = fees.filter(function (x) { return x.team_id === t.id; })[0] || null;
-      var w = win[t.id] || { final: 0, projected: 0 };
-      out.push({ team_id: t.id, name: t.name, fee_due: fee ? Number(fee.amount_due) : null, fee_paid: fee ? !!fee.paid : null,
+    TL().ids().forEach(function (id) {
+      var paid = sum(payments.filter(function (p) { return p.team_id === id; }));
+      var fee = fees.filter(function (x) { return x.team_id === id; })[0] || null;
+      var w = win[id] || { final: 0, projected: 0 };
+      out.push({ team_id: id, fee_due: fee ? Number(fee.amount_due) : null, fee_paid: fee ? !!fee.paid : null,
         won: w.final, projected: w.projected, paid_out: paid, owed: (cents(w.final) - cents(paid)) / 100 });
     });
     return out;
@@ -104,7 +105,7 @@
     var who = function (kind, extra) {
       var rows = eff.filter(function (a) { return a.kind === kind && (!extra || extra(a)); });
       if (!rows.length) return '<span class="muted">Not yet</span>';
-      return rows.map(function (a) { return esc(teamName(a.team_id)) + " " + money(a.amount) + " " + tag(a.status); }).join("<br>");
+      return rows.map(function (a) { return tlink(a.team_id) + " " + money(a.amount) + " " + tag(a.status); }).join("<br>");
     };
     if (p.weekly_high) {
       var n = p.weekly_high.last_week - p.weekly_high.first_week + 1;
@@ -152,44 +153,44 @@
 
     var weekly = eff.filter(function (a) { return a.kind === "weekly_high"; }).sort(function (a, b) { return a.week - b.week; });
     var weeklyHtml = '<div class="card"><h3>Weekly high scores</h3>' + (weekly.length ? '<ul class="po-list">' + weekly.map(function (a) {
-      return "<li><b>Wk " + esc(a.week) + "</b><span>" + esc(teamName(a.team_id)) + (a.note ? ' <span class="muted small">' + esc(a.note) + "</span>" : "") + "</span><span>" + money(a.amount) + "</span>" + tag(a.status) + "</li>";
+      return "<li><b>Wk " + esc(a.week) + "</b><span>" + tlink(a.team_id) + (a.note ? ' <span class="muted small">' + esc(a.note) + "</span>" : "") + "</span><span>" + money(a.amount) + "</span>" + tag(a.status) + "</li>";
     }).join("") + "</ul>" : '<p class="muted">None yet.</p>') + "</div>";
 
     var out = {}; d.guillotine.forEach(function (g) { out[g.team_id] = g; });
-    var alive = (L.teams || []).filter(function (t) { return !out[t.id]; });
+    var alive = TL().ids().filter(function (id) { return !out[id]; });
     var gWin = eff.filter(function (a) { return a.kind === "guillotine"; })[0];
     var guill = '<div class="card"><h3>Guillotine</h3>' +
-      (gWin ? '<p class="acct-msg ok">' + esc(teamName(gWin.team_id)) + " is the last team standing: " + money(gWin.amount) + " " + tag(gWin.status) + "</p>" : "") +
+      (gWin ? '<p class="acct-msg ok">' + tlink(gWin.team_id) + " is the last team standing: " + money(gWin.amount) + " " + tag(gWin.status) + "</p>" : "") +
       '<p class="muted small">Lowest score among teams still alive is eliminated each week from week ' + esc((s.prizes.guillotine || {}).start_week) + ". " + esc(alive.length) + " still alive.</p>" +
       '<ul class="po-list">' + d.guillotine.map(function (g) {
-        return "<li><b>Wk " + esc(g.week) + "</b><span>" + esc(teamName(g.team_id)) + (g.points != null ? ' <span class="muted small">' + esc(Number(g.points).toFixed(1)) + "</span>" : "") +
+        return "<li><b>Wk " + esc(g.week) + "</b><span>" + tlink(g.team_id) + (g.points != null ? ' <span class="muted small">' + esc(Number(g.points).toFixed(1)) + "</span>" : "") +
           (g.source === "override" ? ' <span class="muted small">(commissioner)</span>' : "") + "</span><span></span>" + tag(g.status) + "</li>";
       }).join("") + "</ul>" +
-      (alive.length ? '<p class="small"><b>Alive:</b> ' + alive.map(function (t) { return esc(t.name); }).join(", ") + "</p>" : "") + "</div>";
+      (alive.length ? '<p class="small"><b>Alive:</b> ' + alive.map(tlink).join(", ") + "</p>" : "") + "</div>";
 
     var totals = {};
     d.scores.forEach(function (x) { totals[x.team_id] = (cents(totals[x.team_id] ? totals[x.team_id] : 0) + cents(x.points)) / 100; });
     var ranked = Object.keys(totals).sort(function (a, b) { return totals[b] - totals[a]; });
     var pts = '<div class="card"><h3>Season points</h3>' + (ranked.length ? '<ol class="po-rank">' + ranked.map(function (t) {
-      return "<li><span>" + esc(teamName(t)) + "</span><b>" + esc(totals[t].toFixed(1)) + "</b></li>";
+      return "<li><span>" + tlink(t) + "</span><b>" + esc(totals[t].toFixed(1)) + "</b></li>";
     }).join("") + "</ol>" : '<p class="muted">No scores yet.</p>') + "</div>";
 
     var e = empireState(s, d.awards);
     var empire = '<div class="card po-empire"><h3>Empire pot</h3><div class="mt-stats"><div><b>' + money(e.balance) + "</b><span>Balance</span></div></div>" +
-      "<p>" + (e.outcome === "paid" ? "Paid to " + esc(teamName(e.team)) + ", back-to-back champion."
-        : e.outcome === "rolled" ? esc(teamName(e.team)) + " won, but not back to back: the pot rolls into " + esc(season + 1) + " (+" + money(s.empire_contribution) + ")."
-        : e.defending ? "On Empire watch: <b>" + esc(teamName(e.defending)) + "</b> (" + esc(season - 1) + " champion). Win again and the pot is theirs."
+      "<p>" + (e.outcome === "paid" ? "Paid to " + tlink(e.team) + ", back-to-back champion."
+        : e.outcome === "rolled" ? tlink(e.team) + " won, but not back to back: the pot rolls into " + esc(season + 1) + " (+" + money(s.empire_contribution) + ")."
+        : e.defending ? "On Empire watch: <b>" + tlink(e.defending) + "</b> (" + esc(season - 1) + " champion). Win again and the pot is theirs."
         : '<span class="muted">The ' + esc(season - 1) + " champion hasn't been entered yet.</span>") + "</p>" +
       '<p class="muted small">Grows ' + money(s.empire_contribution) + " a season from fees; paid to a team that wins the championship two seasons in a row.</p></div>";
 
     var win = winningsByTeam(d.awards);
     var byTeam = '<div class="card"><h3>Winnings by team</h3><div class="table-wrap"><table class="po-table"><thead><tr><th>Team</th><th class="num">Won</th><th class="num">Projected</th></tr></thead><tbody>' +
-      (L.teams || []).slice().sort(function (a, b) {
-        var wa = win[a.id] || { final: 0, projected: 0 }, wb = win[b.id] || { final: 0, projected: 0 };
+      TL().ids().sort(function (a, b) {
+        var wa = win[a] || { final: 0, projected: 0 }, wb = win[b] || { final: 0, projected: 0 };
         return (wb.final + wb.projected) - (wa.final + wa.projected);
-      }).map(function (t) {
-        var w = win[t.id] || { final: 0, projected: 0 };
-        return "<tr><td>" + esc(t.name) + '</td><td class="num">' + money(w.final) + '</td><td class="num muted">' + (w.projected ? money(w.projected) : "–") + "</td></tr>";
+      }).map(function (id) {
+        var w = win[id] || { final: 0, projected: 0 };
+        return "<tr><td>" + tlink(id) + '</td><td class="num">' + money(w.final) + '</td><td class="num muted">' + (w.projected ? money(w.projected) : "–") + "</td></tr>";
       }).join("") + "</tbody></table></div></div>";
 
     return '<section class="po"><h2>' + esc(season) + " Payouts</h2>" + head + memberHtml() +
@@ -202,7 +203,7 @@
     if (!st.me || !st.me.teams || !st.me.teams.length) return "";
     var mine = st.me.teams[0].team_id, b = balances(d.awards, d.payments, d.fees).filter(function (x) { return x.team_id === mine; })[0];
     var t = d.totals;
-    return '<div class="card po-mine"><h3>' + esc(teamName(mine)) + ": your ledger</h3>" +
+    return '<div class="card po-mine"><h3>' + tlink(mine) + ": your ledger</h3>" +
       "<p>League fee: " + (b.fee_paid == null ? '<span class="muted">not recorded</span>' : b.fee_paid ? "<b>paid</b> (" + money(b.fee_due) + ")" : '<b class="po-owe">unpaid</b> (' + money(b.fee_due) + ")") + "</p>" +
       "<p>Won " + money(b.won) + (b.projected ? " (+" + money(b.projected) + " projected)" : "") + " · paid to you " + money(b.paid_out) + " · <b>owed to you " + money(Math.max(0, b.owed)) + "</b></p>" +
       (t ? '<p class="muted small">League: ' + esc(t.teams_paid) + " of " + esc(t.teams_paid + t.teams_unpaid) + " fees paid (" + money(t.fees_paid) + " of " + money(t.fees_due) + "), " + money(t.paid_out) + " paid out so far.</p>" : "") + "</div>";
@@ -210,7 +211,7 @@
 
   // ---- Commissioner tools -----------------------------------------------------------
   function teamOptions(sel) {
-    return (L.teams || []).map(function (t) { return '<option value="' + esc(t.id) + '"' + (t.id === sel ? " selected" : "") + ">" + esc(t.name) + "</option>"; }).join("");
+    return TL().ids().map(function (id) { return TL().option(id, id === sel); }).join("");
   }
   function adminHtml() {
     var d = st.data, s = d.settings;
@@ -219,7 +220,7 @@
     st.msg = null;
     var flags = (d.flags && d.flags.flags) || [];
     var flagsHtml = '<div class="card"><h3>Needs your decision</h3>' + (flags.length ? '<ul class="checks">' + flags.map(function (x) {
-      return "<li>" + esc(x.message.replace(/\b(\d{4})\b/g, function (id) { return teamName(id) !== id ? teamName(id) : id; })) + "</li>";
+      return "<li>" + esc(x.message).replace(/\b(\d{4})\b/g, function (id) { return TL().has(id) ? tlink(id) : id; }) + "</li>";
     }).join("") + "</ul>" : '<p class="acct-msg ok">Nothing to decide. Auto awards match the spreadsheet\'s recorded winners.</p>') +
       (d.flags ? '<p class="muted small">Computed ' + esc(new Date(d.flags.computed_at).toLocaleString("en-US", { timeZone: "America/New_York" })) + " ET.</p>" : "") + "</div>";
 
@@ -227,9 +228,9 @@
       teamOptions(s.empire_defending_team) + '</select></label><button class="btn ghost" type="submit">Save</button></form>' +
       '<p class="muted small">Until the history import, enter last season\'s champion here. Balance: ' + money(empireState(s, d.awards).balance) + ".</p></div>";
 
-    var feeRows = (L.teams || []).map(function (t) {
-      var fee = d.fees.filter(function (x) { return x.team_id === t.id; })[0] || {};
-      return '<tr><td>' + esc(t.name) + '</td><td><form class="po-inline" data-po="fee" data-team="' + esc(t.id) + '">' +
+    var feeRows = TL().ids().map(function (id) {
+      var fee = d.fees.filter(function (x) { return x.team_id === id; })[0] || {};
+      return '<tr><td>' + tlink(id) + '</td><td><form class="po-inline" data-po="fee" data-team="' + esc(id) + '">' +
         '<input name="amount_due" type="number" step="0.01" min="0" value="' + esc(fee.amount_due != null ? fee.amount_due : s.buy_in) + '" aria-label="Fee due">' +
         '<label class="acct-check"><input type="checkbox" name="paid"' + (fee.paid ? " checked" : "") + "> Paid</label>" +
         '<input name="paid_at" type="date" value="' + esc(fee.paid_at || "") + '" aria-label="Paid on">' +
@@ -240,7 +241,7 @@
     var bal = balances(d.awards, d.payments, d.fees);
     var balHtml = '<div class="card"><h3>Balances</h3><div class="table-wrap"><table class="po-table"><thead><tr><th>Team</th><th>Fee</th><th class="num">Won</th><th class="num hide-sm">Projected</th><th class="num">Paid out</th><th class="num">Owed</th></tr></thead><tbody>' +
       bal.map(function (b) {
-        return "<tr><td>" + esc(b.name) + "</td><td>" + (b.fee_paid == null ? '<span class="muted">–</span>' : b.fee_paid ? "Paid" : '<b class="po-owe">Unpaid</b>') + '</td><td class="num">' + money(b.won) +
+        return "<tr><td>" + tlink(b.team_id) + "</td><td>" + (b.fee_paid == null ? '<span class="muted">–</span>' : b.fee_paid ? "Paid" : '<b class="po-owe">Unpaid</b>') + '</td><td class="num">' + money(b.won) +
           '</td><td class="num hide-sm muted">' + (b.projected ? money(b.projected) : "–") + '</td><td class="num">' + money(b.paid_out) + '</td><td class="num"><b>' + money(b.owed) + "</b></td></tr>";
       }).join("") + '</tbody></table></div><button class="btn ghost" type="button" data-po="csv">Download CSV</button></div>';
 
@@ -251,7 +252,7 @@
       '<label>Note<input name="note" maxlength="120" placeholder="e.g. weeks 1-5 high scores"></label>' +
       '<button class="btn" type="submit">Record payout</button><p class="muted small">Ledger only. Don\'t enter payment handles or addresses.</p></form>' +
       (d.payments.length ? '<ul class="po-list">' + d.payments.map(function (p) {
-        return "<li><b>" + esc(p.paid_at) + "</b><span>" + esc(teamName(p.team_id)) + (p.note ? ' <span class="muted small">' + esc(p.note) + "</span>" : "") + "</span><span>" + money(p.amount) +
+        return "<li><b>" + esc(p.paid_at) + "</b><span>" + tlink(p.team_id) + (p.note ? ' <span class="muted small">' + esc(p.note) + "</span>" : "") + "</span><span>" + money(p.amount) +
           '</span><button class="linkish" type="button" data-po="del-payment" data-id="' + esc(p.id) + '">delete</button></li>';
       }).join("") + "</ul>" : "") + "</div>";
 
@@ -263,7 +264,7 @@
       '<label>Total amount (split evenly if several teams)<input name="amount" type="number" step="0.01" min="0" placeholder="prize amount"></label>' +
       '<button class="btn" type="submit">Add award</button></form>' +
       (manualList.length ? '<ul class="po-list">' + manualList.map(function (a) {
-        return "<li><b>" + esc(a.label) + "</b><span>" + esc(teamName(a.team_id)) + "</span><span>" + money(a.amount) + '</span><button class="linkish" type="button" data-po="del-award" data-id="' + esc(a.id) + '">delete</button></li>';
+        return "<li><b>" + esc(a.label) + "</b><span>" + tlink(a.team_id) + "</span><span>" + money(a.amount) + '</span><button class="linkish" type="button" data-po="del-award" data-id="' + esc(a.id) + '">delete</button></li>';
       }).join("") + "</ul>" : "") + "</div>";
 
     var groups = {};
@@ -273,7 +274,7 @@
     var gKeys = Object.keys(groups);
     var over = '<div class="card"><h3>Override an award</h3><form class="acct-form" data-po="override">' +
       '<label>Award<select name="group" required>' + gKeys.map(function (k) {
-        var g = groups[k]; return '<option value="' + esc(k) + '" data-label="' + esc(g.label) + '">' + esc(g.label) + ": " + esc(g.teams.map(teamName).join(" & ")) + (g.source === "override" ? " (overridden)" : "") + "</option>";
+        var g = groups[k]; return '<option value="' + esc(k) + '" data-label="' + esc(g.label) + '">' + esc(g.label) + ": " + esc(g.teams.map(function (id) { return TL().name(id); }).join(" & ")) + (g.source === "override" ? " (overridden)" : "") + "</option>";   // teamlink-ok: <option> label in the override picker (plain text)
       }).join("") + "</select></label>" +
       '<label>Winner(s)<select name="teams" multiple size="4" required>' + teamOptions() + "</select></label>" +
       '<label>Total amount<input name="amount" type="number" step="0.01" min="0" required></label>' +
@@ -293,11 +294,11 @@
 
   function exportCsv() {
     var d = st.data, rows = [["Team", "Fee due", "Fee paid", "Won (final)", "Projected", "Paid out", "Owed"]];
-    balances(d.awards, d.payments, d.fees).forEach(function (b) { rows.push([b.name, b.fee_due, b.fee_paid == null ? "" : b.fee_paid ? "yes" : "no", b.won, b.projected, b.paid_out, b.owed]); });
+    balances(d.awards, d.payments, d.fees).forEach(function (b) { rows.push([TL().name(b.team_id), b.fee_due, b.fee_paid == null ? "" : b.fee_paid ? "yes" : "no", b.won, b.projected, b.paid_out, b.owed]); });
     rows.push([]); rows.push(["Award", "Week", "Place", "Team", "Amount", "Status", "Source", "Note"]);
-    effectiveAwards(d.awards).forEach(function (a) { rows.push([a.label, a.week, a.place, teamName(a.team_id), a.amount, a.status, a.source, a.note]); });
+    effectiveAwards(d.awards).forEach(function (a) { rows.push([a.label, a.week, a.place, TL().name(a.team_id), a.amount, a.status, a.source, a.note]); });
     rows.push([]); rows.push(["Payout", "Team", "Amount", "Paid on", "Note"]);
-    d.payments.forEach(function (p) { rows.push(["", teamName(p.team_id), p.amount, p.paid_at, p.note]); });
+    d.payments.forEach(function (p) { rows.push(["", TL().name(p.team_id), p.amount, p.paid_at, p.note]); });
     var blob = new Blob([csv(rows)], { type: "text/csv" });
     var a = document.createElement("a");
     a.href = URL.createObjectURL(blob); a.download = "b5-payouts-" + season + ".csv";
@@ -322,10 +323,10 @@
       if (kind === "fee") {
         api("team_fees?on_conflict=season,team_id", "POST", [{ season: season, team_id: form.dataset.team, amount_due: Number(fd.get("amount_due") || 0),
           paid: fd.get("paid") === "on", paid_at: fd.get("paid_at") || null, updated_at: new Date().toISOString() }], "resolution=merge-duplicates,return=minimal")
-          .then(function (r) { return redraw(r, "Fee saved for " + teamName(form.dataset.team) + "."); });
+          .then(function (r) { return redraw(r, "Fee saved for " + TL().name(form.dataset.team) + "."); });
       } else if (kind === "payment") {
         api("payout_payments", "POST", { season: season, team_id: fd.get("team"), amount: Number(fd.get("amount")), paid_at: fd.get("paid_at"), note: String(fd.get("note") || "").trim() || null })
-          .then(function (r) { return redraw(r, "Recorded " + money(fd.get("amount")) + " to " + teamName(fd.get("team")) + "."); });
+          .then(function (r) { return redraw(r, "Recorded " + money(fd.get("amount")) + " to " + TL().name(fd.get("team")) + "."); });
       } else if (kind === "manual") {
         var opt = form.querySelector("select[name=label] option:checked"), ids = multi();
         var total = fd.get("amount") ? Number(fd.get("amount")) : Number(opt && opt.dataset.amount || 0);
@@ -348,7 +349,7 @@
         api("guillotine?season=eq." + season + "&week=eq." + w, "DELETE").then(function (r) {
           if (!r.ok) return r;
           return api("guillotine", "POST", { season: season, week: w, team_id: fd.get("team"), status: "final", source: "override", note: String(fd.get("note")).trim() });
-        }).then(function (r) { return redraw(r, "Week " + w + ": " + teamName(fd.get("team")) + " eliminated."); });
+        }).then(function (r) { return redraw(r, "Week " + w + ": " + TL().name(fd.get("team")) + " eliminated."); });
       } else if (kind === "empire") {
         api("season_settings?season=eq." + season, "PATCH", { empire_defending_team: fd.get("team") || null, updated_at: new Date().toISOString() })
           .then(function (r) { return redraw(r, "Empire watch saved."); });

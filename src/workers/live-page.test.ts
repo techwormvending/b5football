@@ -9,6 +9,7 @@ import { scoreStatLine } from "../scoring/engine.ts";
 
 const read = (f: string) => fs.readFileSync(path.resolve(import.meta.dirname, "../..", f), "utf8");
 const ctx: Record<string, unknown> = { LEAGUE: { season: 2026, lineupsFrom: 2027, teams: [{ id: "0001", name: "NSFW" }, { id: "0002", name: "Stealers" }], schedule: { weeks: Array.from({ length: 17 }, (_, i) => ({ week: i + 1 })) } } };
+vm.runInNewContext(read("teamlink.js"), ctx);
 vm.runInNewContext(read("route.js"), ctx);
 vm.runInNewContext(read("live.js"), ctx);
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -179,9 +180,10 @@ test("cards: one per matchup, each a deep link to itself, the selected one highl
     matchups: [{ away_team: "0001", home_team: "0002", away_score: 40.5, home_score: 38 }, { away_team: "0003", home_team: "0004", away_score: 0, home_score: 0 }],
     slots: [{ team_id: "0001", slot: 0, player_id: "QB1", nfl_team: "DET", revealed: true }, { team_id: "0002", slot: 0, player_id: null, revealed: false }] };
   const html = V.cardsHtml(d, "0004");
-  assert.match(html, /href="#live\/7\/0001" data-lv-team="0001">/);
-  assert.match(html, /class="card lv-card lv-upcoming sel" href="#live\/7\/0003" data-lv-team="0003" aria-current="true">/);
-  assert.match(html, /lv-row lead"><div class="logo sm">N<\/div><div class="lv-name"><b>NSFW/);
+  assert.match(html, /<a class="card-cover" href="#live\/7\/0001" data-lv-team="0001" aria-label="Show this matchup"><\/a>/, "the card opens its matchup (cover link)");
+  assert.match(html, /class="card lv-card has-cover lv-upcoming sel" aria-current="true"><a class="card-cover" href="#live\/7\/0003" data-lv-team="0003"/);
+  assert.match(html, /lv-row lead"><div class="logo sm">N<\/div><div class="lv-name"><a class="team-link" href="#team\/0001"><span class="tl-name"><b>NSFW<\/b>/, "team names are TeamLinks");
+  assert.doesNotMatch(html, /<a [^>]*>[^<]*<a /, "no link inside a link");
   assert.match(html, /0 done · 1 playing · 0 to go · 0 bye/);
   assert.match(html, /<span class="tag lv-st">Live<\/span>/);
   assert.match(V.cardsHtml(d, null, ["0002"]), /lv-live sel"/, "signed in as 0002's manager: that card is selected");
