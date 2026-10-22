@@ -41,6 +41,22 @@ const AUTH_STUB = `
   create function net.http_post(url text, body jsonb default '{}', params jsonb default '{}', headers jsonb default '{}', timeout_milliseconds int default 5000)
     returns bigint language sql as $$ insert into net.calls (url, body, headers) values (url, body, headers) returning id $$;
 
+  -- Supabase Storage stand-in: buckets, objects (RLS on, like the real one) and the path helpers
+  -- policies use. Uploads themselves (size and type limits) are enforced by the Storage API.
+  create schema storage;
+  grant usage on schema storage to anon, authenticated, service_role;
+  create table storage.buckets (id text primary key, name text not null, public boolean not null default false,
+    file_size_limit bigint, allowed_mime_types text[]);
+  create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text references storage.buckets (id),
+    name text not null, owner uuid default auth.uid(), created_at timestamptz not null default now());
+  alter table storage.objects enable row level security;
+  grant all on storage.objects to anon, authenticated, service_role;
+  grant select on storage.buckets to anon, authenticated, service_role;
+  create function storage.foldername(name text) returns text[] language sql immutable as $$
+    select (string_to_array(name, '/'))[1:array_length(string_to_array(name, '/'), 1) - 1] $$;
+  create function storage.extension(name text) returns text language sql immutable as $$
+    select reverse(split_part(reverse(name), '.', 1)) $$;
+
   -- Supabase's default privileges (as found on the hosted project, 2026-10-15): new tables,
   -- sequences and functions in public are granted to anon and authenticated automatically,
   -- even with "auto-expose new tables" off. Mirror them so tests catch over-broad access.

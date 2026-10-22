@@ -61,7 +61,7 @@ beforeEach(async () => { db = await freshDb(); await seed(db); });
 
 describe("every table is protected", () => {
   // Service-only tables: RLS on, deliberately no policies and no grants to anon/authenticated.
-  const SERVICE_ONLY = new Set(["heartbeats", "live_nonces", "live_games"]);
+  const SERVICE_ONLY = new Set(["heartbeats", "live_nonces", "live_games", "board_bot_keys"]);
   test("RLS is enabled on every public table, and every table but the service-only ones has policies", async () => {
     const t = (await db.query<{ relname: string; rls: boolean; policies: number }>(`
       select c.relname, c.relrowsecurity as rls,
@@ -792,6 +792,157 @@ describe("Live page (public read)", () => {
     await db.exec(`update public.nfl_games set season = 2027`);
     assert.equal(await tick("2026-10-23 12:15Z"), "not the 2026 shadow season");
     for (const who of [anon, user(COMMISH)]) await denied(db, who, `select private.mfl_lineups_tick()`, /permission denied/);
+  });
+});
+
+describe("message board (members only)", () => {
+  const ERIN = "00000000-0000-0000-0000-0000000000e1";   // signed in, but manages no team: not a member
+  const newThread = (who: Who, title = "Trash talk", body = "Week 7 is ours", images = "[]") =>
+    rows(db, who, `select public.board_new_thread($1, $2, $3::jsonb) as id`, [title, body, images]).then(r => Number((r[0] as { id: number }).id));
+  const reply = (who: Who, thread: number, body = "No chance", images = "[]") =>
+    rows(db, who, `insert into public.board_posts (thread_id, body, images) values ($1, $2, $3::jsonb) returning id`, [thread, body, images]).then(r => Number((r[0] as { id: number }).id));
+  beforeEach(async () => { await db.exec(`insert into auth.users (id, email) values ('${ERIN}', 'erin@example.com')`); });
+
+  test("logged out: no access at all; a signed-in non-member sees nothing and can't post", async () => {
+    const t = await newThread(user(ALICE));
+    for (const table of ["board_threads", "board_posts", "board_reactions", "board_settings"]) await denied(db, anon, `select * from public.${table}`, /permission denied/);
+    await denied(db, anon, `select public.board_new_thread('x', 'y')`, /permission denied/);
+    assert.equal((await rows(db, user(ERIN), `select * from public.board_threads`)).length, 0);
+    assert.equal((await rows(db, user(ERIN), `select * from public.board_posts`)).length, 0);
+    await denied(db, user(ERIN), `insert into public.board_posts (thread_id, body) values (${t}, 'hi')`, /row-level security/);
+    await denied(db, user(ERIN), `select public.board_new_thread('x', 'y')`, /row-level security/);
+  });
+
+  test("a new thread: the database sets author, team and activity; replies move it up and count", async () => {
+    const t = await newThread(user(ALICE));
+    await denied(db, user(BOB), `insert into public.board_threads (title, author_id) values ('fake', '${ALICE}')`, /new row violates|row-level security/).catch(() => {});
+    const [th] = await rows(db, user(BOB), `select title, author_id, author_team, reply_count, pinned from public.board_threads where id = ${t}`);
+    assert.deepEqual(th, { title: "Trash talk", author_id: ALICE, author_team: "0001", reply_count: 0, pinned: false });
+    const p = Number((await rows(db, user(BOB), `insert into public.board_posts (thread_id, body, author_id, author_team, is_bot) values (${t}, 'Nope', '${ALICE}', '0001', true) returning id`) as { id: number }[])[0]!.id);
+    const [post] = await rows(db, user(BOB), `select author_id, author_team, is_bot from public.board_posts where id = ${p}`);
+    assert.deepEqual(post, { author_id: BOB, author_team: "0002", is_bot: false }, "forged author, team and bot flag are replaced");
+    const [after] = await rows(db, user(ALICE), `select reply_count, last_author_id from public.board_threads where id = ${t}`);
+    assert.deepEqual(after, { reply_count: 1, last_author_id: BOB });
+    await denied(db, user(BOB), `insert into public.board_posts (thread_id, body, is_opener) values (${t}, 'mine now', true)`, /first post|duplicate/);
+  });
+
+  test("you edit only your own posts (\"edited\" stamped by the database); you can't change who wrote it", async () => {
+    const t = await newThread(user(ALICE));
+    const p = await reply(user(BOB), t);
+    assert.equal(await affected(db, user(ALICE), `update public.board_posts set body = 'hacked' where id = ${p}`), 0, "Alice can't edit Bob's post");
+    assert.equal(await affected(db, user(COMMISH), `update public.board_posts set body = 'hacked' where id = ${p}`), 0, "nor can the commissioner (he deletes)");
+    assert.equal(await affected(db, user(BOB), `update public.board_posts set edited_at = null where id = ${p}`), 1);
+    assert.equal((await rows(db, user(BOB), `select edited_at from public.board_posts where id = ${p}`) as { edited_at: unknown }[])[0]!.edited_at, null, "no change, no stamp");
+    assert.equal(await affected(db, user(BOB), `update public.board_posts set body = 'Fine, maybe' where id = ${p}`), 1);
+    assert.ok((await rows(db, user(BOB), `select edited_at from public.board_posts where id = ${p}`) as { edited_at: unknown }[])[0]!.edited_at);
+    await denied(db, user(BOB), `update public.board_posts set author_id = '${ALICE}' where id = ${p}`, /row-level security|Only the text/);
+    await denied(db, user(BOB), `update public.board_threads set title = 'mine' where id = ${t}`, /own thread|row-level security/).catch(async () =>
+      assert.equal(await affected(db, user(BOB), `update public.board_threads set title = 'mine' where id = ${t}`), 0));
+    assert.equal(await affected(db, user(ALICE), `update public.board_threads set title = 'Trash talk (week 7)' where id = ${t}`), 1);
+  });
+
+  test("delete: your own replies; your thread only while it has no replies; the commissioner deletes anything, audited", async () => {
+    const t = await newThread(user(ALICE));
+    const p = await reply(user(BOB), t);
+    assert.equal(await affected(db, user(ALICE), `delete from public.board_posts where id = ${p}`), 0, "not someone else's");
+    await denied(db, user(ALICE), `delete from public.board_threads where id = ${t}`, /has replies/);
+    await denied(db, user(ALICE), `delete from public.board_posts where thread_id = ${t} and is_opener`, /Delete the thread/);
+    const mine = await reply(user(ALICE), t);
+    assert.equal(await affected(db, user(ALICE), `delete from public.board_posts where id = ${mine}`), 1);
+    assert.equal(await affected(db, user(COMMISH), `delete from public.board_posts where id = ${p}`), 1);
+    assert.equal(await affected(db, user(COMMISH), `delete from public.board_threads where id = ${t}`), 1);
+    assert.equal((await db.query(`select * from public.board_posts where thread_id = ${t}`)).rows.length, 0, "the thread's posts go with it");
+    const log = (await db.query<{ action: string }>(`select action from public.audit_log where action like 'board:%' order by id`)).rows.map(r => r.action);
+    assert.deepEqual(log, ["board:board_posts:delete", "board:board_threads:delete"]);
+    const solo = await newThread(user(BOB), "Solo");
+    assert.equal(await affected(db, user(BOB), `delete from public.board_threads where id = ${solo}`), 1, "no replies: the author can delete it");
+  });
+
+  test("only the commissioner pins and locks (audited); a locked thread takes only his replies", async () => {
+    const t = await newThread(user(ALICE));
+    await denied(db, user(ALICE), `update public.board_threads set pinned = true where id = ${t}`, /Only the commissioner/);
+    await denied(db, user(ALICE), `insert into public.board_threads (title, pinned) values ('pinned', true)`, /Only the commissioner/);
+    assert.equal(await affected(db, user(COMMISH), `update public.board_threads set pinned = true, locked = true where id = ${t}`), 1);
+    await denied(db, user(BOB), `insert into public.board_posts (thread_id, body) values (${t}, 'one more')`, /locked/);
+    await reply(user(COMMISH), t, "Thread closed.");
+    const log = (await db.query<{ action: string }>(`select action from public.audit_log where action like 'board:threads:%'`)).rows.map(r => r.action);
+    assert.deepEqual(log, ["board:threads:pin"]);
+    await denied(db, user(ALICE), `select public.board_new_thread('Announcement', 'x', '[]', 'announcement:1')`, /Only the commissioner can cross-post/);
+    await rows(db, user(COMMISH), `select public.board_new_thread('Announcement', 'x', '[]', 'announcement:1')`);
+    await denied(db, user(COMMISH), `select public.board_new_thread('Again', 'x', '[]', 'announcement:1')`, /duplicate/);
+  });
+
+  test("rate limit: 10 posts a minute per member", async () => {
+    const t = await newThread(user(ALICE));    // the opener is post 1
+    for (let i = 0; i < 9; i++) await reply(user(ALICE), t, `post ${i}`);
+    await denied(db, user(ALICE), `insert into public.board_posts (thread_id, body) values (${t}, 'eleventh')`, /Slow down/);
+    await reply(user(BOB), t, "Bob isn't limited by Alice");
+  });
+
+  test("images: https links or board uploads only, at most 4", async () => {
+    const t = await newThread(user(ALICE));
+    const up = `storage:${ALICE}/0b4e7c1a-1111-4222-8333-944445555666.gif`;
+    await reply(user(BOB), t, "", JSON.stringify(["https://media.giphy.com/x.gif", up]));
+    for (const bad of [["http://example.com/a.gif"], ["javascript:alert(1)"], ["https://x.com/a.gif\" onerror=\"alert(1)"], ["storage:../etc/passwd"], [{ url: "https://a" }], ["https://a.com/1.png", "https://a.com/2.png", "https://a.com/3.png", "https://a.com/4.png", "https://a.com/5.png"]])
+      await denied(db, user(BOB), `insert into public.board_posts (thread_id, body, images) values (${t}, 'x', '${JSON.stringify(bad).replace(/'/g, "''")}'::jsonb)`, /Images must be|check constraint/);
+    await denied(db, user(BOB), `insert into public.board_posts (thread_id, body) values (${t}, '')`, /check constraint/);
+  });
+
+  test("reactions: one of each per person; only your own; only the five", async () => {
+    const t = await newThread(user(ALICE));
+    const p = await reply(user(BOB), t);
+    await rows(db, user(ALICE), `insert into public.board_reactions (post_id, emoji) values (${p}, '🔥'), (${p}, '💀')`);
+    await denied(db, user(ALICE), `insert into public.board_reactions (post_id, emoji) values (${p}, '🔥')`, /duplicate/);
+    await denied(db, user(ALICE), `insert into public.board_reactions (post_id, emoji) values (${p}, '❤️')`, /check constraint/);
+    await denied(db, user(ALICE), `insert into public.board_reactions (post_id, user_id, emoji) values (${p}, '${BOB}', '👍')`, /row-level security/);
+    assert.equal(await affected(db, user(BOB), `delete from public.board_reactions where post_id = ${p}`), 0, "can't remove Alice's");
+    assert.equal(await affected(db, user(ALICE), `delete from public.board_reactions where post_id = ${p} and emoji = '💀'`), 1);
+  });
+
+  test("unread: threads with others' activity since you last read them; your own posts don't count", async () => {
+    const unread = (who: Who) => rows(db, who, `select public.board_unread() as n`).then(r => (r[0] as { n: number }).n);
+    const t = await newThread(user(ALICE));
+    assert.equal(await unread(user(ALICE)), 0, "your own thread");
+    assert.equal(await unread(user(BOB)), 1);
+    await rows(db, user(BOB), `insert into public.board_reads (thread_id) values (${t})`);
+    assert.equal(await unread(user(BOB)), 0);
+    await db.exec(`update public.board_reads set read_at = now() - interval '1 minute'`);
+    await reply(user(ALICE), t, "Still here?");
+    assert.equal(await unread(user(BOB)), 1, "new activity after his read");
+    assert.equal(await unread(user(ERIN)), 0, "non-members see no threads");
+    await denied(db, user(BOB), `insert into public.board_reads (user_id, thread_id) values ('${ALICE}', ${t})`, /row-level security/);
+  });
+
+  test("settings: members read, only the commissioner toggles the bot; bot keys are for server jobs", async () => {
+    assert.equal((await rows(db, user(BOB), `select auto_recap from public.board_settings`)).length, 1);
+    assert.equal(await affected(db, user(BOB), `update public.board_settings set auto_recap = false`), 0);
+    assert.equal(await affected(db, user(COMMISH), `update public.board_settings set auto_recap = false`), 1);
+    for (const who of [anon, user(BOB), user(COMMISH)]) await denied(db, who, `select * from public.board_bot_keys`, /permission denied/);
+    assert.equal(await affected(db, service, `insert into public.board_bot_keys (key, posted) values ('recap:2026:7', true)`), 1);
+  });
+
+  test("B5 Bot (server jobs) posts with no author; members read it", async () => {
+    await db.exec(`set role service_role`);
+    const t = (await db.query<{ id: number }>(`insert into public.board_threads (title, is_bot, source_key) values ('Week 7 recap', true, 'recap:2026:7') returning id`)).rows[0]!.id;
+    await db.query(`insert into public.board_posts (thread_id, is_bot, is_opener, body) values ($1, true, true, '**High score:** Stealers')`, [t]);
+    await db.exec(`reset role`);
+    assert.deepEqual(await rows(db, user(BOB), `select is_bot, author_id from public.board_posts where thread_id = ${t}`), [{ is_bot: true, author_id: null }]);
+  });
+
+  test("image uploads: private 5 MB images-only bucket; members upload to their own folder and read; uploader or commissioner deletes", async () => {
+    const [b] = (await db.query(`select public, file_size_limit, allowed_mime_types from storage.buckets where id = 'board-images'`)).rows;
+    assert.deepEqual(b, { public: false, file_size_limit: 5242880, allowed_mime_types: ["image/png", "image/jpeg", "image/gif", "image/webp"] });
+    const up = (who: Who, name: string) => as(db, who, tx => tx.query(`insert into storage.objects (bucket_id, name) values ('board-images', $1)`, [name]));
+    await up(user(ALICE), `${ALICE}/a.gif`);
+    await assert.rejects(up(user(ALICE), `${BOB}/b.png`), /row-level security/, "not into someone else's folder");
+    await assert.rejects(up(user(ALICE), `${ALICE}/x.html`), /row-level security/, "images only");
+    await assert.rejects(up(user(ERIN), `${ERIN}/e.png`), /row-level security/, "members only");
+    await assert.rejects(up(anon, `x/a.png`), /row-level security/);
+    assert.equal((await rows(db, user(BOB), `select name from storage.objects`)).length, 1, "members read");
+    assert.equal((await rows(db, anon, `select name from storage.objects`)).length, 0, "visitors don't");
+    assert.equal((await rows(db, user(ERIN), `select name from storage.objects`)).length, 0);
+    assert.equal(await affected(db, user(BOB), `delete from storage.objects`), 0);
+    assert.equal(await affected(db, user(COMMISH), `delete from storage.objects`), 1);
   });
 });
 

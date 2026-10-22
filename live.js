@@ -140,37 +140,18 @@
   }
   var lineSum = function (lines) { return Math.round((lines || []).reduce(function (t, l) { return t + Number(l.points); }, 0) * 100) / 100; };
 
-  // ---- Realtime: Supabase's Phoenix channel protocol over a WebSocket (no supabase-js) ----
-  var rt = { ws: null, hb: null, retry: null, tries: 0, joined: false, onChange: null, token: null };
-  function rtStop() {
-    clearInterval(rt.hb); clearTimeout(rt.retry);
-    if (rt.ws) { rt.ws.onclose = null; try { rt.ws.close(); } catch (e) { /* closed */ } }
-    rt.ws = null; rt.joined = false; rt.onChange = null;
-  }
-  function rtStart(onChange, token) {
+  // ---- Realtime (realtime.js): score_weeks for this season; one message per live pass ----
+  var rt = { sub: null };
+  var rtStop = function () { if (rt.sub) rt.sub.close(); rt.sub = null; };
+  var rtJoined = function () { return !!(rt.sub && rt.sub.joined()); };
+  function rtStart(onChange) {
     rtStop();
-    rt.onChange = onChange; rt.token = token;
-    if (!root.WebSocket || !cfg || !cfg.url) return;
-    var ref = 0, topic = "realtime:b5-live-" + season;
-    var send = function (m) { try { rt.ws.send(JSON.stringify(m)); } catch (e) { /* reconnects */ } };
-    var ws = rt.ws = new root.WebSocket(cfg.url.replace(/^http/, "ws") + "/realtime/v1/websocket?apikey=" + encodeURIComponent(cfg.publishableKey) + "&vsn=1.0.0");
-    ws.onopen = function () {
-      var payload = { config: { broadcast: { self: false }, presence: { key: "" },
-        postgres_changes: [{ event: "*", schema: "public", table: "score_weeks", filter: "season=eq." + season }] } };
-      if (rt.token) payload.access_token = rt.token;
-      send({ topic: topic, event: "phx_join", payload: payload, ref: String(++ref), join_ref: "1" });
-      rt.hb = setInterval(function () { send({ topic: "phoenix", event: "heartbeat", payload: {}, ref: String(++ref) }); }, 25000);
-    };
-    ws.onmessage = function (m) {
-      var x; try { x = JSON.parse(m.data); } catch (e) { return; }
-      if (x.event === "phx_reply" && x.topic === topic && x.payload && x.payload.status === "ok") { rt.joined = true; rt.tries = 0; }
-      if (x.event === "postgres_changes" && x.payload && x.payload.data && rt.onChange) rt.onChange(x.payload.data.record || null);
-    };
-    ws.onclose = function () {
-      clearInterval(rt.hb); rt.joined = false;
-      var cb = rt.onChange; if (!cb) return;
-      rt.retry = setTimeout(function () { rtStart(cb, rt.token); }, Math.min(60000, 2000 * Math.pow(2, rt.tries++)));
-    };
+    if (!root.B5Realtime) return;
+    rt.sub = root.B5Realtime.subscribe({ cfg: cfg, topic: "realtime:b5-live-" + season,
+      changes: [{ table: "score_weeks", filter: "season=eq." + season }],
+      // A fresh session on every (re)connect, so a long Sunday never runs on an expired token.
+      getToken: function () { return root.B5Account ? root.B5Account.load().then(function (me) { return me && me.session ? me.session.access_token : null; }, function () { return null; }) : null; },
+      onChange: function (rec) { onChange(rec); } });
   }
 
   // ---- Data -------------------------------------------------------------------------
@@ -434,14 +415,14 @@
           if (st.el !== el) return;
           st.dd = dd; render();
           // Realtime: each live pass updates score_weeks; re-read the week and the selected matchup.
-          rtStart(function (rec) { if (!rec || Number(rec.week) === st.week) refresh(); }, session() ? session().access_token : null);
+          rtStart(function (rec) { if (!rec || Number(rec.week) === st.week) refresh(); });
           // "updated Xs ago" every second; a slow poll as a fallback while games are on and Realtime isn't joined.
           st.tick = setInterval(function () {
             var x = st.el && st.el.querySelector("[data-lv-ago]"), s = st.d && staleness(st.d.sw, st.d.games, Date.now());
             if (x && s && s.ageMs != null) x.textContent = ago(s.ageMs);
             if (s && s.stale && st.el && !st.el.querySelector(".lv-delayed")) render();
           }, 1000);
-          st.poll = setInterval(function () { if (!rt.joined && st.d && staleness(st.d.sw, st.d.games, Date.now()).on && !(root.document && root.document.hidden)) refresh(); }, 60000);
+          st.poll = setInterval(function () { if (!rtJoined() && st.d && staleness(st.d.sw, st.d.games, Date.now()).on && !(root.document && root.document.hidden)) refresh(); }, 60000);
         });
       });
     }).catch(function (e) { if (st.el === el) el.innerHTML = '<section class="lv"><h2>Live</h2><p class="acct-msg err">Couldn\'t load: ' + esc(e.message) + "</p></section>"; });

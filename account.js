@@ -121,8 +121,13 @@
       A.api(cfg, s, "invites?select=email,user_id&user_id=not.is.null", {}, f),
       A.api(cfg, s, "pool_imports?season=eq." + Number(L.season) + "&select=week,status,source,attempts,attempted_at,succeeded_at,picks,teams,replaced_test,message,compare,triggered_by&order=week.desc", {}, f),
       A.api(cfg, s, "shadow_results?season=eq." + Number(L.season) + "&select=week,team_id,mfl_score,our_score,matched,details&order=week,team_id", {}, f),
-      A.api(cfg, s, "live_compare?season=eq." + Number(L.season) + "&select=week,team_id,our_points,mfl_points,players,diff_since,checked_at&order=week.desc,team_id&limit=36", {}, f)
+      A.api(cfg, s, "live_compare?season=eq." + Number(L.season) + "&select=week,team_id,our_points,mfl_points,players,diff_since,checked_at&order=week.desc,team_id&limit=36", {}, f),
+      A.api(cfg, s, "board_settings?select=auto_recap,auto_awards", {}, f),
+      A.api(cfg, s, "board_threads?source_key=like.announcement:*&select=id,source_key", {}, f)
     ]).then(function (r) {
+      cm.board = (r[9] && r[9].ok && r[9].data && r[9].data[0]) || null;
+      cm.crossposted = {};
+      ((r[10] && r[10].ok && r[10].data) || []).forEach(function (t) { cm.crossposted[t.source_key] = t.id; });
       var lc = (r[8] && r[8].ok && r[8].data) || [];
       cm.live = lc.filter(function (x) { return x.week === (lc[0] || {}).week; });
       cm.poolImports = (r[6] && r[6].ok && r[6].data) || [];
@@ -190,7 +195,7 @@
         ' <button class="linkish" type="button" data-cm="unassign" data-team="' + esc(x.team_id) + '" data-user="' + esc(x.user_id) + '">remove from team</button></li>';
     }).join("") + "</ul>" : '<p class="muted">No managers have joined yet.</p>';
 
-    root.innerHTML = "<section><h2>Commissioner</h2>" + m + poolImportHtml(cm.poolImports || []) + '<div class="card"><h3>Payouts</h3><p>Fees, payouts, manual awards, overrides and CSV export: <a href="#commish-payouts">open the payout tools</a>.</p></div>' + keep + liveCompareHtml(cm.live || []) + shadow +
+    root.innerHTML = "<section><h2>Commissioner</h2>" + m + poolImportHtml(cm.poolImports || []) + '<div class="card"><h3>Payouts</h3><p>Fees, payouts, manual awards, overrides and CSV export: <a href="#commish-payouts">open the payout tools</a>.</p></div>' + keep + boardHtml() + liveCompareHtml(cm.live || []) + shadow +
       '<div class="card"><h3>Invite a manager</h3>' + seedTeams +
       '<form class="acct-form" data-cm="invite">' +
       '<label>Email<input name="email" type="email" autocomplete="off" required></label>' +
@@ -219,6 +224,21 @@
       '<p class="muted small">Tuesdays 6:00 AM ET the official MFL picks replace the TEST picks for the week that just finished; then our totals are checked against MFL\'s results.</p>' +
       '<form class="po-inline" data-cm="pool-import"><label>Week <input name="week" type="number" min="1" max="18" placeholder="latest"></label>' +
       '<button class="btn" type="submit">Run import now</button></form>' + list + "</div>";
+  }
+
+  // Message board: B5 Bot toggles and announcement cross-posts (home-page announcements live in league-data.js).
+  var annKey = function (a) { return "announcement:" + a.date + ":" + String(a.title).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 60); };
+  function boardHtml() {
+    if (!cm.board) return "";
+    var tog = function (k, label) { return '<label class="acct-check"><input type="checkbox" data-cm="board-toggle" data-key="' + k + '"' + (cm.board[k] ? " checked" : "") + "> " + label + "</label>"; };
+    var anns = (L.announcements || []).map(function (a) {
+      var key = annKey(a), t = cm.crossposted[key];
+      return "<li><b>" + esc(a.title) + '</b> <span class="muted small">' + esc(a.date) + "</span> " +
+        (t ? '<a href="#board/' + esc(t) + '">On the board</a>' : '<button class="btn ghost" data-cm="crosspost" data-key="' + esc(key) + '">Cross-post to board</button>') + "</li>";
+    }).join("");
+    return '<div class="card"><h3>Message board</h3><p class="muted small">B5 Bot posts after the nightly job: the weekly recap once a week is final, and payout awards as they become final.</p>' +
+      tog("auto_recap", "Weekly results recap (high score, guillotine, biggest blowout, closest game)") + tog("auto_awards", "Payout awards as they become final") +
+      (anns ? '<h4>Home-page announcements</h4><ul class="checks">' + anns + "</ul>" : "") + "</div>";
   }
 
   // Live check during games (2026): our live totals vs MFL's live scoring, per team and starter.
@@ -323,9 +343,17 @@
       }));
     });
 
+    root.addEventListener("change", function (e) {
+      var t = e.target.closest("[data-cm='board-toggle']");
+      if (!t) return;
+      var patch = {}; patch[t.dataset.key] = t.checked; patch.updated_at = new Date().toISOString();
+      act(A.api(cfg, me.session, "board_settings?id=eq.true", { method: "PATCH", body: JSON.stringify(patch), headers: { Prefer: "return=minimal" } }, f)
+        .then(function (r) { return r.ok ? { msgOk: "Saved." } : r; }));
+    });
+
     root.addEventListener("click", function (e) {
       var b = e.target.closest("[data-cm]");
-      if (!b || b.tagName === "FORM") return;
+      if (!b || b.tagName === "FORM" || b.dataset.cm === "board-toggle") return;
       var kind = b.dataset.cm;
       if (kind === "send") {
         b.disabled = true;
@@ -340,6 +368,14 @@
         if (!window.confirm("Remove this manager from " + teamName(b.dataset.team) + "?")) return;
         act(A.api(cfg, me.session, "team_managers?team_id=eq." + encodeURIComponent(b.dataset.team) + "&user_id=eq." + encodeURIComponent(b.dataset.user), { method: "DELETE" }, f)
           .then(function (r) { return r.ok ? { msgOk: "Manager removed from the team." } : r; }));
+      } else if (kind === "crosspost") {
+        var a = (L.announcements || []).filter(function (x) { return annKey(x) === b.dataset.key; })[0];
+        if (!a) return;
+        b.disabled = true;
+        var text = window.B5Board ? window.B5Board.htmlToText(a.body) : "";
+        var imgs = a.image && /^https:\/\//.test(a.image) ? [a.image] : [];
+        act(A.api(cfg, me.session, "rpc/board_new_thread", { method: "POST", body: JSON.stringify({ p_title: a.title, p_body: text || a.title, p_images: imgs, p_source_key: b.dataset.key }) }, f)
+          .then(function (r) { return r.ok ? { msgOk: "Posted to the board." } : r; }));
       } else if (kind === "seed-teams") {
         var divs = {};
         (L.divisions || []).forEach(function (d) { divs[d.id] = d.name; });
