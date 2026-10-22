@@ -251,7 +251,8 @@
     account() { return `<div id="acctRoot"></div>`; },
     commish() { return `<div id="acctRoot"></div>`; },
     live() { return `<div id="lvRoot"></div>`; },
-    board() { return `<div id="bdRoot"></div>`; }
+    board() { return `<div id="bdRoot"></div>`; },
+    chat() { return `<div id="chRoot"></div>`; }
   };
 
   // ---- Countdown ------------------------------------------------------
@@ -281,6 +282,8 @@
     clearInterval(timer);
     if (window.B5Live) window.B5Live.stop();   // leaves Realtime and its timers when you leave #live
     if (window.B5Board) window.B5Board.stop();
+    if (window.B5Chat) window.B5Chat.stop();
+    document.body.dataset.page = page;   // lets a page restyle the frame (the chat hides the footer)
     view.innerHTML = pages[page]();
     document.querySelectorAll(".nav a[href^='#']").forEach(a =>
       a.classList.toggle("active", a.getAttribute("href") === "#" + (page === "commish-payouts" ? "commish" : page)));
@@ -290,6 +293,8 @@
     if (page === "live" && window.B5Live) window.B5Live.start(document.getElementById("lvRoot"), r);
     if (page === "board" && window.B5Board) window.B5Board.start(document.getElementById("bdRoot"), r);
     if (window.B5Board) window.B5Board.badge();   // unread count on the nav item (signed-in members)
+    if (page === "chat" && window.B5Chat) window.B5Chat.start(document.getElementById("chRoot"), r);
+    else if (window.B5Chat) window.B5Chat.badge();
     if (page === "teams" && window.B5Payouts) {
       window.B5Payouts.teamWinnings().then(w => {
         view.querySelectorAll("[data-roster]").forEach(el => {

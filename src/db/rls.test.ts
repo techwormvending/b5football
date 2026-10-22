@@ -918,6 +918,121 @@ describe("co-owners (up to 2 per team)", () => {
   });
 });
 
+describe("chat (members only)", () => {
+  const ERIN = "00000000-0000-0000-0000-0000000000e2";   // signed in, no team: not a member
+  const say = (who: Who, body: string, room = "league", images = "[]") =>
+    rows(db, who, `insert into public.chat_messages (room_id, body, images) values ($1, $2, $3::jsonb) returning id`, [room, body, images]).then(r => Number((r[0] as { id: number }).id));
+  beforeEach(async () => { await db.exec(`insert into auth.users (id, email) values ('${ERIN}', 'erin2@example.com'); insert into public.teams (id, name, division) values ('0011', 'Mac Daddies', 'Gold')`); });
+
+  test("logged out: no access; a non-member sees nothing and can't post; members read and post", async () => {
+    await say(user(ALICE), "Morning");
+    for (const t of ["chat_rooms", "chat_messages", "chat_reactions", "chat_reads", "draft_state"]) await denied(db, anon, `select * from public.${t}`, /permission denied/);
+    await denied(db, anon, `insert into public.chat_messages (room_id, body) values ('league', 'hi')`, /permission denied/);
+    assert.equal((await rows(db, user(ERIN), `select * from public.chat_messages`)).length, 0);
+    assert.equal((await rows(db, user(ERIN), `select * from public.chat_rooms`)).length, 0);
+    await denied(db, user(ERIN), `insert into public.chat_messages (room_id, body) values ('league', 'hi')`, /row-level security/);
+    assert.deepEqual((await rows(db, user(BOB), `select id from public.chat_rooms order by sort`)).map(r => (r as { id: string }).id), ["league", "draft"]);
+    assert.deepEqual(await rows(db, user(BOB), `select body, author_id, author_team, is_bot from public.chat_messages`), [{ body: "Morning", author_id: ALICE, author_team: "0001", is_bot: false }]);
+  });
+
+  test("the database sets author, team and bot flag; you edit only your own (\"edited\"); the commissioner deletes anyone's, audited", async () => {
+    const m = Number((await rows(db, user(BOB), `insert into public.chat_messages (room_id, body, author_id, author_team, is_bot) values ('league', 'fake', '${ALICE}', '0001', true) returning id`) as { id: number }[])[0]!.id);
+    assert.deepEqual(await rows(db, user(BOB), `select author_id, author_team, is_bot from public.chat_messages where id = ${m}`), [{ author_id: BOB, author_team: "0002", is_bot: false }]);
+    assert.equal(await affected(db, user(ALICE), `update public.chat_messages set body = 'hacked' where id = ${m}`), 0);
+    assert.equal(await affected(db, user(ALICE), `delete from public.chat_messages where id = ${m}`), 0);
+    assert.equal(await affected(db, user(BOB), `update public.chat_messages set body = 'real' where id = ${m}`), 1);
+    assert.ok((await rows(db, user(BOB), `select edited_at from public.chat_messages where id = ${m}`) as { edited_at: unknown }[])[0]!.edited_at);
+    await denied(db, user(BOB), `update public.chat_messages set room_id = 'draft' where id = ${m}`, /Only the text/);
+    const mine = await say(user(BOB), "oops");
+    assert.equal(await affected(db, user(BOB), `delete from public.chat_messages where id = ${mine}`), 1, "your own: no audit");
+    assert.equal(await affected(db, user(COMMISH), `delete from public.chat_messages where id = ${m}`), 1);
+    assert.deepEqual((await db.query<{ action: string }>(`select action from public.audit_log where action like 'chat:%'`)).rows.map(r => r.action), ["chat:message:delete"]);
+  });
+
+  test("rate limit: 20 messages per 10 seconds per member", async () => {
+    for (let i = 0; i < 20; i++) await say(user(ALICE), `msg ${i}`);
+    await denied(db, user(ALICE), `insert into public.chat_messages (room_id, body) values ('league', '21st')`, /Slow down: 20 messages per 10 seconds/);
+    await say(user(BOB), "Bob's fine");
+    await db.exec(`update public.chat_messages set created_at = now() - interval '11 seconds'`);
+    await say(user(ALICE), "after the window");
+  });
+
+  test("moderation: mute (until a time), clear a room, pin a message, rooms as a setting; all audited", async () => {
+    await rows(db, user(COMMISH), `insert into public.chat_mutes (user_id, until, reason) values ('${BOB}', now() + interval '10 minutes', 'cool off')`);
+    await denied(db, user(BOB), `insert into public.chat_messages (room_id, body) values ('league', 'let me talk')`, /You're muted until/);
+    assert.equal((await rows(db, user(BOB), `select reason from public.chat_mutes`)).length, 1, "he sees his own mute");
+    assert.equal((await rows(db, user(ALICE), `select * from public.chat_mutes`)).length, 0);
+    await denied(db, user(ALICE), `insert into public.chat_mutes (user_id, until) values ('${BOB}', now() + interval '1 day')`, /row-level security/);
+    await db.exec(`update public.chat_mutes set until = now() - interval '1 second'`);
+    const keep = await say(user(BOB), "back");
+    assert.equal(await affected(db, user(COMMISH), `update public.chat_rooms set pinned_message_id = ${keep} where id = 'league'`), 1);
+    assert.equal(await affected(db, user(ALICE), `update public.chat_rooms set pinned_message_id = null where id = 'league'`), 0, "only the commissioner pins");
+    await denied(db, user(COMMISH), `update public.chat_rooms set pinned_message_id = ${keep} where id = 'draft'`, /Pin a message from this room/);
+    await say(user(ALICE), "one more");
+    assert.deepEqual(await rows(db, user(COMMISH), `select public.chat_clear_room('league') as n`), [{ n: 2 }]);
+    await denied(db, user(ALICE), `select public.chat_clear_room('league')`, /Only the commissioner/);
+    await rows(db, user(COMMISH), `insert into public.chat_rooms (id, name, kind) values ('trash-talk', 'Trash Talk', 'league')`);
+    assert.deepEqual(await rows(db, user(BOB), `select kind from public.chat_rooms where id = 'trash-talk'`), [{ kind: "custom" }]);
+    await denied(db, user(ALICE), `insert into public.chat_rooms (id, name) values ('mine', 'Mine')`, /row-level security/);
+    await denied(db, user(COMMISH), `update public.chat_rooms set archived = true where id = 'draft'`, /always open/);
+    await rows(db, user(COMMISH), `update public.chat_rooms set archived = true where id = 'trash-talk'`);
+    await denied(db, user(BOB), `insert into public.chat_messages (room_id, body) values ('trash-talk', 'x')`, /closed/);
+    const log = (await db.query<{ action: string }>(`select action from public.audit_log where action like 'chat:%' order by id`)).rows.map(r => r.action);
+    assert.deepEqual(log, ["chat:mute:insert", "chat:room:pin", "chat:room:clear", "chat:room:create", "chat:room:update"], "the mute expiring (a direct database change) isn't a commissioner action");
+  });
+
+  test("images, reactions and unread work like the board's", async () => {
+    await say(user(ALICE), "", "league", JSON.stringify(["https://media.giphy.com/x.gif"]));
+    await denied(db, user(ALICE), `insert into public.chat_messages (room_id, body, images) values ('league', 'x', '["javascript:alert(1)"]')`, /Images must be/);
+    const m = await say(user(ALICE), "react to this");
+    await rows(db, user(BOB), `insert into public.chat_reactions (message_id, emoji) values (${m}, '😂')`);
+    await denied(db, user(BOB), `insert into public.chat_reactions (message_id, emoji) values (${m}, '😂')`, /duplicate/);
+    const unread = (who: Who) => rows(db, who, `select room_id, unread from public.chat_unread()`);
+    assert.deepEqual(await unread(user(BOB)), [{ room_id: "league", unread: 2 }]);
+    assert.deepEqual(await unread(user(ALICE)), [], "your own messages don't count");
+    await rows(db, user(BOB), `insert into public.chat_reads (room_id) values ('league')`);
+    assert.deepEqual(await unread(user(BOB)), []);
+  });
+
+  test("draft hook: events update the clock and post B5 Bot messages in the Draft room; only the commissioner or server jobs", async () => {
+    const ev = (who: Who, kind: string, payload: object = {}) => rows(db, who, `select public.draft_event($1, $2::jsonb) as id`, [kind, JSON.stringify(payload)]);
+    await denied(db, user(ALICE), `select public.draft_event('pick', '{}')`, /Only the commissioner/);
+    await denied(db, anon, `select public.draft_event('pick', '{}')`, /permission denied/);
+    await ev(user(COMMISH), "start", { season: 2027, round: 1, pick: 1, overall: 1, team: "0001", seconds: 120 });
+    await ev(user(COMMISH), "timer", { team: "0001", seconds: 30 });
+    await ev(user(COMMISH), "pick", { team: "0001", player: "Joe Burrow", pos: "QB", nfl: "CIN" });
+    await ev(service, "on_clock", { round: 3, pick: 7, overall: 31, team: "0011", seconds: 90 });
+    await ev(user(COMMISH), "paused");
+    const paused = (await rows(db, user(BOB), `select status, team_id, round, pick, paused_remaining, clock_ends_at from public.draft_state`) as { status: string; team_id: string; round: number; pick: number; paused_remaining: number; clock_ends_at: unknown }[])[0]!;
+    assert.deepEqual([paused.status, paused.team_id, paused.round, paused.pick, paused.clock_ends_at], ["paused", "0011", 3, 7, null]);
+    assert.ok(paused.paused_remaining > 85 && paused.paused_remaining <= 90, "time left is kept while paused");
+    await ev(user(COMMISH), "resumed");
+    await ev(user(COMMISH), "end");
+    const msgs = (await rows(db, user(BOB), `select body, is_bot, author_id, room_id from public.chat_messages order by id`) as { body: string; is_bot: boolean; author_id: null; room_id: string }[]);
+    assert.ok(msgs.every(m => m.is_bot && m.author_id === null && m.room_id === "draft"));
+    assert.deepEqual(msgs.map(m => m.body), [
+      "🏈 The draft is live! ⏰ On the clock: NSFW (Round 1, Pick 1)",
+      "⏳ 30 seconds left for NSFW",
+      "✅ NSFW select Joe Burrow, QB CIN",
+      "⏰ On the clock: Mac Daddies (Round 3, Pick 7)",
+      "⏸️ The commissioner paused the draft",
+      "▶️ The draft resumed: Mac Daddies is on the clock",
+      "🏁 The draft is complete"]);
+    await denied(db, user(COMMISH), `select public.draft_event('nope')`, /Unknown draft event/);
+    await denied(db, user(BOB), `update public.draft_state set status = 'live'`, /permission denied/);
+  });
+
+  test("presence and typing: only members may join, listen or send on the private channel b5-chat", async () => {
+    const onTopic = (who: Who, sql: string) => as(db, who, async tx => { await tx.query(`select set_config('realtime.topic', 'b5-chat', true)`); return tx.query(sql); });
+    await onTopic(user(ALICE), `insert into realtime.messages (topic, extension, event) values ('b5-chat', 'presence', 'track')`);
+    assert.equal((await onTopic(user(BOB), `select * from realtime.messages`)).rows.length, 1);
+    await assert.rejects(onTopic(user(ERIN), `insert into realtime.messages (topic, extension, event) values ('b5-chat', 'broadcast', 'typing')`), /row-level security/);
+    assert.equal((await onTopic(user(ERIN), `select * from realtime.messages`)).rows.length, 0);
+    assert.equal((await onTopic(anon, `select * from realtime.messages`)).rows.length, 0);
+    assert.equal((await as(db, user(BOB), async tx => { await tx.query(`select set_config('realtime.topic', 'other', true)`); return tx.query(`select * from realtime.messages`); })).rows.length, 0, "other channels aren't opened up");
+  });
+});
+
 describe("message board (members only)", () => {
   const ERIN = "00000000-0000-0000-0000-0000000000e1";   // signed in, but manages no team: not a member
   const newThread = (who: Who, title = "Trash talk", body = "Week 7 is ours", images = "[]") =>

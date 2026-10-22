@@ -156,11 +156,12 @@
       var v = ok(r[2])[0]; st.baseline = v ? Date.parse(v.first_at) : Date.now();
     });
   }
-  function signUrls(paths) {
+  function signUrls(paths, sess) {
+    sess = sess || session();
     var need = paths.filter(function (p) { return !st.signed[p]; });
     if (!need.length) return Promise.resolve();
     return f(cfg.url + "/storage/v1/object/sign/board-images", { method: "POST",
-      headers: { apikey: cfg.publishableKey, Authorization: "Bearer " + session().access_token, "Content-Type": "application/json" },
+      headers: { apikey: cfg.publishableKey, Authorization: "Bearer " + sess.access_token, "Content-Type": "application/json" },
       body: JSON.stringify({ expiresIn: 3600, paths: need }) })
       .then(function (r) { return r.ok ? r.json() : []; })
       .then(function (list) { (list || []).forEach(function (x) { if (x.signedURL && x.path) st.signed[x.path] = cfg.url + "/storage/v1" + x.signedURL; }); }, function () {});
@@ -297,11 +298,12 @@
       return new Promise(function (res) { c.toBlob(function (b) { res(b ? new root.File([b], "photo.jpg", { type: "image/jpeg" }) : file); }, "image/jpeg", 0.85); });
     }, function () { return file; });
   }
-  function upload(file) {
+  function upload(file, sess) {
+    sess = sess || session();
     var ext = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" }[file.type];
-    var path = myId() + "/" + root.crypto.randomUUID() + "." + ext;
+    var path = sess.user.id + "/" + root.crypto.randomUUID() + "." + ext;
     return f(cfg.url + "/storage/v1/object/board-images/" + path, { method: "POST",
-      headers: { apikey: cfg.publishableKey, Authorization: "Bearer " + session().access_token, "Content-Type": file.type, "x-upsert": "false" }, body: file })
+      headers: { apikey: cfg.publishableKey, Authorization: "Bearer " + sess.access_token, "Content-Type": file.type, "x-upsert": "false" }, body: file })
       .then(function (r) { if (!r.ok) return r.text().then(function (t) { throw new Error(/size/i.test(t) ? "That image is over 5 MB." : /mime|type/i.test(t) ? "Images only." : "Upload failed (" + r.status + ")."); }); return "storage:" + path; });
   }
   function addFile(key, file) {
@@ -369,11 +371,12 @@
     }
     if (k === "unimg") { var c2 = st.composers[b.closest("[data-bd-compose]").dataset.bdCompose]; c2.images.splice(Number(b.dataset.i), 1); render(); }
   }
-  function removeUploads(images) {
+  function removeUploads(images, sess) {
+    sess = sess || session();
     var paths = (images || []).filter(function (u) { return /^storage:/.test(u); }).map(function (u) { return u.slice(8); });
     if (!paths.length) return;
     f(cfg.url + "/storage/v1/object/board-images", { method: "DELETE",
-      headers: { apikey: cfg.publishableKey, Authorization: "Bearer " + session().access_token, "Content-Type": "application/json" },
+      headers: { apikey: cfg.publishableKey, Authorization: "Bearer " + sess.access_token, "Content-Type": "application/json" },
       body: JSON.stringify({ prefixes: paths }) }).catch(function () {});
   }
 
@@ -465,6 +468,17 @@
     });
   }
 
-  root.B5Board = { start: start, stop: stop, badge: badge, formatBody: formatBody, inline: inline, checkUpload: checkUpload, checkImageUrl: checkImageUrl,
+  // Shared with chat.js: same bucket, limits, shrinking and signed links.
+  var media = {
+    prepare: function (file) {
+      var bad = checkUpload(file);
+      if (bad) return Promise.reject(new Error(bad));
+      return shrink(file).then(function (s) { var e = checkUpload(s); if (e) throw new Error(e); return s; });
+    },
+    upload: upload,
+    sign: function (paths, sess) { return signUrls(paths, sess).then(function () { var out = {}; paths.forEach(function (p) { if (st.signed[p]) out[p] = st.signed[p]; }); return out; }); },
+    remove: removeUploads
+  };
+  root.B5Board = { start: start, stop: stop, badge: badge, media: media, formatBody: formatBody, inline: inline, checkUpload: checkUpload, checkImageUrl: checkImageUrl,
     fitSize: fitSize, mentionMatches: mentionMatches, isUnread: isUnread, htmlToText: htmlToText };
 })(typeof globalThis !== "undefined" ? globalThis : this);

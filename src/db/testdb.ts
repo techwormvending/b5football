@@ -57,6 +57,17 @@ const AUTH_STUB = `
   create function storage.extension(name text) returns text language sql immutable as $$
     select reverse(split_part(reverse(name), '.', 1)) $$;
 
+  -- Supabase Realtime Authorization stand-in: private channels check policies on
+  -- realtime.messages, with realtime.topic() = the channel being joined.
+  create schema realtime;
+  grant usage on schema realtime to anon, authenticated, service_role;
+  create table realtime.messages (id bigserial primary key, topic text, extension text, event text, payload jsonb, private boolean default true);
+  alter table realtime.messages enable row level security;
+  grant select, insert on realtime.messages to anon, authenticated;
+  grant usage on sequence realtime.messages_id_seq to anon, authenticated;
+  create function realtime.topic() returns text language sql stable as $$ select nullif(current_setting('realtime.topic', true), '') $$;
+  grant execute on function realtime.topic() to anon, authenticated, service_role;
+
   -- Supabase's default privileges (as found on the hosted project, 2026-10-15): new tables,
   -- sequences and functions in public are granted to anon and authenticated automatically,
   -- even with "auto-expose new tables" off. Mirror them so tests catch over-broad access.
