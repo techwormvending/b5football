@@ -35,6 +35,23 @@ export function mflToGsis(rows: Record<string, string>[]): Map<string, string[]>
   return m;
 }
 
+/** One MFL player ID -> our player ID (defenses by MFL team code, players through the ID map; never by name),
+    or the reason it can't be mapped. */
+export function mapMflId(id: string, players: Map<string, MflPlayerInfo>, idMap: Map<string, string[]>, known: Set<string>): { id: string } | { reason: string } {
+  const info = players.get(id);
+  let playerId: string;
+  if (info?.position === "Def") {
+    try { playerId = `DEF:${team(info.team)}`; } catch { return { reason: `unknown NFL team code "${info.team}"` }; }
+  } else {
+    const g = idMap.get(id) ?? [];
+    if (g.length === 0) return { reason: "no nflverse ID for this MFL player in the ID map" };
+    if (g.length > 1) return { reason: `MFL ID maps to several nflverse IDs (${g.join(", ")})` };
+    playerId = g[0]!;
+  }
+  if (!known.has(playerId)) return { reason: `${playerId} is not in nfl_players` };
+  return { id: playerId };
+}
+
 export function mapRosters(input: {
   season: number;
   franchises: MflFranchise[];
@@ -48,17 +65,9 @@ export function mapRosters(input: {
     for (const p of list(f.player)) {
       const info = input.players.get(p.id);
       const base = { franchise: f.id, mflId: p.id, name: info ? mflName(info.name) : "", position: info?.position ?? "", team: info?.team ?? "" };
-      const miss = (reason: string) => unmatched.push({ ...base, reason });
-      let playerId: string | null = null;
-      if (info?.position === "Def") {
-        try { playerId = `DEF:${team(info.team)}`; } catch { miss(`unknown NFL team code "${info.team}"`); continue; }
-      } else {
-        const g = input.idMap.get(p.id) ?? [];
-        if (g.length === 0) { miss("no nflverse ID for this MFL player in the ID map"); continue; }
-        if (g.length > 1) { miss(`MFL ID maps to several nflverse IDs (${g.join(", ")})`); continue; }
-        playerId = g[0]!;
-      }
-      if (!input.known.has(playerId)) { miss(`${playerId} is not in nfl_players`); continue; }
+      const m = mapMflId(p.id, input.players, input.idMap, input.known);
+      if ("reason" in m) { unmatched.push({ ...base, reason: m.reason }); continue; }
+      const playerId = m.id;
       entries.push({ season: input.season, team_id: f.id, player_id: playerId, acquired: p.drafted?.trim() || null });
       mflIds.set(p.id, playerId);
     }

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mapRosters, mflName, mflToGsis, type MflPlayerInfo } from "./mflRosters.ts";
+import { mapMflId, mapRosters, mflName, mflToGsis, type MflPlayerInfo } from "./mflRosters.ts";
 
 const players = new Map<string, MflPlayerInfo>([
   ["14802", { id: "14802", name: "Taylor, Jonathan", position: "RB", team: "IND" }],
@@ -50,4 +50,13 @@ test("rosters map by ID only: players via the ID map, defenses by team; everythi
 test("an empty franchise is fine", () => {
   const e = mapRosters({ season: 2026, players, idMap, known, franchises: [{ id: "0001" }] });
   assert.deepEqual([e.entries, e.unmatched, e.mflIds.size], [[], [], 0]);
+});
+
+test("one MFL ID (transactions import): defense by team code, player by the ID map, never guessed", () => {
+  const players = new Map<string, MflPlayerInfo>([["0516", { id: "0516", name: "Chiefs, Kansas City", position: "Def", team: "KCC" }], ["1", { id: "1", name: "A, B", position: "WR", team: "KCC" }]]);
+  const idMap = new Map([["1", ["00-1"]], ["2", ["00-2", "00-3"]]]), known = new Set(["DEF:KC", "00-1"]);
+  assert.deepEqual(mapMflId("0516", players, idMap, known), { id: "DEF:KC" });
+  assert.deepEqual(mapMflId("1", players, idMap, known), { id: "00-1" });
+  assert.match((mapMflId("2", players, idMap, known) as { reason: string }).reason, /several/);
+  assert.match((mapMflId("3", players, idMap, known) as { reason: string }).reason, /no nflverse ID/);
 });
