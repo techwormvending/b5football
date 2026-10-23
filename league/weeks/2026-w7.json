@@ -1,0 +1,350 @@
+{
+ "season": 2026,
+ "week": 7,
+ "status": "live",
+ "missingGames": [
+  "CIN@BAL",
+  "CLE@TEN",
+  "DAL@PHI",
+  "DEN@ARI",
+  "GB@DET",
+  "IND@MIN",
+  "KC@SEA",
+  "LAR@LV",
+  "MIA@NYJ",
+  "NYG@HOU",
+  "PIT@NO",
+  "SF@ATL",
+  "TB@CAR"
+ ],
+ "diffLog": [
+  {
+   "at": "2026-10-23T14:14:20.502Z",
+   "kind": "live_vs_final",
+   "entries": [],
+   "note": "no live numbers were recorded for NE@CHI"
+  }
+ ],
+ "updatedAt": "2026-10-23T14:14:20.502Z",
+ "final": {
+  "season": 2026,
+  "week": 7,
+  "source": "final",
+  "computedAt": "2026-10-23T14:14:20.502Z",
+  "delayed": false,
+  "errors": [],
+  "games": [
+   {
+    "gameKey": "NE@CHI",
+    "sourceGameId": "2026_07_NE_CHI",
+    "home": "CHI",
+    "away": "NE",
+    "homeScore": 30,
+    "awayScore": 24,
+    "status": "final",
+    "gameDate": "2026-10-22"
+   }
+  ],
+  "players": {
+   "nflverse:00-0039851": {
+    "key": "nflverse:00-0039851",
+    "name": "Drake Maye",
+    "position": "QB",
+    "team": "NE",
+    "gameKey": "NE@CHI",
+    "points": 28,
+    "stats": {
+     "passYds": 321,
+     "rushYds": 26,
+     "interceptionsThrown": 1,
+     "rushTdLengths": [
+      7
+     ],
+     "passTdLengths": [
+      48,
+      30
+     ]
+    }
+   },
+   "nflverse:00-0035676": {
+    "key": "nflverse:00-0035676",
+    "name": "A.J. Brown",
+    "position": "WR",
+    "team": "NE",
+    "gameKey": "NE@CHI",
+    "points": 2.5,
+    "stats": {
+     "recYds": 48,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0036875": {
+    "key": "nflverse:00-0036875",
+    "name": "Rhamondre Stevenson",
+    "position": "RB",
+    "team": "NE",
+    "gameKey": "NE@CHI",
+    "points": 18.5,
+    "stats": {
+     "rushYds": 22,
+     "recYds": 93,
+     "receptions": 5,
+     "recTdLengths": [
+      48
+     ]
+    }
+   },
+   "nflverse:00-0040734": {
+    "key": "nflverse:00-0040734",
+    "name": "TreVeyon Henderson",
+    "position": "RB",
+    "team": "NE",
+    "gameKey": "NE@CHI",
+    "points": 1,
+    "stats": {
+     "rushYds": 9,
+     "recYds": 14,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0039918": {
+    "key": "nflverse:00-0039918",
+    "name": "Caleb Williams",
+    "position": "QB",
+    "team": "CHI",
+    "gameKey": "NE@CHI",
+    "points": 21,
+    "stats": {
+     "passYds": 308,
+     "rushYds": 18,
+     "passTdLengths": [
+      24,
+      12
+     ]
+    }
+   },
+   "nflverse:00-0040735": {
+    "key": "nflverse:00-0040735",
+    "name": "Luther Burden III",
+    "position": "WR",
+    "team": "CHI",
+    "gameKey": "NE@CHI",
+    "points": 16,
+    "stats": {
+     "rushYds": 7,
+     "recYds": 130,
+     "receptions": 4,
+     "recTdLengths": [
+      24
+     ]
+    }
+   },
+   "nflverse:00-0036275": {
+    "key": "nflverse:00-0036275",
+    "name": "D'Andre Swift",
+    "position": "RB",
+    "team": "CHI",
+    "gameKey": "NE@CHI",
+    "points": 14,
+    "stats": {
+     "rushYds": 78,
+     "recYds": 12,
+     "receptions": 4,
+     "rushTdLengths": [
+      4
+     ]
+    }
+   },
+   "nflverse:00-0040126": {
+    "key": "nflverse:00-0040126",
+    "name": "Colston Loveland",
+    "position": "TE",
+    "team": "CHI",
+    "gameKey": "NE@CHI",
+    "points": 18,
+    "stats": {
+     "recYds": 69,
+     "receptions": 7,
+     "recTdLengths": [
+      12
+     ]
+    }
+   },
+   "nflverse:00-0032464": {
+    "key": "nflverse:00-0032464",
+    "name": "Kalif Raymond",
+    "position": "WR",
+    "team": "CHI",
+    "gameKey": "NE@CHI",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0040131": {
+    "key": "nflverse:00-0040131",
+    "name": "Kyle Williams",
+    "position": "WR",
+    "team": "NE",
+    "gameKey": "NE@CHI",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0040556": {
+    "key": "nflverse:00-0040556",
+    "name": "Corey Kiner",
+    "position": "RB",
+    "team": "NE",
+    "gameKey": "NE@CHI",
+    "points": 0,
+    "stats": {
+     "rushYds": 13
+    }
+   },
+   "nflverse:00-0038621": {
+    "key": "nflverse:00-0038621",
+    "name": "DeMario Douglas",
+    "position": "WR",
+    "team": "NE",
+    "gameKey": "NE@CHI",
+    "points": 1.5,
+    "stats": {
+     "recYds": 23,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0041395": {
+    "key": "nflverse:00-0041395",
+    "name": "Eli Raridon",
+    "position": "TE",
+    "team": "NE",
+    "gameKey": "NE@CHI",
+    "points": 15,
+    "stats": {
+     "recYds": 56,
+     "receptions": 3,
+     "recTdLengths": [
+      30
+     ]
+    }
+   },
+   "nflverse:00-0033090": {
+    "key": "nflverse:00-0033090",
+    "name": "Hunter Henry",
+    "position": "TE",
+    "team": "NE",
+    "gameKey": "NE@CHI",
+    "points": 11,
+    "stats": {
+     "recYds": 71,
+     "receptions": 7
+    }
+   },
+   "nflverse:00-0036290": {
+    "key": "nflverse:00-0036290",
+    "name": "Cole Kmet",
+    "position": "TE",
+    "team": "CHI",
+    "gameKey": "NE@CHI",
+    "points": 5,
+    "stats": {
+     "recYds": 28,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0039919": {
+    "key": "nflverse:00-0039919",
+    "name": "Rome Odunze",
+    "position": "WR",
+    "team": "CHI",
+    "gameKey": "NE@CHI",
+    "points": 4,
+    "stats": {
+     "recYds": 69,
+     "receptions": 4
+    }
+   },
+   "nflverse:00-0040563": {
+    "key": "nflverse:00-0040563",
+    "name": "Efton Chism III",
+    "position": "WR",
+    "team": "NE",
+    "gameKey": "NE@CHI",
+    "points": 0.5,
+    "stats": {
+     "recYds": 16,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0039021": {
+    "key": "nflverse:00-0039021",
+    "name": "Roschon Johnson",
+    "position": "RB",
+    "team": "CHI",
+    "gameKey": "NE@CHI",
+    "points": 0,
+    "stats": {
+     "rushYds": 13
+    }
+   },
+   "nflverse:00-0031203": {
+    "key": "nflverse:00-0031203",
+    "name": "Cairo Santos",
+    "position": "K",
+    "team": "CHI",
+    "gameKey": "NE@CHI",
+    "points": 16.2,
+    "stats": {
+     "fgMadeLengths": [
+      43,
+      31,
+      58
+     ],
+     "extraPoints": 3
+    }
+   },
+   "nflverse:00-0040200": {
+    "key": "nflverse:00-0040200",
+    "name": "Andy Borregales",
+    "position": "K",
+    "team": "NE",
+    "gameKey": "NE@CHI",
+    "points": 7.7,
+    "stats": {
+     "extraPoints": 3,
+     "fgMadeLengths": [
+      47
+     ]
+    }
+   }
+  },
+  "defenses": {
+   "CHI": {
+    "team": "CHI",
+    "gameKey": "NE@CHI",
+    "points": 10,
+    "stats": {
+     "opponentPoints": 24,
+     "offensiveTdsAllowed": 3,
+     "passYdsAllowed": 310,
+     "rushYdsAllowed": 70,
+     "sacks": 2,
+     "interceptions": 1
+    }
+   },
+   "NE": {
+    "team": "NE",
+    "gameKey": "NE@CHI",
+    "points": 3,
+    "stats": {
+     "opponentPoints": 30,
+     "offensiveTdsAllowed": 3,
+     "passYdsAllowed": 289,
+     "rushYdsAllowed": 116,
+     "sacks": 3
+    }
+   }
+  },
+  "unmatched": [],
+  "warnings": []
+ },
+ "autoFinalizeAt": "2026-10-28T03:00:00.000Z"
+}
