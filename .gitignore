@@ -24,6 +24,7 @@ desktop.ini
 
 # Edge Function build copy of src/ (made by the deploy workflow)
 supabase/functions/b5-live/_src/
+supabase/functions/notify/_src/
 
 # Spreadsheets (e.g. the payout sheet) never go in this public repo
 *.xlsx

@@ -1,14 +1,18 @@
-# Deploy the Supabase Edge Function "b5-live" (live NFL scoring).
+# Deploy the Supabase Edge Functions "b5-live" (live NFL scoring) and "notify" (email
+# notifications through Resend + the unsubscribe endpoint).
 # Manual only: Actions > "Deploy Edge Functions" > Run workflow.
 #
-# The function's code is src/live/ (tested with npm test); this copies src/ next to it
-# and deploys with server-side bundling (no Docker).
+# The functions' code is src/live/ and src/notify/ (tested with npm test); this copies src/ next
+# to each function and deploys with server-side bundling (no Docker). The GitHub secret
+# RESEND_API_KEY is pushed to the functions as a Supabase secret (never in the repo or the site).
 #
 # Needs (repository settings > Secrets and variables > Actions):
 #   variable SUPABASE_PROJECT_REF
 #   secret   SUPABASE_ACCESS_TOKEN   personal access token scoped to project b5ffl. For this
 #                                    workflow it needs "Edge Functions: Read and write" in
-#                                    addition to Project read / Database read+write.
+#                                    addition to Project read / Database read+write (setting
+#                                    function secrets uses the same Edge Functions permission).
+#   secret   RESEND_API_KEY          Resend API key (sending access, domain b5football.win)
 # The schedule (pg_cron + pg_net) is a migration: 20261020030757_live_scoring_cron.
 
 name: Deploy Edge Functions
@@ -30,6 +34,7 @@ jobs:
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -50,13 +55,15 @@ jobs:
       - name: Tests (the function runs this code)
         run: npm test
 
-      - name: Copy shared code next to the function
+      - name: Copy shared code next to the functions
         run: |
-          rm -rf supabase/functions/b5-live/_src
-          mkdir -p supabase/functions/b5-live/_src
-          cp -r src/* supabase/functions/b5-live/_src/
-          find supabase/functions/b5-live/_src -name '*.test.ts' -delete
-          rm -rf supabase/functions/b5-live/_src/db supabase/functions/b5-live/_src/workers
+          for fn in b5-live notify; do
+            rm -rf supabase/functions/$fn/_src
+            mkdir -p supabase/functions/$fn/_src
+            cp -r src/* supabase/functions/$fn/_src/
+            find supabase/functions/$fn/_src -name '*.test.ts' -delete
+            rm -rf supabase/functions/$fn/_src/db supabase/functions/$fn/_src/workers
+          done
 
       - name: Deploy b5-live
         run: |
@@ -68,6 +75,26 @@ jobs:
             exit 1
           }
 
+      - name: Set the Resend key (function secret)
+        run: |
+          if [ -z "$RESEND_API_KEY" ]; then echo "::warning::Secret RESEND_API_KEY isn't set: the notify function will skip sending."; exit 0; fi
+          umask 077
+          printf 'RESEND_API_KEY=%s\n' "$RESEND_API_KEY" > "$RUNNER_TEMP/fn.env"
+          set -o pipefail
+          npx supabase secrets set --project-ref "$PROJECT_REF" --env-file "$RUNNER_TEMP/fn.env" 2>&1 | tee secrets.txt || {
+            if grep -qiE "403|forbidden|permission|scope" secrets.txt; then
+              echo "::error::The access token can't set function secrets. Add 'Edge Functions: Read and write' (secrets) to the SUPABASE_ACCESS_TOKEN token (project b5ffl only)."
+            fi
+            rm -f "$RUNNER_TEMP/fn.env"; exit 1
+          }
+          rm -f "$RUNNER_TEMP/fn.env"
+          npx supabase secrets list --project-ref "$PROJECT_REF" | grep -q RESEND_API_KEY && echo "RESEND_API_KEY is set on the project."
+
+      - name: Deploy notify
+        run: |
+          set -o pipefail
+          npx supabase functions deploy notify --project-ref "$PROJECT_REF" --use-api --no-verify-jwt 2>&1 | tee deploy-notify.txt
+
       # Read-only check of the schedule that calls the function (migration live_scoring_cron).
       - name: Verify the schedule
         run: |
@@ -78,10 +105,12 @@ jobs:
           npx supabase db query --project-ref "$PROJECT_REF" --linked \
             "select private.nfl_game_window() as game_window_now" | tee -a sched.txt
           grep -q "b5-live" sched.txt || { echo "::error::cron job b5-live not found"; exit 1; }
+          grep -q "b5-notify" sched.txt || echo "::warning::cron job b5-notify not found (apply migration email_notify)"
 
       - name: Summary
         run: |
           {
-            echo "### b5-live deployed"
+            echo "### b5-live and notify deployed"
+            echo "notify runs only when an email is due (pg_cron b5-notify checks every minute)."
             echo "Runs only when pg_cron's tick finds an NFL game near (kickoff within 5 min or started < 4.5 h ago)."
           } >> "$GITHUB_STEP_SUMMARY"

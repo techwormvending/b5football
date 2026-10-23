@@ -78,7 +78,7 @@
       '<form class="acct-form" data-acct="name"><label>Display name<input name="display_name" maxlength="40" required value="' + esc(p.display_name) + '"></label>' +
       '<p class="muted small">Shown to the league as your team\'s manager.</p>' +
       '<button class="btn ghost" type="submit">Save name</button></form>' +
-      '<button class="btn ghost" type="button" data-acct="signout">Sign out</button></div>' + contactForm(p) + "</section>";
+      '<button class="btn ghost" type="button" data-acct="signout">Sign out</button></div>' + contactForm(p) + notifyForm() + "</section>";
   }
 
   // Owner contact info (owner_contacts: your row only; members see the fields you mark "League members"
@@ -87,8 +87,36 @@
   function loadContact() {
     contact = null;
     if (!me || !(me.teams.length || (me.profile && me.profile.is_commissioner))) return Promise.resolve();
-    return A.api(cfg, me.session, "owner_contacts?user_id=eq." + encodeURIComponent(me.session.user.id) + "&select=*", {}, f)
-      .then(function (r) { contact = (r.ok && r.data && r.data[0]) || {}; });
+    return Promise.all([
+      A.api(cfg, me.session, "owner_contacts?user_id=eq." + encodeURIComponent(me.session.user.id) + "&select=*", {}, f),
+      A.api(cfg, me.session, "notify_settings?user_id=eq." + encodeURIComponent(me.session.user.id) + "&select=*", {}, f)
+    ]).then(function (r) {
+      contact = (r[0].ok && r[0].data && r[0].data[0]) || {};
+      notify = Object.assign({}, NOTIFY_DEFAULTS, (r[1].ok && r[1].data && r[1].data[0]) || {});
+    });
+  }
+
+  // Email notifications (notify_settings: your row only). Defaults match the database's.
+  var NOTIFY_DEFAULTS = { paused: false, dm: true, mentions: false, trades: true, waivers: false, announcements: true, lineup: false };
+  var NOTIFY_TYPES = [
+    ["dm", "Direct messages", "5 minutes after a message you haven't read (not while you're on the site); at most one email per conversation every 30 minutes"],
+    ["trades", "Trades", "proposals to your team and every status change"],
+    ["announcements", "Commissioner announcements", ""],
+    ["mentions", "@mentions in Chat or on the Message Board", ""],
+    ["waivers", "Waiver claim results", "one email per waiver run"],
+    ["lineup", "Lineup reminders", "starters on bye or out, about 3 hours before kickoff"]];
+  var notify = null;
+  function notifyForm() {
+    if (!notify) return "";
+    return '<form class="card acct-form notify-form" data-acct="notify"><h3>Email notifications</h3>' +
+      '<p class="muted small">Sent to ' + esc(me.session.user.email) + " from noreply@b5football.win. Each co-owner has his own settings.</p>" +
+      '<label class="acct-check nf-pause"><input type="checkbox" name="paused"' + (notify.paused ? " checked" : "") + "> <b>Pause all email</b></label>" +
+      '<ul class="nf-list' + (notify.paused ? " paused" : "") + '">' + NOTIFY_TYPES.map(function (t) {
+        return '<li><label class="acct-check"><input type="checkbox" name="' + t[0] + '"' + (notify[t[0]] ? " checked" : "") + (notify.paused ? " disabled" : "") + "> " + esc(t[1]) + "</label>" +
+          (t[2] ? '<span class="muted small">' + esc(t[2]) + "</span>" : "") + "</li>";
+      }).join("") + "</ul>" +
+      '<button class="btn ghost" type="submit">Save email settings</button>' +
+      '<p class="muted small">Every email has a "Turn off these emails" link that works without signing in.</p></form>';
   }
   function contactForm() {
     if (!contact) return "";
@@ -123,6 +151,15 @@
         A.api(cfg, me.session, "profiles?id=eq." + encodeURIComponent(me.session.user.id), {
           method: "PATCH", body: JSON.stringify({ display_name: String(fd.get("display_name") || "").trim() }), headers: { Prefer: "return=minimal" }
         }, f).then(function (r) { return load().then(function () { renderAccount(root, r.ok ? { ok: "Name saved." } : { err: r.error }); }); });
+      } else if (form.dataset.acct === "notify") {
+        var row = { user_id: me.session.user.id, paused: !!form.paused.checked };
+        NOTIFY_TYPES.forEach(function (t) { row[t[0]] = !!form[t[0]].checked; });
+        A.api(cfg, me.session, "notify_settings?on_conflict=user_id", {
+          method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=representation" }, body: JSON.stringify(row)
+        }, f).then(function (r) {
+          if (r.ok && r.data && r.data[0]) notify = Object.assign({}, NOTIFY_DEFAULTS, r.data[0]);
+          renderAccount(root, r.ok ? { ok: "Email settings saved." } : { err: r.error || "Couldn't save." });
+        });
       } else if (form.dataset.acct === "contact") {
         var web = String(fd.get("website") || "").trim();
         if (web && !/^https:\/\//i.test(web)) { if (btn) btn.disabled = false; renderAccount(root, { err: "Website must start with https://" }); return; }
@@ -135,6 +172,12 @@
           renderAccount(root, r.ok ? { ok: "Contact info saved." } : { err: String(r.error || "").replace(/^.*?: /, "") || "Couldn't save." });
         });
       }
+    });
+    root.addEventListener("change", function (e) {
+      if (e.target.name !== "paused" || !e.target.closest("[data-acct=notify]")) return;
+      var form = e.target.form;
+      form.querySelector(".nf-list").classList.toggle("paused", e.target.checked);
+      NOTIFY_TYPES.forEach(function (t) { form[t[0]].disabled = e.target.checked; });
     });
     root.addEventListener("click", function (e) {
       var b = e.target.closest("[data-acct='signout']");
@@ -160,8 +203,13 @@
       A.api(cfg, s, "live_compare?season=eq." + Number(L.season) + "&select=week,team_id,our_points,mfl_points,players,diff_since,checked_at&order=week.desc,team_id&limit=36", {}, f),
       A.api(cfg, s, "board_settings?select=auto_recap,auto_awards", {}, f),
       A.api(cfg, s, "board_threads?source_key=like.announcement:*&select=id,source_key", {}, f),
-      A.api(cfg, s, "league_settings?select=max_owners_per_team", {}, f)
+      A.api(cfg, s, "league_settings?select=max_owners_per_team", {}, f),
+      A.api(cfg, s, "email_log?select=at,user_id,kind,status,reason,attempt&order=at.desc&limit=60", {}, f),
+      A.api(cfg, s, "email_log?status=eq.sent&at=gte." + encodeURIComponent(new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString()) + "&select=at", {}, f)
     ]).then(function (r) {
+      cm.emailLog = (r[12] && r[12].ok && r[12].data) || [];
+      var sentMonth = (r[13] && r[13].ok && r[13].data) || [], today = new Date().toISOString().slice(0, 10);
+      cm.emailCounts = { month: sentMonth.length, day: sentMonth.filter(function (x) { return String(x.at).slice(0, 10) === today; }).length };
       cm.maxOwners = (r[11] && r[11].ok && r[11].data && r[11].data[0] && r[11].data[0].max_owners_per_team) || 2;
       cm.board = (r[9] && r[9].ok && r[9].data && r[9].data[0]) || null;
       cm.crossposted = {};
@@ -187,6 +235,22 @@
   function plainTeam(id) {
     if (window.B5Team.has(id)) return window.B5Team.name(id);
     return id || "";
+  }
+
+  // Email log (email_log: type, recipient, time, status; never contents). Resend free tier: 100/day, 3,000/month.
+  function emailLogHtml() {
+    var c = cm.emailCounts || { day: 0, month: 0 }, names = {};
+    (cm.accounts || []).forEach(function (a) { names[a.id] = a.label || a.id; });
+    var who = function (u) { return u ? names[u] || "account " + String(u).slice(0, 8) : "deleted account"; };
+    var kinds = { dm: "Direct message", mentions: "@mention", trades: "Trade", waivers: "Waivers", announcements: "Announcement", lineup: "Lineup reminder" };
+    var rows = (cm.emailLog || []).map(function (x) {
+      return "<tr><td>" + esc(et(x.at)) + "</td><td>" + esc(kinds[x.kind] || x.kind) + "</td><td>" + esc(who(x.user_id)) + "</td><td>" +
+        (x.status === "sent" ? "Sent" : x.status === "failed" ? '<b class="po-owe">Failed</b>' + (x.attempt > 1 ? " (retry)" : "") : '<span class="muted">Skipped</span>') +
+        (x.reason ? ' <span class="muted small">' + esc(x.reason) + "</span>" : "") + "</td></tr>";
+    }).join("");
+    return '<div class="card"><h3>Email notifications</h3><p class="small">Sent today: <b>' + esc(c.day) + "</b> of 95 · this month: <b>" + esc(c.month) + "</b> of 2,900 (Resend's free plan: 100 a day, 3,000 a month).</p>" +
+      (rows ? '<details><summary>Latest ' + (cm.emailLog || []).length + ' (type, recipient, status; never the contents)</summary><div class="table-wrap"><table class="cm-table"><thead><tr><th>When</th><th>Type</th><th>To</th><th>Status</th></tr></thead><tbody>' + rows + "</tbody></table></div></details>"
+        : '<p class="muted small">No emails yet.</p>') + "</div>";
   }
 
   function renderCommish(root) {
@@ -241,7 +305,7 @@
     }).join("") + "</ul>" + '<p class="muted small">Up to ' + esc(maxOwners) + " owners per team, each with his own login; an account owns one team. Removing one owner leaves the other.</p>"
       : '<p class="muted">No managers have joined yet.</p>';
 
-    root.innerHTML = "<section><h2>Commissioner</h2>" + m + poolImportHtml(cm.poolImports || []) + '<div class="card"><h3>Payouts</h3><p>Fees, payouts, manual awards, overrides and CSV export: <a href="#commish-payouts">open the payout tools</a>.</p></div>' + keep + boardHtml() + liveCompareHtml(cm.live || []) + shadow +
+    root.innerHTML = "<section><h2>Commissioner</h2>" + m + poolImportHtml(cm.poolImports || []) + '<div class="card"><h3>Payouts</h3><p>Fees, payouts, manual awards, overrides and CSV export: <a href="#commish-payouts">open the payout tools</a>.</p></div>' + keep + emailLogHtml() + boardHtml() + liveCompareHtml(cm.live || []) + shadow +
       '<div class="card"><h3>Invite a manager</h3>' + seedTeams +
       '<form class="acct-form" data-cm="invite">' +
       '<label>Email<input name="email" type="email" autocomplete="off" required></label>' +
@@ -445,11 +509,39 @@
     }, function () { return {}; });
   }
 
+  /** #unsubscribe/<token>: turns one email type off from the email's link, without signing in. */
+  function unsubscribe(root, token) {
+    root.innerHTML = '<section><h2>Email notifications</h2><div class="card"><p class="muted">One moment…</p></div></section>';
+    if (!ready()) return;
+    var labels = { dm: "direct message", mentions: "@mention", trades: "trade", waivers: "waiver result", announcements: "announcement", lineup: "lineup reminder" };
+    A.api(cfg, null, "rpc/notify_unsubscribe", { method: "POST", body: JSON.stringify({ p_token: token }) }, f).then(function (r) {
+      root.innerHTML = '<section><h2>Email notifications</h2><div class="card">' + (r.ok
+        ? "<p><b>Done.</b> You won't get " + esc(labels[r.data] || "these") + " emails from B5 anymore.</p><p class=\"muted\">Change any email setting under <a href=\"#account\">Account</a> (sign in first).</p>"
+        : '<p class="acct-msg err">That link didn\'t work. It may be incomplete.</p><p class="muted">Sign in and use <a href="#account">Account</a> &gt; Email notifications instead.</p>') + "</div></section>";
+    });
+  }
+
+  // "Active on the site" for email notifications: a heartbeat every minute while a page is visible
+  // (public.notify_seen). DM and @mention emails skip you while you're here.
+  var seenTimer = null;
+  function presence() {
+    if (seenTimer || !ready()) return;
+    var beat = function () {
+      if (document.visibilityState !== "visible") return;
+      load().then(function (m) { if (m && m.session && (m.teams.length || (m.profile && m.profile.is_commissioner))) A.api(cfg, m.session, "rpc/notify_seen", { method: "POST", body: "{}" }, f); }, function () {});
+    };
+    seenTimer = setInterval(beat, 60000);
+    document.addEventListener("visibilitychange", beat);
+    beat();
+  }
+
   window.B5Account = {
     start: function (page, root) {
       if (page === "account") startAccount(root);
       else if (page === "commish") startCommish(root);
     },
+    unsubscribe: unsubscribe,
+    presence: presence,
     refreshNav: refreshNav,
     managerNames: managerNames,
     load: load

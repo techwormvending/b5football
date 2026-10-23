@@ -20,6 +20,9 @@ test("routes: #team/<id>, #trade/<id>, #trades, #dm, #dm/<id>", () => {
   assert.equal(R.parse("#trades", k => k === "trades").page, "trades");
   assert.equal(R.parse("#dm", k => k === "dm").page, "dm");
   assert.equal(R.parse("#team/<script>", k => k === "team").page, "home");
+  const tok = "00000000-0000-0000-0000-00000000000b.dm." + "a".repeat(32);
+  assert.deepEqual(plain(R.parse("#unsubscribe/" + tok, () => true)), { page: "unsubscribe", week: null, token: tok }, "email unsubscribe link");
+  assert.equal(R.parse("#unsubscribe/whatever", k => k === "unsubscribe").page, "home");
 });
 
 test("contact card: formatted US phone with tel: and sms:, https websites only (nofollow noopener ugc), mailto, escaped", () => {

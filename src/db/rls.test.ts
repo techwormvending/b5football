@@ -64,7 +64,7 @@ beforeEach(async () => { db = await freshDb(); await seed(db); });
 
 describe("every table is protected", () => {
   // Service-only tables: RLS on, deliberately no policies and no grants to anon/authenticated.
-  const SERVICE_ONLY = new Set(["heartbeats", "live_nonces", "live_games", "board_bot_keys"]);
+  const SERVICE_ONLY = new Set(["heartbeats", "live_nonces", "live_games", "board_bot_keys", "notify_queue"]);
   test("RLS is enabled on every public table, and every table but the service-only ones has policies", async () => {
     const t = (await db.query<{ relname: string; rls: boolean; policies: number }>(`
       select c.relname, c.relrowsecurity as rls,
@@ -1651,6 +1651,194 @@ describe("trades", () => {
     assert.deepEqual(a.filter(x => x.kind === "pick").map(x => x.label), ["2029 round 1", "2029 round 2"]);
     await assert.rejects(as(db, anon, tx => tx.query(`select * from public.trade_assets(${T}, '0001')`)), /permission denied/);
     assert.equal((await rowsT(db, anon, `select id from public.draft_picks`)).length, 8, "pick ownership is public, like rosters");
+  });
+});
+
+describe("email notifications", () => {
+  const CAROL = "00000000-0000-0000-0000-0000000000c3";
+  beforeEach(async () => {
+    await db.exec(`
+      insert into auth.users (id, email, raw_user_meta_data) values ('${CAROL}', 'carol@example.com', '{"display_name":"Carol"}');
+      insert into public.teams (id, name, division) values ('0003', 'H.N.I.C', 'Gold');
+      insert into public.team_managers values ('0003', '${CAROL}');
+      update public.profiles set display_name = 'Alice' where id = '${ALICE}';
+      update public.profiles set display_name = 'Bob' where id = '${BOB}';
+      delete from public.notify_queue;   -- the seed's published announcement`);
+  });
+  const later = (min: number) => new Date(Date.now() + min * 60_000).toISOString();
+  const claim = (min: number) => rowsT(db, service, `select id, user_id, kind, email, token, data from public.notify_claim(25, $1::timestamptz)`, [later(min)]);
+  const queue = () => db.query<{ user_id: string; kind: string; ref: string; status: string; reason: string | null; due_at: string }>(`select user_id, kind, ref, status, reason, due_at from public.notify_queue order by id`).then(r => r.rows);
+  const dm = async () => Number((await rowsT(db, user(ALICE), `select public.dm_open($1::uuid, null) as id`, [BOB]))[0]!.id);
+  const say = (who: Who, conv: number, body: string) => as(db, who, tx => tx.query(`insert into public.dm_messages (conversation_id, body) values ($1, $2)`, [conv, body]));
+  const done = (id: number, ok: boolean, err: string | null = null) => rowsT(db, service, `select public.notify_done($1, $2, 'msg_1', $3)`, [id, ok, err]);
+
+  test("settings: your own row only (RLS); logged out nothing; defaults DM/trades/announcements on", async () => {
+    await denied(db, anon, `select * from public.notify_settings`, /permission denied/);
+    await as(db, user(ALICE), tx => tx.query(`insert into public.notify_settings (user_id, mentions) values ('${BOB}', true)`));
+    assert.deepEqual((await db.query<{ user_id: string }>(`select user_id from public.notify_settings`)).rows.map(r => r.user_id), [ALICE], "a forged user_id becomes your own");
+    assert.deepEqual(await rowsT(db, user(BOB), `select * from public.notify_settings`), []);
+    assert.equal(await affected(db, user(BOB), `update public.notify_settings set dm = false`), 0, "can't change someone else's");
+    assert.equal(await affected(db, user(ALICE), `update public.notify_settings set paused = true`), 1);
+    const on = async (u: string, k: string) => (await db.query<{ v: boolean }>(`select private.notify_on($1, $2) as v`, [u, k])).rows[0]!.v;
+    assert.deepEqual([await on(BOB, "dm"), await on(BOB, "trades"), await on(BOB, "announcements"), await on(BOB, "mentions"), await on(BOB, "waivers"), await on(BOB, "lineup")],
+      [true, true, true, false, false, false], "defaults");
+    assert.equal(await on(ALICE, "dm"), false, "pause turns everything off");
+    await denied(db, user(ALICE), `select * from public.notify_queue`, /permission denied/);
+    await denied(db, user(ALICE), `select * from public.email_log`, /row-level security|permission denied/).catch(async () => {
+      assert.deepEqual(await rowsT(db, user(ALICE), `select * from public.email_log`), [], "managers see no email log");
+    });
+  });
+
+  test("DM: waits 5 minutes, one email per conversation summarizing what's unread; never to the sender", async () => {
+    const c = await dm();
+    await say(user(ALICE), c, "Want **Gibbs**?");
+    await say(user(ALICE), c, "Offer stands till Sunday");
+    const q = await queue();
+    assert.deepEqual(q.map(x => [x.user_id, x.kind, x.ref, x.status]), [[BOB, "dm", `conv:${c}`, "pending"]], "one pending email for Bob, none for Alice");
+    assert.equal(Math.round((Date.parse(q[0]!.due_at) - Date.now()) / 60000), 5);
+    assert.deepEqual(await claim(1), [], "not before 5 minutes");
+    const [item] = await claim(6);
+    assert.equal(item!.email, "bob@example.com");
+    assert.equal(item!.data.count, 2);
+    assert.deepEqual(item!.data.senders, [{ name: "Alice", team: "NSFW" }]);
+    assert.equal(item!.data.preview, "Offer stands till Sunday");
+    assert.equal(item!.data.link, `#dm/${c}`);
+    await done(Number(item!.id), true);
+    const log = (await db.query<{ user_id: string; kind: string; status: string }>(`select user_id, kind, status from public.email_log`)).rows;
+    assert.deepEqual(log, [{ user_id: BOB, kind: "dm", status: "sent" }], "logged: type, recipient, status (no contents)");
+    const cols = (await db.query<{ column_name: string }>(`select column_name from information_schema.columns where table_name = 'email_log'`)).rows.map(r => r.column_name);
+    assert.ok(!cols.some(x => /body|subject|preview|email/.test(x)), "the log has no message contents or addresses");
+    assert.equal((await rowsT(db, user(COMMISH), `select * from public.email_log`)).length, 1, "the commissioner reads the log");
+  });
+
+  test("DM: no email once it's read, or while you're on the site; bot notices never email", async () => {
+    const c = await dm();
+    await say(user(ALICE), c, "hi");
+    await as(db, user(BOB), tx => tx.query(`insert into public.dm_reads (conversation_id, read_at) values (${c}, now() + interval '1 minute')`));
+    assert.deepEqual(await claim(6), [], "read within the 5 minutes: no email");
+    assert.deepEqual((await queue()).map(x => [x.status, x.reason]), [["skipped", "already read"]]);
+    await say(user(BOB), c, "hey");          // Alice's turn
+    await as(db, user(ALICE), tx => tx.query(`select public.notify_seen()`));
+    await db.exec(`update public.user_presence set seen_at = now() + interval '5 minutes'`);
+    assert.deepEqual(await claim(6), [], "Alice was active a minute before it was due");
+    assert.equal((await queue()).at(-1)!.reason, "active on the site");
+    await db.exec(`select private.dm_bot_post(${c}, 'B5 Bot notice')`);
+    assert.equal((await queue()).filter(x => x.status === "pending").length, 0);
+    await denied(db, anon, `select public.notify_seen()`, /permission denied/);
+  });
+
+  test("DM throttle: at most one email per conversation per 30 minutes; the next one summarizes everything unread", async () => {
+    const c = await dm();
+    await say(user(ALICE), c, "one");
+    const [a] = await claim(6);
+    await done(Number(a!.id), true);
+    await say(user(ALICE), c, "two");
+    await say(user(ALICE), c, "three");
+    assert.deepEqual(await claim(11), [], "10 minutes after the first email: held back");
+    const held = (await queue()).at(-1)!;
+    assert.equal(held.status, "pending");
+    assert.equal(Math.round((Date.parse(held.due_at) - Date.now()) / 60000), 30, "until 30 minutes after the last one");
+    const [b] = await claim(31);
+    assert.equal(b!.data.count, 3, "summarizes all 3 unread");
+  });
+
+  test("toggle off or paused: nothing is sent", async () => {
+    await as(db, user(BOB), tx => tx.query(`insert into public.notify_settings (dm) values (false)`));
+    const c = await dm();
+    await say(user(ALICE), c, "hello?");
+    assert.deepEqual(await queue(), [], "not even queued");
+    await as(db, user(BOB), tx => tx.query(`update public.notify_settings set dm = true`));
+    await say(user(ALICE), c, "hello again");
+    await as(db, user(BOB), tx => tx.query(`update public.notify_settings set paused = true`));
+    assert.deepEqual(await claim(6), [], "paused after it was queued: skipped at send time");
+    assert.equal((await queue()).at(-1)!.reason, "turned off");
+  });
+
+  test("unsubscribe link: signed token turns that type off without signing in; tampered tokens fail", async () => {
+    const c = await dm();
+    await say(user(ALICE), c, "x");
+    const [item] = await claim(6);
+    const token = String(item!.token);
+    assert.match(token, new RegExp(`^${BOB}\\.dm\\.[0-9a-f]{32}$`));
+    await assert.rejects(as(db, anon, tx => tx.query(`select public.notify_unsubscribe($1)`, [token.slice(0, -1) + (token.endsWith("0") ? "1" : "0")])), /isn't valid/);
+    await assert.rejects(as(db, anon, tx => tx.query(`select public.notify_unsubscribe($1)`, [token.replace(".dm.", ".trades.")])), /isn't valid/, "a token is for one type");
+    await assert.rejects(as(db, anon, tx => tx.query(`select public.notify_unsubscribe($1)`, [token.replace(BOB, ALICE)])), /isn't valid/, "or one person");
+    assert.equal((await rowsT(db, anon, `select public.notify_unsubscribe($1) as k`, [token]))[0]!.k, "dm");
+    const s = (await db.query<{ dm: boolean; trades: boolean }>(`select dm, trades from public.notify_settings where user_id = '${BOB}'`)).rows[0]!;
+    assert.deepEqual([s.dm, s.trades], [false, true], "only that type");
+  });
+
+  test("a failed send is retried once, then given up quietly", async () => {
+    const c = await dm();
+    await say(user(ALICE), c, "x");
+    const [a] = await claim(6);
+    await done(Number(a!.id), false, "HTTP 500");
+    assert.deepEqual((await queue()).map(x => x.status), ["pending"]);
+    assert.deepEqual(await claim(1), [], "retry waits 2 minutes");
+    const [b] = await claim(3);
+    await done(Number(b!.id), false, "HTTP 500");
+    assert.deepEqual((await queue()).map(x => x.status), ["failed"]);
+    assert.deepEqual((await db.query<{ status: string; attempt: number }>(`select status, attempt from public.email_log order by id`)).rows, [{ status: "failed", attempt: 1 }, { status: "failed", attempt: 2 }]);
+  });
+
+  test("free-tier cap: no more than 95 a day", async () => {
+    await db.exec(`insert into public.email_log (user_id, kind, status) select '${CAROL}', 'trades', 'sent' from generate_series(1, 95)`);
+    const c = await dm();
+    await say(user(ALICE), c, "x");
+    assert.deepEqual(await claim(6), []);
+    assert.equal((await queue())[0]!.reason, "free-tier limit");
+  });
+
+  test("other types: @mentions (off by default), trades (on), announcements (on), waiver results (off)", async () => {
+    await as(db, user(ALICE), tx => tx.query(`insert into public.chat_messages (room_id, body) values ('league', '@Stealers you up?')`));
+    assert.deepEqual(await queue(), [], "mentions are off by default");
+    await as(db, user(BOB), tx => tx.query(`insert into public.notify_settings (mentions, waivers) values (true, true)`));
+    await as(db, user(ALICE), tx => tx.query(`insert into public.chat_messages (room_id, body) values ('league', 'hey @bob, and @Alice is me')`));
+    const m = (await queue()).filter(x => x.kind === "mentions");
+    assert.deepEqual(m.map(x => x.user_id), [BOB], "Bob by display name; never yourself");
+    const [mi] = await claim(2);
+    assert.deepEqual([mi!.data.where, mi!.data.from.name, mi!.data.preview], ["Chat", "Alice", "hey @bob, and @Alice is me"]);
+    // Trades: the other team's owners on a proposal.
+    await db.exec(`insert into public.nfl_players (id, name, position, nfl_team) values ('WR-X', 'X', 'WR', 'NYG');
+      insert into public.roster_entries (season, team_id, player_id) values (${S}, '0001', 'WR-X');`);
+    await as(db, user(ALICE), tx => tx.query(`select public.trade_propose(${S}, '0001', '0002', '{WR-X}', '{}')`));
+    const t = (await queue()).filter(x => x.kind === "trades");
+    assert.deepEqual(t.map(x => [x.user_id, x.ref.replace(/\d+/, "N")]), [[BOB, "trade:N:proposed"]]);
+    const [ti] = (await claim(2)).filter(x => x.kind === "trades");
+    assert.match(ti!.data.summary, /NSFW get nothing; Stealers get X \(WR\)/);
+    // Announcements: a commissioner's board cross-post reaches every member but him.
+    await as(db, user(COMMISH), tx => tx.query(`select public.board_new_thread('Draft date set', 'Aug 29 at the Legion', '[]', 'announcement:2027-08-01:draft')`));
+    assert.deepEqual((await queue()).filter(x => x.kind === "announcements").map(x => x.user_id).sort(), [ALICE, BOB, CAROL].sort());
+  });
+
+  test("lineup reminders: starters on bye or out, from 3 hours before the deadline; off unless turned on; not for 2026", async () => {
+    await db.exec(`insert into public.season_settings (season, team_count, buy_in, prizes) values (2028, 12, 360, '{}');
+      insert into public.nfl_players (id, name, position, nfl_team) values ('WR-BYE', 'Bye Guy', 'WR', 'SEA'), ('RB-OUT', 'Hurt Guy', 'RB', 'NYG');
+      insert into public.nfl_games (season, week, game_key, home, away, kickoff) values (2028, 3, 'NYG@MIA', 'MIA', 'NYG', now() + interval '2 hours');
+      insert into public.roster_entries (season, team_id, player_id) values (2028, '0002', 'WR-BYE'), (2028, '0002', 'RB-OUT');
+      insert into public.lineup_slots (season, week, team_id, slot, player_id) values (2028, 3, '0002', 3, 'WR-BYE'), (2028, 3, '0002', 1, 'RB-OUT');
+      insert into public.player_injuries (season, week, player_id, status, source) values (2028, 3, 'RB-OUT', 'Out', 'report');`);
+    const run = () => rowsT(db, service, `select private.enqueue_lineup_reminders() as n`).then(r => Number(r[0]!.n));
+    assert.equal(await run(), 0, "off by default");
+    await as(db, user(BOB), tx => tx.query(`insert into public.notify_settings (lineup) values (true)`));
+    assert.equal(await run(), 1);
+    assert.equal(await run(), 0, "once per deadline");
+    const [item] = await claim(1);
+    assert.deepEqual(item!.data.players.map((p: { name: string; problem: string }) => [p.name, p.problem]).sort(), [["Bye Guy", "bye"], ["Hurt Guy", "out"]]);
+    await db.exec(`update public.season_settings set notify = '{"lineupReminders": false}' where season = 2028; delete from public.notify_queue`);
+    assert.equal(await run(), 0, "the season setting turns them off (2026)");
+  });
+
+  test("schedule: the tick calls the function only when something is due", async () => {
+    assert.equal((await db.query<{ t: string }>(`select private.notify_tick() as t`)).rows[0]!.t, "idle");
+    const c = await dm();
+    await say(user(ALICE), c, "x");
+    assert.equal((await db.query<{ t: string }>(`select private.notify_tick() as t`)).rows[0]!.t, "idle", "not due for 5 minutes");
+    await db.exec(`update public.notify_queue set due_at = now() - interval '1 second'`);
+    assert.equal((await db.query<{ t: string }>(`select private.notify_tick() as t`)).rows[0]!.t, "called");
+    const call = (await db.query<{ url: string }>(`select url from net.calls order by id desc limit 1`)).rows[0]!;
+    assert.match(call.url, /\/functions\/v1\/notify$/);
+    await assert.rejects(as(db, user(COMMISH), tx => tx.query(`select * from public.notify_claim()`)), /permission denied/, "only server jobs claim");
   });
 });
 

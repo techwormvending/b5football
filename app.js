@@ -253,7 +253,9 @@
     team() { return `<div id="tpRoot"></div>`; },
     dm() { return `<div id="dmRoot"></div>`; },
     trade() { return `<div id="trRoot"></div>`; },
-    trades() { return `<div id="trRoot"></div>`; }
+    trades() { return `<div id="trRoot"></div>`; },
+    // Email links: #unsubscribe/<token> (account.js; works without signing in)
+    unsubscribe() { return `<div id="acctRoot"></div>`; }
   };
 
   // ---- Countdown ------------------------------------------------------
@@ -339,6 +341,7 @@
     if ((page === "payouts" || page === "commish-payouts") && window.B5Payouts) window.B5Payouts.start(page === "payouts" ? "public" : "admin", document.getElementById("poRoot"));
     if (page === "myteam" && window.B5MyTeam) window.B5MyTeam.start(document.getElementById("mtRoot"));
     if ((page === "account" || page === "commish") && window.B5Account) window.B5Account.start(page, document.getElementById("acctRoot"));
+    if (page === "unsubscribe" && window.B5Account) window.B5Account.unsubscribe(document.getElementById("acctRoot"), r.token);
     window.scrollTo(0, 0);
   }
   window.addEventListener("hashchange", route);
@@ -356,6 +359,7 @@
     if (strip && active) strip.scrollLeft = active.offsetLeft - strip.offsetLeft - (strip.clientWidth - active.offsetWidth) / 2;
   }
   route();
+  if (window.B5Account) window.B5Account.presence();   // "on the site" heartbeat (DM emails skip you)
 
   // ---- League data from the database -------------------------------------
   // Matchups (schedule + our scores) and standings computed by this site replace the

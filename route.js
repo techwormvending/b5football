@@ -21,6 +21,8 @@
     if (tm) return { page: "team", week: null, team: tm[1] };
     var tr = /^trade\/(\w{1,12})$/.exec(key);
     if (tr) return { page: "trade", week: null, team: tr[1] };
+    var un = /^unsubscribe\/([0-9a-f-]{36}\.[a-z]+\.[0-9a-f]{32})$/.exec(key);
+    if (un) return { page: "unsubscribe", week: null, token: un[1] };
     var dm = /^dm\/(\d{1,12})$/.exec(key);
     if (dm) return { page: "dm", week: null, conv: Number(dm[1]) };
     var pt = /^players\/(free-agents|claims|order|results|log|commish)$/.exec(key);
