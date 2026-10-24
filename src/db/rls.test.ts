@@ -81,7 +81,7 @@ describe("every table is protected", () => {
 
 test("no default grants leak: anon only ever has SELECT, and only on public-data tables", async () => {
   const PUBLIC = new Set(["teams", "nfl_players", "nfl_games", "roster_entries", "score_weeks", "player_scores", "matchups", "standings", "announcements",
-    "season_settings", "team_scores", "awards", "guillotine", "survivor_status", "confidence_scores", "score_events", "player_injuries", "league_settings", "draft_picks"]);
+    "season_settings", "team_scores", "awards", "guillotine", "survivor_status", "confidence_scores", "score_events", "player_injuries", "league_settings", "draft_picks", "lineup_slots"]);
   const g = (await db.query<{ table_name: string; privilege_type: string }>(`
     select table_name, privilege_type from information_schema.role_table_grants
     where table_schema = 'public' and grantee = 'anon'`)).rows;
@@ -107,8 +107,10 @@ describe("a manager can't touch another team (the core rule)", () => {
   test("can't move his own lineup row onto another team", () =>
     denied(db, user(ALICE), `update public.lineup_slots set team_id = '0002' where team_id = '0001' and slot = 1`));
 
-  test("can't see another team's lineup before kickoff", async () => {
-    assert.deepEqual(await rows(db, user(ALICE), `select player_id from public.lineup_slots where team_id = '0002'`), []);
+  test("lineups are open: every team's lineup is visible to everyone, before kickoff too (B5 doesn't hide lineups)", async () => {
+    assert.deepEqual(await rows(db, user(ALICE), `select player_id from public.lineup_slots where team_id = '0002'`), [{ player_id: "QB-ARI" }], "Bob's QB plays later this week: Alice sees him now");
+    assert.deepEqual(await rows(db, anon, `select team_id, player_id from public.lineup_slots order by team_id, slot`), [{ team_id: "0001", player_id: "RB-DET" }, { team_id: "0002", player_id: "QB-ARI" }], "visitors too");
+    await denied(db, anon, `insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '0001', 0, 'QB-DET')`, /permission denied/);
   });
 
   test("can't create a transaction for another team", () =>
@@ -190,7 +192,7 @@ describe("anonymous visitors", () => {
   });
 
   test("can't read private data", async () => {
-    for (const t of ["profiles", "team_managers", "lineup_slots", "transactions", "score_overrides", "audit_log", "review_queue", "heartbeats"]) {
+    for (const t of ["profiles", "team_managers", "transactions", "score_overrides", "audit_log", "review_queue", "heartbeats"]) {
       await denied(db, anon, `select * from public.${t}`, /permission denied/);
     }
   });
@@ -302,7 +304,7 @@ describe("invite-only accounts", () => {
     assert.deepEqual(await rows(db, user(GHOST), `select id from public.profiles`), [{ id: GHOST }]);
     assert.deepEqual(await rows(db, user(GHOST), `select * from public.team_managers`), []);
     assert.deepEqual(await rows(db, user(GHOST), `select id from public.transactions`), [], "decided transactions are members-only");
-    assert.deepEqual(await rows(db, user(GHOST), `select * from public.lineup_slots`), [], "kicked-off lineups are members-only");
+    assert.equal((await rows(db, user(GHOST), `select * from public.lineup_slots`)).length, 2, "lineups are public (B5 doesn't hide them)");
     assert.equal((await rows(db, user(GHOST), `select * from public.teams`)).length, 2, "public data still readable");
     assert.equal(await affected(db, user(GHOST), `update public.profiles set is_commissioner = false where id = '${ALICE}'`), 0);
     // A real member still sees the decided transaction and kicked-off lineups
@@ -714,22 +716,21 @@ describe("pools: survivor and confidence picks", () => {
 
 describe("Live page (public read)", () => {
   const lineup = (who: Who) => rows(db, who, `select team_id, slot, player_id, revealed from public.live_lineups(${S}, ${W}) order by team_id, slot`);
-  test("lineups: everyone sees a starter from his kickoff on; before that only his team's managers and the commissioner", async () => {
+  test("lineups: everyone sees every starter, before kickoff too", async () => {
     await db.exec(`insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '0001', 0, 'QB-KC')`);
-    const hidden = [{ team_id: "0001", slot: 0, player_id: "QB-KC", revealed: true }, { team_id: "0001", slot: 1, player_id: null, revealed: false },
-      { team_id: "0002", slot: 0, player_id: null, revealed: false }];
-    assert.deepEqual(await lineup(anon), hidden, "signed out: the kicked-off QB only");
-    assert.deepEqual(await lineup(user(BOB)), [hidden[0], hidden[1], { team_id: "0002", slot: 0, player_id: "QB-ARI", revealed: true }], "Bob sees his own lineup in full");
-    assert.deepEqual((await lineup(user(COMMISH)) as { player_id: string }[]).map(r => r.player_id), ["QB-KC", "RB-DET", "QB-ARI"]);
-    await denied(db, anon, `select * from public.lineup_slots`, /permission denied/);
+    const all = [{ team_id: "0001", slot: 0, player_id: "QB-KC", revealed: true }, { team_id: "0001", slot: 1, player_id: "RB-DET", revealed: true },
+      { team_id: "0002", slot: 0, player_id: "QB-ARI", revealed: true }];
+    assert.deepEqual(await lineup(anon), all, "signed out: every starter, even those who play later");
+    assert.deepEqual(await lineup(user(BOB)), all);
+    assert.deepEqual(await lineup(user(ALICE)), all);
   });
 
-  test("a starter on bye: flagged at once for everyone, named only to his team until the week's last kickoff", async () => {
+  test("a starter on bye: flagged and named for everyone at once", async () => {
     await db.exec(`insert into public.nfl_players (id, name, position, nfl_team) values ('WR-PIT', 'Bye Receiver', 'WR', 'PIT');
       insert into public.roster_entries (season, team_id, player_id) values (${S}, '0002', 'WR-PIT');
       insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '0002', 3, 'WR-PIT')`);
     const bye = (who: Who) => rows(db, who, `select player_id, revealed, bye from public.live_lineups(${S}, ${W}) where slot = 3`);
-    assert.deepEqual(await bye(anon), [{ player_id: null, revealed: false, bye: true }], "anon: on bye, but not who");
+    assert.deepEqual(await bye(anon), [{ player_id: "WR-PIT", revealed: true, bye: true }], "anon: on bye, and who");
     assert.deepEqual(await bye(user(BOB)), [{ player_id: "WR-PIT", revealed: true, bye: true }]);
     assert.deepEqual((await rows(db, anon, `select bye from public.live_lineups(${S}, ${W}) where team_id = '0002' and slot = 0`)), [{ bye: false }], "a player with a game later isn't a bye");
     await db.exec(`update public.nfl_games set kickoff = now() - interval '2 hours'`);
@@ -738,15 +739,15 @@ describe("Live page (public read)", () => {
     assert.deepEqual((await rows(db, user(BOB), `select bye from public.live_lineups(${S}, ${W}) where slot = 3`)), [{ bye: false }], "no games loaded for the week: nobody is on bye");
   });
 
-  test("injury statuses: public read (hidden starters flagged, not named); only server jobs replace them, all at once", async () => {
+  test("injury statuses: public read with every starter named; only server jobs replace them, all at once", async () => {
     const put = (rows: unknown[], from = W) => db.query(`select public.replace_injuries(${S}, ${from}, $1::jsonb) as n`, [JSON.stringify(rows)]);
     await put([{ week: W, player_id: "QB-ARI", status: "Out", injury: "Ankle", practice: null, source: "report" },
       { week: W, player_id: "QB-KC", status: "Questionable", injury: "Knee", practice: null, source: "report" },
       { week: W - 1, player_id: "QB-DET", status: "Doubtful", injury: "Hand", practice: null, source: "report" }], W - 1);
     await db.exec(`insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '0001', 0, 'QB-KC')`);
     assert.deepEqual(await rows(db, anon, `select team_id, slot, player_id, injury from public.live_lineups(${S}, ${W}) order by team_id, slot`), [
-      { team_id: "0001", slot: 0, player_id: "QB-KC", injury: "Questionable" }, { team_id: "0001", slot: 1, player_id: null, injury: null },
-      { team_id: "0002", slot: 0, player_id: null, injury: "Out" }], "Bob's hidden QB is flagged Out without his name");
+      { team_id: "0001", slot: 0, player_id: "QB-KC", injury: "Questionable" }, { team_id: "0001", slot: 1, player_id: "RB-DET", injury: null },
+      { team_id: "0002", slot: 0, player_id: "QB-ARI", injury: "Out" }], "Bob's QB is named and flagged Out");
     assert.equal((await rows(db, anon, `select * from public.player_injuries`)).length, 3);
     // Next night: QB-ARI is off the report (healthy); week W-1 is before p_from_week, so it stays.
     await put([{ week: W, player_id: "QB-KC", status: "IR", injury: "Knee", practice: null, source: "roster" }]);
@@ -1681,7 +1682,7 @@ describe("email notifications", () => {
     assert.equal(await affected(db, user(ALICE), `update public.notify_settings set paused = true`), 1);
     const on = async (u: string, k: string) => (await db.query<{ v: boolean }>(`select private.notify_on($1, $2) as v`, [u, k])).rows[0]!.v;
     assert.deepEqual([await on(BOB, "dm"), await on(BOB, "trades"), await on(BOB, "announcements"), await on(BOB, "mentions"), await on(BOB, "waivers"), await on(BOB, "lineup")],
-      [true, true, true, false, false, false], "defaults");
+      [true, true, true, false, true, false], "defaults (waiver results on since 2026-10-24)");
     assert.equal(await on(ALICE, "dm"), false, "pause turns everything off");
     await denied(db, user(ALICE), `select * from public.notify_queue`, /permission denied/);
     await denied(db, user(ALICE), `select * from public.email_log`, /row-level security|permission denied/).catch(async () => {
@@ -1839,6 +1840,170 @@ describe("email notifications", () => {
     const call = (await db.query<{ url: string }>(`select url from net.calls order by id desc limit 1`)).rows[0]!;
     assert.match(call.url, /\/functions\/v1\/notify$/);
     await assert.rejects(as(db, user(COMMISH), tx => tx.query(`select * from public.notify_claim()`)), /permission denied/, "only server jobs claim");
+  });
+});
+
+describe("open lineups and more email types", () => {
+  const CAROL = "00000000-0000-0000-0000-0000000000c3";
+  const AL = "00000000-0000-0000-0000-0000000000a2";      // Alice's co-owner
+  beforeEach(async () => {
+    await db.exec(`
+      insert into auth.users (id, email, raw_user_meta_data) values ('${CAROL}', 'carol@example.com', '{"display_name":"Carol"}'), ('${AL}', 'al@example.com', '{"display_name":"Al"}');
+      insert into public.teams (id, name, division) values ('0003', 'H.N.I.C', 'Gold');
+      insert into public.team_managers values ('0003', '${CAROL}'), ('0001', '${AL}');
+      update public.profiles set display_name = 'Alice' where id = '${ALICE}';
+      update public.profiles set display_name = 'Bob' where id = '${BOB}';
+      delete from public.notify_queue;`);
+  });
+  const later = (min: number) => new Date(Date.now() + min * 60_000).toISOString();
+  const claim = (min: number) => rowsT(db, service, `select id, user_id, kind, data from public.notify_claim(25, $1::timestamptz)`, [later(min)]);
+  const queue = () => db.query<{ user_id: string; kind: string; ref: string; status: string; reason: string | null; due_at: string }>(`select user_id, kind, ref, status, reason, due_at from public.notify_queue order by id`).then(r => r.rows);
+  const settings = (who: Who, cols: string) => as(db, who, async tx => {
+    await tx.query(`insert into public.notify_settings (user_id) values (auth.uid()) on conflict (user_id) do nothing`);
+    return tx.query(`update public.notify_settings set ${cols}`);
+  });
+  // Alice's team saves its lineup on the site (one transaction = one save).
+  const save = (who: Who, slot: number, player: string) => as(db, who, async tx => {
+    await tx.query(`delete from public.lineup_slots where season = ${S} and week = ${W} and team_id = '0001' and slot = ${slot}`);
+    return tx.query(`insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '0001', ${slot}, '${player}')`);
+  });
+
+  test("lineup status: when each team's lineup was submitted and by whom (names for members only)", async () => {
+    await save(user(ALICE), 0, "QB-DET");
+    const st = async (who: Who) => (await rowsT(db, who, `select team_id, submitted_at is not null as submitted, submitted_by, starters from public.lineup_status(${S}, ${W}) order by team_id`));
+    assert.deepEqual(await st(user(BOB)), [{ team_id: "0001", submitted: true, submitted_by: "Alice", starters: 2 }, { team_id: "0002", submitted: false, submitted_by: null, starters: 1 },
+      { team_id: "0003", submitted: false, submitted_by: null, starters: 0 }], "the seeded slots weren't saved on the site: not submitted");
+    assert.equal((await st(anon))[0]!.submitted_by, null, "visitors see when, not who");
+    assert.equal((await st(anon))[0]!.submitted, true);
+  });
+
+  test("my lineup confirmation: both owners, debounced 10 minutes, starters + bench + who saved + warnings", async () => {
+    await save(user(ALICE), 0, "QB-DET");
+    let q = await queue();
+    assert.deepEqual(q.map(x => [x.user_id, x.kind]).sort(), [[ALICE, "lineup_saved"], [AL, "lineup_saved"]], "both owners, the saver too");
+    assert.equal(Math.round((Date.parse(q[0]!.due_at) - Date.now()) / 60000), 10);
+    await db.exec(`update public.notify_queue set due_at = now() + interval '3 minutes'`);   // as if 7 minutes passed
+    await save(user(AL), 0, "QB-DET");
+    q = await queue();
+    assert.equal(q.length, 2, "another save: still one email each");
+    assert.equal(Math.round((Date.parse(q[0]!.due_at) - Date.now()) / 60000), 10, "the 10 minutes start again");
+    assert.deepEqual(await claim(5), [], "not while changes keep coming");
+    const [item] = (await claim(11)).filter(x => x.user_id === ALICE);
+    assert.deepEqual(item!.data.starters.map((s: { slot: string; name: string }) => [s.slot, s.name]), [["QB", "Jared Goff"], ["RB", "Jahmyr Gibbs"]]);
+    assert.deepEqual(item!.data.bench.map((b: { name: string }) => b.name), ["Patrick Mahomes"]);
+    assert.equal(item!.data.saved_by, "Al");
+    // MFL mirror / server jobs never send these.
+    await db.exec(`delete from public.notify_queue; insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '0002', 1, 'QB-ARI') on conflict do nothing`);
+    assert.deepEqual(await queue(), []);
+  });
+
+  test("other teams' lineups: instant (debounced, opponent filter) and digest (9 AM ET on game days, grouped)", async () => {
+    await settings(user(BOB), `league_lineups = 'instant'`);
+    await settings(user(CAROL), `league_lineups = 'instant', league_lineups_opponent = true`);
+    await save(user(ALICE), 0, "QB-DET");
+    assert.deepEqual((await queue()).filter(x => x.kind === "league_lineups").map(x => [x.user_id, x.ref]), [[BOB, `linst:${S}:${W}:0001`]], "Carol only wants her opponent (NSFW isn't)");
+    const [inst] = (await claim(11)).filter(x => x.kind === "league_lineups");
+    assert.equal(inst!.data.mode, "instant");
+    assert.deepEqual(inst!.data.teams.map((t: { team: string; by: string }) => [t.team, t.by]), [["NSFW", "Alice"]]);
+    // Digest: Bob switches; two teams change; one email at 9 AM ET on the next game day.
+    await db.exec(`delete from public.notify_queue`);
+    await settings(user(BOB), `league_lineups = 'digest'`);
+    await save(user(ALICE), 1, "RB-DET");
+    await db.exec(`insert into public.nfl_players (id, name, position, nfl_team) values ('TE-C', 'Carol TE', 'TE', 'DET'); insert into public.roster_entries (season, team_id, player_id) values (${S}, '0003', 'TE-C')`);
+    await as(db, user(CAROL), tx => tx.query(`insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '0003', 6, 'TE-C')`));
+    assert.deepEqual((await queue()).filter(x => x.kind === "league_lineups"), [], "digest mode: nothing per change");
+    const tomorrow9 = (await db.query<{ t: string }>(`select (((now() at time zone 'America/New_York')::date + 1) + time '09:05') at time zone 'America/New_York' as t`)).rows[0]!.t;
+    await db.exec(`insert into public.nfl_games (season, week, game_key, home, away, kickoff) values (${S}, ${W + 1}, 'SEA@SF', 'SF', 'SEA', ((((now() at time zone 'America/New_York')::date + 1) + time '13:00') at time zone 'America/New_York'))`);
+    const run = (t: string) => rowsT(db, service, `select private.enqueue_lineup_digests($1::timestamptz) as n`, [t]).then(r => Number(r[0]!.n));
+    assert.equal(await run(new Date(Date.parse(tomorrow9) - 3 * 3600e3).toISOString()), 0, "6 AM: not yet");
+    assert.equal(await run(tomorrow9), 1);
+    assert.equal(await run(tomorrow9), 0, "once per digest time");
+    const [dg] = await rowsT(db, service, `select data from public.notify_claim(25, $1::timestamptz) where kind = 'league_lineups'`, [new Date(Date.parse(tomorrow9) + 60e3).toISOString()]);
+    assert.deepEqual(dg!.data.teams.map((t: { team: string }) => t.team).sort(), ["H.N.I.C", "NSFW"], "both changed teams in one email");
+    const at1230 = new Date(Date.parse(tomorrow9) + (3 * 60 + 25) * 60e3).toISOString();   // 12:30 ET = 30 minutes before the 1 PM kickoff
+    assert.equal(await run(at1230), 1, "30 minutes before the day's first kickoff");
+  });
+
+  test("trades: completed trades league-wide (off by default); proposals stay private", async () => {
+    await settings(user(CAROL), `league_trades = true`);
+    await db.exec(`insert into public.nfl_players (id, name, position, nfl_team) values ('WR-X', 'X', 'WR', 'NYG');
+      insert into public.roster_entries (season, team_id, player_id) values (${S}, '0001', 'WR-X');`);
+    const id = Number((await rowsT(db, user(ALICE), `select public.trade_propose(${S}, '0001', '0002', '{WR-X}', '{}') as id`))[0]!.id);
+    assert.deepEqual((await queue()).filter(x => x.kind === "league_trades"), [], "a proposal isn't league news");
+    await as(db, user(BOB), tx => tx.query(`select public.trade_respond(${id}, true)`));
+    await as(db, user(COMMISH), tx => tx.query(`select public.trade_decide(${id}, true)`));
+    assert.deepEqual((await queue()).filter(x => x.kind === "league_trades").map(x => x.user_id), [CAROL]);
+  });
+
+  test("waivers: my results on by default; league-wide results and hourly first-come moves digests are opt-in", async () => {
+    await settings(user(CAROL), `league_waivers = true, league_moves = true`);
+    await db.exec(`insert into public.waiver_runs (season, cycle, kind, team_order) values (2028, now(), 'forced', '{0001}')`);
+    assert.deepEqual((await queue()).map(x => [x.user_id, x.kind]), [[CAROL, "league_waivers"]]);
+    await db.exec(`insert into public.transactions (season, team_id, type, status, players_in, via) values (2028, '0002', 'add', 'processed', '{QB-FA}', 'free_agent'),
+      (2028, '0001', 'drop', 'processed', '{}', 'mfl')`);
+    const mv = (await queue()).filter(x => x.kind === "league_moves");
+    assert.equal(mv.length, 1, "one hourly digest; MFL imports never");
+    assert.equal(new Date(mv[0]!.due_at).getUTCMinutes(), 0, "due at the top of the next hour");
+    const [m] = (await rowsT(db, service, `select kind, data from public.notify_claim(25, now() + interval '61 minutes')`)).filter(x => x.kind === "league_moves");
+    assert.deepEqual(m!.data.moves, [{ team: "Stealers", added: "Free Agent", dropped: null }]);
+  });
+
+  test("daily scoring update: only after a day with games, once per day, with matchups, leader and corrections", async () => {
+    await settings(user(BOB), `scoring = true`);
+    const enq = (t: string) => rowsT(db, service, `select public.enqueue_scoring_update($1::timestamptz) as n`, [t]).then(r => Number(r[0]!.n));
+    const day = (offsetDays: number, hhmm: string) => db.query<{ t: string }>(`select (((now() at time zone 'America/New_York')::date + ${offsetDays}) + time '${hhmm}') at time zone 'America/New_York' as t`).then(r => r.rows[0]!.t);
+    await db.exec(`delete from public.nfl_games; insert into public.nfl_games (season, week, game_key, home, away, kickoff) values
+      (${S}, ${W}, 'KC@LV', 'LV', 'KC', ((((now() at time zone 'America/New_York')::date - 1) + time '20:15') at time zone 'America/New_York'));
+      insert into public.matchups (season, week, home_team, away_team, home_score, away_score) values (${S}, ${W}, '0001', '0002', 90, 80);
+      insert into public.team_scores (season, week, team_id, points, status) values (${S}, ${W}, '0001', 90, 'live'), (${S}, ${W}, '0002', 80, 'live');`);
+    assert.equal(await enq(await day(1, "05:17")), 0, "the day before had no games");
+    assert.equal(await enq(await day(0, "05:17")), 1, "yesterday had a game: Bob gets one");
+    assert.equal(await enq(await day(0, "06:17")), 0, "once per game day");
+    const [s] = await rowsT(db, service, `select data from public.notify_claim(25, $1::timestamptz) where kind = 'scoring'`, [await day(0, "05:18")]);
+    assert.equal(s!.data.unofficial, true);
+    assert.deepEqual(s!.data.mine, { team: "Stealers", us: 80, opp: "NSFW", them: 90 });
+    assert.deepEqual(s!.data.high, { team: "NSFW", points: 90 });
+    await db.exec(`update public.notify_queue set status = 'sent' where kind = 'scoring'`);
+    // A stat correction flips the game: the next update says so.
+    await db.exec(`update public.matchups set away_score = 95; insert into public.nfl_games (season, week, game_key, home, away, kickoff) values
+      (${S}, ${W}, 'BUF@MIA', 'MIA', 'BUF', (((now() at time zone 'America/New_York')::date + time '13:00') at time zone 'America/New_York'))`);
+    assert.equal(await enq(await day(1, "05:17")), 1);
+    const [s2] = await rowsT(db, service, `select data from public.notify_claim(25, $1::timestamptz) where kind = 'scoring'`, [await day(1, "05:18")]);
+    assert.deepEqual(s2!.data.corrections, [{ game: "0002-0001", was: "NSFW", now: "Stealers" }]);
+  });
+
+  test("priority under the daily cap: DMs, trades and commissioner messages first; lineup and scoring emails stop earlier", async () => {
+    await settings(user(BOB), `scoring = true`);
+    await db.exec(`insert into public.email_log (user_id, kind, status) select '${CAROL}', 'trades', 'sent' from generate_series(1, 75)`);
+    await db.exec(`insert into public.notify_queue (user_id, kind, ref, due_at) values
+      ('${BOB}', 'scoring', 'score:2026-10-25', now() - interval '3 minutes'),
+      ('${BOB}', 'lineup_saved', 'lsaved:${S}:${W}:0002', now() - interval '2 minutes'),
+      ('${BOB}', 'announcements', 'ann:1', now() - interval '1 minute')`);
+    const got = await rowsT(db, service, `select kind from public.notify_claim(25, now())`);
+    assert.deepEqual(got.map(x => x.kind), ["announcements"], "the newest item, but highest priority, goes first");
+    assert.deepEqual((await queue()).map(x => [x.kind, x.status, x.reason]), [["scoring", "skipped", "free-tier limit"], ["lineup_saved", "skipped", "free-tier limit"], ["announcements", "sending", null]],
+      "75 sent today: lineup emails (stop at 75) and scoring (stop at 60) are held back; commissioner messages may use up to 95");
+  });
+
+  test("commissioner: email a team its lineup; remind teams that haven't submitted (audited, commissioner only)", async () => {
+    await save(user(ALICE), 0, "QB-DET");
+    await db.exec(`delete from public.notify_queue`);
+    await assert.rejects(as(db, user(ALICE), tx => tx.query(`select public.commish_email_lineup(${S}, ${W}, '0002')`)), /Only the commissioner/);
+    assert.equal(Number((await rowsT(db, user(COMMISH), `select public.commish_email_lineup(${S}, ${W}, '0002') as n`))[0]!.n), 1);
+    assert.equal(Number((await rowsT(db, user(COMMISH), `select public.commish_lineup_reminders(${S}, ${W}) as n`))[0]!.n), 2, "Stealers (Bob) and H.N.I.C (Carol); NSFW submitted");
+    const q = await queue();
+    assert.deepEqual(q.map(x => [x.user_id, x.ref.split(":")[0]]).sort(), [[BOB, "clineup"], [BOB, "cremind"], [CAROL, "cremind"]].sort());
+    const items = await claim(1);
+    assert.equal(items.find(x => x.data.commissioner === "lineup")!.data.starters[0].name, "Kyler Murray");
+    assert.equal(items.find(x => x.data.commissioner === "reminder" && x.user_id === CAROL)!.data.team, "H.N.I.C");
+    assert.deepEqual((await db.query<{ action: string }>(`select action from public.audit_log where action like 'notify:%' order by id`)).rows.map(r => r.action), ["notify:lineup_email", "notify:lineup_reminder"]);
+  });
+
+  test("unsubscribe works for the new types (other teams' lineups -> off)", async () => {
+    await settings(user(BOB), `league_lineups = 'digest'`);
+    const tok = (await db.query<{ t: string }>(`select private.notify_token('${BOB}', 'league_lineups') as t`)).rows[0]!.t;
+    assert.equal((await rowsT(db, anon, `select public.notify_unsubscribe($1) as k`, [tok]))[0]!.k, "league_lineups");
+    assert.equal((await db.query<{ v: string }>(`select league_lineups as v from public.notify_settings where user_id = '${BOB}'`)).rows[0]!.v, "off");
   });
 });
 

@@ -317,6 +317,29 @@
         });
       });
     }
+    if (page === "teams" && window.B5TeamPage && window.B5Auth && window.B5_SUPABASE && window.B5_SUPABASE.configured) {
+      // This week's starting lineup per team (B5 lineups are public), with "Submitted … by …".
+      const cfg = window.B5_SUPABASE, api = (sess, path, body) => window.B5Auth.api(cfg, sess, path, body ? { method: "POST", body: JSON.stringify(body) } : {}, (u, i) => fetch(u, i));
+      const who = window.B5Account ? window.B5Account.load().catch(() => null) : Promise.resolve(null);
+      who.then(me => {
+        const sess = me && me.session, season = Number(L.season);
+        return api(sess, `nfl_games?season=eq.${season}&select=week,kickoff`).then(g => {
+          const week = window.B5TeamPage.currentWeek((g.ok && g.data) || []);
+          if (!week) return;
+          return Promise.all([api(sess, "rpc/live_lineups", { p_season: season, p_week: week }), api(sess, "rpc/lineup_status", { p_season: season, p_week: week })]).then(([s, st]) => {
+            if (curPage !== "teams") return;
+            const slots = (s.ok && s.data) || [], status = (st.ok && st.data) || [];
+            view.querySelectorAll("[data-roster]").forEach(el => {
+              const id = el.dataset.roster, box = document.createElement("details");
+              box.className = "roster lu-team"; box.open = true;
+              box.innerHTML = `<summary>Week ${esc(week)} lineup</summary>` +
+                window.B5TeamPage.lineupHtml(slots.filter(x => x.team_id === id), status.find(x => x.team_id === id), week, season);
+              el.parentNode.insertBefore(box, el);
+            });
+          });
+        });
+      }).catch(() => {});
+    }
     if (page === "teams" && window.B5MyTeam) {
       // Current rosters from the database replace the static snapshot.
       window.B5MyTeam.loadRosters().then(db => {

@@ -68,6 +68,28 @@
   var isMember = function () { return !!(st.me && (st.me.profile && st.me.profile.is_commissioner || (st.me.teams && st.me.teams.length))); };
   var myTeam = function () { return st.me && st.me.teams && st.me.teams[0] ? st.me.teams[0].team_id : null; };
 
+  /** "Submitted Sat 9:14 PM by Mike", "Set from MFL" (2026 mirror), or "Not submitted yet". */
+  function submittedText(st, seasonNo) {
+    if (st && st.submitted_at) {
+      var t = new Date(st.submitted_at).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" });
+      return "Submitted " + t + (st.submitted_by ? " by " + st.submitted_by : "");
+    }
+    if (st && st.starters > 0) return seasonNo < Number(L.lineupsFrom || 0) ? "Set from MFL (MFL is official for " + seasonNo + ")" : "Lineup set (not changed this week)";
+    return "Not submitted yet";
+  }
+  /** The week's starting lineup in slot order (HTML; player names escaped). slots: live_lineups rows for one team. */
+  function lineupHtml(slots, st, week, seasonNo) {
+    var by = {}; (slots || []).forEach(function (x) { by[x.slot] = x; });
+    var rows = SLOTS.map(function (pos, i) {
+      var x = by[i];
+      return '<li><span class="pos pos-' + esc(pos) + '">' + esc(pos) + "</span>" + (x && x.player_id
+        ? '<span class="pname">' + esc(x.name) + ' <span class="muted nfl">' + esc(x.nfl_team || "") + "</span></span>" +
+          (x.bye ? ' <span class="lv-bye">BYE</span>' : x.injury ? ' <span class="tag">' + esc(x.injury) + "</span>" : "")
+        : '<span class="muted">Empty</span>') + "</li>";
+    }).join("");
+    return '<p class="muted small lu-sub">' + esc(submittedText(st, seasonNo)) + '</p><ul class="roster-list lu-week">' + rows + "</ul>";
+  }
+
   function currentWeek(gs) {
     var byWeek = {};
     gs.forEach(function (g) { byWeek[g.week] = Math.max(byWeek[g.week] || 0, Date.parse(g.kickoff)); });
@@ -96,10 +118,12 @@
       (d.txns || []).forEach(function (t) { (t.players_in || []).concat(t.players_out || []).forEach(function (x) { if (!d.names[x] && !/^mfl:/.test(x) && need.indexOf(x) < 0) need.push(x); }); });
       return Promise.all([
         d.week ? A.api(cfg, sess, "rpc/live_lineups", { method: "POST", body: JSON.stringify({ p_season: season, p_week: d.week }) }, f) : Promise.resolve(null),
+        d.week ? A.api(cfg, sess, "rpc/lineup_status", { method: "POST", body: JSON.stringify({ p_season: season, p_week: d.week }) }, f) : Promise.resolve(null),
         need.length ? api("nfl_players?id=in.(" + encodeURIComponent(need.map(function (x) { return '"' + x.replace(/"/g, "") + '"'; }).join(",")) + ")&select=id,name", sess) : Promise.resolve(null)
       ]).then(function (r2) {
         d.slots = ok(r2[0]).filter(function (s) { return s.team_id === id; });
-        ok(r2[1]).forEach(function (p) { d.names[p.id] = p.name; });
+        d.status = ok(r2[1]).filter(function (s) { return s.team_id === id; })[0] || null;
+        ok(r2[2]).forEach(function (p) { d.names[p.id] = p.name; });
         return d;
       });
     });
@@ -128,7 +152,8 @@
         return '<li><span class="pos pos-' + esc(p.pos) + '">' + esc(p.pos) + '</span><span class="pname">' + esc(p.name) + ' <span class="muted nfl">' + esc(p.nfl) + "</span></span>" +
           (p.status ? '<span class="muted small tp-st' + (/^Starter/.test(p.status) ? " on" : "") + '">' + esc(p.status) + "</span>" : "") + "</li>";
       }).join("") + "</ul>" : '<p class="muted">No roster yet.</p>') +
-      (d.slots.some(function (s) { return !s.player_id; }) ? '<p class="muted small">Starters are revealed at their kickoff.</p>' : "") + "</div>";
+      "</div>";
+    var lineupCard = d.week ? '<div class="card"><h3>Week ' + esc(d.week) + " lineup</h3>" + lineupHtml(d.slots, d.status, d.week, season) + "</div>" : "";
 
     var gs = games(L.schedule, id);
     var schedHtml = '<div class="card"><h3>' + esc(season) + " schedule</h3>" + (gs.length ? '<div class="table-wrap"><table><thead><tr><th>Wk</th><th>Opponent</th><th class="num">Score</th><th></th></tr></thead><tbody>' +
@@ -153,7 +178,7 @@
       }).join("") + "</div>" + (st.me.profile && st.me.profile.is_commissioner ? '<p class="muted small">As commissioner you see every field, including hidden ones.</p>' : '<p class="muted small">Visible to signed-in league members only.</p>') + "</section>";
     }
     st.el.innerHTML = '<section class="tp">' + head + (st.msg ? '<p class="acct-msg err">' + esc(st.msg) + "</p>" : "") + contactHtml +
-      '<div class="tp-cols"><div>' + rosterHtml + txHtml + "</div><div>" + schedHtml + histHtml + "</div></div></section>";
+      '<div class="tp-cols"><div>' + lineupCard + rosterHtml + txHtml + "</div><div>" + schedHtml + histHtml + "</div></div></section>";
   }
 
   function start(rootEl, r) {
@@ -177,5 +202,5 @@
   function stop() { st.el = null; }
 
   root.B5TeamPage = { start: start, stop: stop, formatPhone: formatPhone, phoneHref: phoneHref, safeWebsite: safeWebsite, safeEmail: safeEmail,
-    contactCard: contactCard, games: games, lineupStatus: lineupStatus };
+    contactCard: contactCard, games: games, lineupStatus: lineupStatus, lineupHtml: lineupHtml, submittedText: submittedText, currentWeek: currentWeek };
 })(typeof globalThis !== "undefined" ? globalThis : this);

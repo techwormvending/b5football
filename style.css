@@ -647,3 +647,11 @@ a.mention.team-link { display: inline; }
 .nf-list li { display: grid; gap: 2px; }
 .nf-list.paused { opacity: .45; }
 .nf-pause { padding: 8px 0; border-bottom: 1px solid var(--card-line); }
+.nf-h { margin: 14px 0 4px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--gold); }
+.nf-groups.paused { opacity: .45; }
+.nf-list select { display: block; width: 100%; margin-top: 4px; }
+/* This week's lineup (team profile, Teams page) */
+.lu-sub { margin: 0 0 6px; }
+.lu-week li { padding: 4px 0; }
+.lu-team { margin-bottom: 8px; }
+.cm-lineups li { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }

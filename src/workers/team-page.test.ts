@@ -6,7 +6,7 @@ import path from "node:path";
 import vm from "node:vm";
 
 const read = (f: string) => fs.readFileSync(path.resolve(import.meta.dirname, "../..", f), "utf8");
-const ctx: Record<string, unknown> = { LEAGUE: { season: 2026, teams: [{ id: "0011", name: "Mac Daddies" }, { id: "0001", name: "NSFW" }, { id: "0002", name: "Stealers" }] } };
+const ctx: Record<string, unknown> = { LEAGUE: { season: 2026, lineupsFrom: 2027, teams: [{ id: "0011", name: "Mac Daddies" }, { id: "0001", name: "NSFW" }, { id: "0002", name: "Stealers" }] } };
 for (const f of ["teamlink.js", "route.js", "team.js", "dm.js", "trades.js"]) vm.runInNewContext(read(f), ctx);
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const TP = ctx.B5TeamPage as any, DM = ctx.B5DM as any, TR = ctx.B5Trades as any;
@@ -54,6 +54,21 @@ test("profile schedule and lineup status", () => {
   assert.deepEqual(TP.lineupStatus(roster, [{ slot: 0, player_id: "a" }]).map((p: any) => p.status), ["Starter · QB", "Bench"]);
   assert.deepEqual(TP.lineupStatus(roster, [{ slot: 0, player_id: "a" }, { slot: 1, player_id: null }]).map((p: any) => p.status), ["Starter · QB", "Bench or hidden starter"]);
   assert.deepEqual(TP.lineupStatus(roster, []).map((p: any) => p.status), ["", ""]);
+});
+
+test("this week's lineup: slot order, BYE/injury tags, submitted line; #account/email route", () => {
+  const slots = [{ slot: 0, player_id: "a", name: "Joe <B>", nfl_team: "CIN", bye: false, injury: "Questionable" }, { slot: 3, player_id: "b", name: "Bye Guy", nfl_team: "SEA", bye: true }];
+  const html = TP.lineupHtml(slots, { submitted_at: "2026-10-25T01:14:00Z", submitted_by: "Mike", starters: 2 }, 7, 2027);
+  assert.match(html, /Submitted Sat 9:14 PM by Mike/);
+  assert.match(html, /Joe &lt;B&gt;/);
+  assert.match(html, /<span class="tag">Questionable<\/span>/);
+  assert.match(html, /Bye Guy <span class="muted nfl">SEA<\/span><\/span> <span class="lv-bye">BYE<\/span>/);
+  assert.equal((html.match(/<li>/g) || []).length, 9, "all 9 slots");
+  assert.equal((html.match(/Empty/g) || []).length, 7);
+  assert.equal(TP.submittedText(null, 2027), "Not submitted yet");
+  assert.equal(TP.submittedText({ submitted_at: null, starters: 9 }, 2026), "Set from MFL (MFL is official for 2026)");
+  assert.equal(TP.submittedText({ submitted_at: "2026-10-25T01:14:00Z", submitted_by: null, starters: 9 }, 2027), "Submitted Sat 9:14 PM", "visitors: when, not who");
+  assert.deepEqual(plain(R.parse("#account/email", () => true)), { page: "account", week: null, section: "email" });
 });
 
 test("DM conversation partner and title (TeamLinks, escaped names)", () => {

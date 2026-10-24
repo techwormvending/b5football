@@ -310,11 +310,10 @@
     var starters = SLOTS.map(function (pos, i) { return slotRow(pos, va.starters[i], vh.starters[i]); }).join("");
     var nb = Math.max(va.bench.length, vh.bench.length), bench = "";
     for (var i = 0; i < nb; i++) { var x = va.bench[i], y = vh.bench[i]; bench += slotRow("BN", x || null, y || null, " bench"); }
-    var hiddenNote = va.hidden || vh.hidden ? '<p class="muted small">Players yet to play join the bench list at kickoff (until then they could be a hidden starter).</p>' : "";
     var lineups = '<div class="card lv-lineups"><ul class="lv-slots">' + starters + '</ul><p class="lv-totals"><span>' + esc(pts(va.total)) + "</span><span>Total</span><span>" + esc(pts(vh.total)) + "</span></p>" +
       '<h3 class="lv-bench-h">Bench <span class="muted small">(points shown, not counted)</span></h3>' +
       (bench ? '<ul class="lv-slots">' + bench + '</ul><p class="lv-totals bench"><span>' + esc(pts(va.benchTotal)) + "</span><span>Bench</span><span>" + esc(pts(vh.benchTotal)) + "</span></p>" : '<p class="muted small">No bench players to show yet.</p>') +
-      hiddenNote + '<p class="muted small">Tap a player for his points breakdown.</p></div>';
+      '<p class="muted small">Tap a player for his points breakdown.</p></div>';
     var names = {};
     dt.roster.forEach(function (r) { names[r.id] = r.name; });
     d.slots.forEach(function (s) { if (s.player_id) names[s.player_id] = s.name; });

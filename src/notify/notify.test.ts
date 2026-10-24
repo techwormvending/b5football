@@ -93,3 +93,41 @@ test("handler: unsubscribe link (GET page) and one-click POST, without signing i
   const bad = await handle(new Request("https://ref.supabase.co/functions/v1/notify?u=nope"), env, f.fetchImpl);
   assert.equal(bad.status, 400);
 });
+
+test("every email says why it was sent and links to that setting", () => {
+  const e = renderEmail(item("scoring", { day: "2026-10-25", week: 7, unofficial: true, link: "#live/7" }), O);
+  assert.match(e.html, /Why you got this: &quot;Daily scoring update&quot; is on in your B5 email settings\. <a href="https:\/\/b5football.win\/#account\/email"[^>]*>Change this setting/);
+  assert.match(e.text, /Change this setting: https:\/\/b5football.win\/#account\/email/);
+});
+
+test("waiver results in plain words", () => {
+  const w = content(item("waivers", { claims: [
+    { player: "A", status: "won", result: "Round 2" }, { player: "B", status: "lost", result: "Claimed by NSFW" },
+    { player: "C", status: "skipped", result: "Roster full (18) and no drop" }, { player: "D", status: "lost", result: "Not reached in 8 rounds" },
+    { player: "E", status: "skipped", result: "Player locked" }] }));
+  assert.deepEqual(w.lines, ["✅ A: won in round 2", "❌ B: outbid on priority: NSFW had a higher waiver priority", "⏭ C: roster full and no player to drop",
+    "❌ D: not reached: the rounds ran out first", "⏭ E: player locked (his game had started)"]);
+});
+
+test("new types: lineup confirmation, other teams' lineups, league waivers and moves, scoring, commissioner lineup emails", () => {
+  const lineup = { team: "Mac Daddies", week: 7, saved_by: "Mike", saved_at: "2026-10-24T01:14:00Z",
+    starters: [{ slot: "QB", name: "Joe Burrow", nfl: "CIN" }], bench: [{ name: "Bo Nix" }], warnings: [{ name: "Bye Guy", problem: "bye" }] };
+  const s = content(item("lineup_saved", lineup));
+  assert.equal(s.subject, "Lineup saved: Mac Daddies, week 7");
+  assert.deepEqual(s.lines, ["Saved by Mike, Fri 9:14 PM ET.", "QB Joe Burrow (CIN)", "Bench: Bo Nix", "⚠ Bye Guy: on bye"]);
+  assert.equal(content(item("announcements", { ...lineup, commissioner: "lineup" })).subject, "From the commissioner: your week 7 lineup");
+  assert.equal(content(item("announcements", { commissioner: "reminder", team: "NSFW", week: 7 })).subject, "Reminder: set your week 7 lineup");
+  const dg = content(item("league_lineups", { mode: "digest", teams: [{ team: "NSFW", week: 7, by: "Alice", starters: [{ slot: "QB", name: "Goff" }] }, { team: "H.N.I.C", week: 7, starters: [] }] }));
+  assert.equal(dg.subject, "Lineup changes: 2 teams");
+  assert.deepEqual(dg.lines.slice(0, 2), ["NSFW (week 7, by Alice):", "QB Goff"]);
+  assert.equal(content(item("league_lineups", { mode: "instant", teams: [{ team: "NSFW", week: 7 }] })).subject, "NSFW changed their lineup");
+  assert.equal(content(item("league_waivers", { won: [{ team: "NSFW", player: "X", drop: "Y" }], claims: 3 })).lines[0], "NSFW: + X, − Y");
+  assert.equal(content(item("league_moves", { moves: [{ team: "NSFW", added: "X", dropped: null }] })).lines[0], "NSFW: + X");
+  const sc = content(item("scoring", { day: "2026-10-25", week: 7, unofficial: true, mine: { team: "Stealers", us: 80, opp: "NSFW", them: 90 },
+    matchups: [{ away: "Stealers", away_score: 80, home: "NSFW", home_score: 90 }], high: { team: "NSFW", points: 90 }, danger: { team: "Stealers", points: 80 },
+    corrections: [{ was: "NSFW", now: "Stealers" }] }));
+  assert.equal(sc.subject, "Week 7 scores after Sunday (unofficial)");
+  assert.deepEqual(sc.lines, ["Your matchup: Stealers 80.0, NSFW 90.0", "Stealers 80.0 @ NSFW 90.0", "Weekly high ($35 race): NSFW, 90.0",
+    "Guillotine danger (lowest so far): Stealers, 80.0", "Stat correction changed a result: NSFW → Stealers now wins.", "Scores are unofficial until the week is finalized."]);
+  assert.equal(content(item("league_trades", { status: "approved", from_team: "A", to_team: "B", summary: "A get X; B get Y" })).subject, "League trade completed: A and B");
+});
