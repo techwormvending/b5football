@@ -33,7 +33,7 @@
     return A.current(cfg, opts()).then(function (s) {
       if (!s) { me = null; return null; }
       return Promise.all([
-        A.api(cfg, s, "profiles?id=eq." + encodeURIComponent(s.user.id) + "&select=display_name,is_commissioner", {}, f),
+        A.api(cfg, s, "profiles?id=eq." + encodeURIComponent(s.user.id) + "&select=display_name,is_commissioner,is_admin,disabled", {}, f),
         A.api(cfg, s, "team_managers?user_id=eq." + encodeURIComponent(s.user.id) + "&select=team_id", {}, f)
       ]).then(function (r) {
         me = {
@@ -47,9 +47,10 @@
   }
 
   function refreshNav() {
-    var acct = document.getElementById("navAccount"), com = document.getElementById("navCommish");
+    var acct = document.getElementById("navAccount"), com = document.getElementById("navCommish"), adm = document.getElementById("navAdmin");
     if (acct) acct.textContent = me ? "Account" : "Sign in";
     if (com) com.hidden = !(me && me.profile && me.profile.is_commissioner);
+    if (adm) adm.hidden = !(me && me.profile && me.profile.is_admin);
   }
 
   // ---- #account ------------------------------------------------------------
@@ -207,52 +208,107 @@
   // ---- #commish ------------------------------------------------------------
   var cm = { teams: [], invites: [], managers: [], accounts: [], keep: null, shadow: [], msg: null };
 
-  function loadCommish() {
-    var s = me.session;
-    return Promise.all([
-      A.api(cfg, s, "teams?select=id,name,division&order=id", {}, f),
-      A.api(cfg, s, "invites?select=email,team_id,is_commissioner,invited_at,accepted_at&order=invited_at", {}, f),
-      A.api(cfg, s, "team_managers?select=team_id,user_id,profiles(display_name)&order=team_id", {}, f),
-      A.api(cfg, s, "rpc/keepalive_status", { method: "POST", body: "{}" }, f),
-      A.api(cfg, s, "profiles?select=id,display_name,is_commissioner&order=display_name", {}, f),
-      A.api(cfg, s, "invites?select=email,user_id&user_id=not.is.null", {}, f),
-      A.api(cfg, s, "pool_imports?season=eq." + Number(L.season) + "&select=week,status,source,attempts,attempted_at,succeeded_at,picks,teams,replaced_test,message,compare,triggered_by&order=week.desc", {}, f),
-      A.api(cfg, s, "shadow_results?season=eq." + Number(L.season) + "&select=week,team_id,mfl_score,our_score,matched,details&order=week,team_id", {}, f),
-      A.api(cfg, s, "live_compare?season=eq." + Number(L.season) + "&select=week,team_id,our_points,mfl_points,players,diff_since,checked_at&order=week.desc,team_id&limit=36", {}, f),
-      A.api(cfg, s, "board_settings?select=auto_recap,auto_awards", {}, f),
-      A.api(cfg, s, "board_threads?source_key=like.announcement:*&select=id,source_key", {}, f),
-      A.api(cfg, s, "league_settings?select=max_owners_per_team", {}, f),
-      A.api(cfg, s, "email_log?select=at,user_id,kind,status,reason,attempt&order=at.desc&limit=60", {}, f),
-      A.api(cfg, s, "nfl_games?season=eq." + Number(L.season) + "&select=week,kickoff", {}, f),
-      A.api(cfg, s, "rpc/notify_usage", { method: "POST", body: "{}" }, f),
-      A.api(cfg, s, "email_log?status=eq.sent&at=gte." + encodeURIComponent(new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString()) + "&select=at", {}, f)
-    ]).then(function (r) {
-      cm.emailLog = (r[12] && r[12].ok && r[12].data) || [];
-      cm.week = window.B5TeamPage ? window.B5TeamPage.currentWeek((r[13] && r[13].ok && r[13].data) || []) : null;
-      cm.usage = (r[14] && r[14].ok && r[14].data) || [];
-      var sentMonth = (r[15] && r[15].ok && r[15].data) || [], today = new Date().toISOString().slice(0, 10);
-      cm.emailCounts = { month: sentMonth.length, day: sentMonth.filter(function (x) { return String(x.at).slice(0, 10) === today; }).length };
-      cm.maxOwners = (r[11] && r[11].ok && r[11].data && r[11].data[0] && r[11].data[0].max_owners_per_team) || 2;
-      cm.board = (r[9] && r[9].ok && r[9].data && r[9].data[0]) || null;
-      cm.crossposted = {};
-      ((r[10] && r[10].ok && r[10].data) || []).forEach(function (t) { cm.crossposted[t.source_key] = t.id; });
-      var lc = (r[8] && r[8].ok && r[8].data) || [];
-      cm.live = lc.filter(function (x) { return x.week === (lc[0] || {}).week; });
-      cm.poolImports = (r[6] && r[6].ok && r[6].data) || [];
-      cm.shadow = (r[7] && r[7].ok && r[7].data) || [];
-      cm.teams = r[0].data || []; cm.invites = r[1].data || []; cm.managers = r[2].data || []; cm.keep = r[3].ok ? r[3].data : null;
-      // Signed-up accounts, labelled with their invite email (the commissioner's own account included).
+  var isCom = function () { return !!(me && me.profile && me.profile.is_commissioner); };
+  var isAdm = function () { return !!(me && me.profile && me.profile.is_admin); };
+  function loadCommish(page) {
+    var s = me.session, Q = {};
+    var get = function (path) { return A.api(cfg, s, path, {}, f); };
+    var rpc = function (n, b) { return A.api(cfg, s, "rpc/" + n, { method: "POST", body: JSON.stringify(b || {}) }, f); };
+    Q.roles = get("user_roles?select=user_id,role,granted_at");
+    Q.usage = rpc("notify_usage");
+    if (page === "commish") {
+      Q.teams = get("teams?select=id,name,division&order=id");
+      Q.invites = get("invites?select=email,team_id,is_commissioner,invited_at,accepted_at&order=invited_at");
+      Q.managers = get("team_managers?select=team_id,user_id,profiles(display_name)&order=team_id");
+      Q.profiles = get("profiles?select=id,display_name,is_commissioner,is_admin&order=display_name");
+      Q.inviteEmails = get("invites?select=email,user_id&user_id=not.is.null");
+      Q.board = get("board_settings?select=auto_recap,auto_awards");
+      Q.crossposts = get("board_threads?source_key=like.announcement:*&select=id,source_key");
+      Q.league = get("league_settings?select=max_owners_per_team");
+      Q.games = get("nfl_games?season=eq." + Number(L.season) + "&select=week,kickoff");
+      Q.requests = get("officer_requests?select=*&order=requested_at.desc&limit=40");
+    } else {
+      Q.keep = rpc("keepalive_status");
+      Q.poolImports = get("pool_imports?season=eq." + Number(L.season) + "&select=week,status,source,attempts,attempted_at,succeeded_at,picks,teams,replaced_test,message,compare,triggered_by&order=week.desc");
+      Q.shadow = get("shadow_results?season=eq." + Number(L.season) + "&select=week,team_id,mfl_score,our_score,matched,details&order=week,team_id");
+      Q.live = get("live_compare?season=eq." + Number(L.season) + "&select=week,team_id,our_points,mfl_points,players,diff_since,checked_at&order=week.desc,team_id&limit=36");
+      Q.emailLog = get("email_log?select=at,user_id,kind,status,reason,attempt&order=at.desc&limit=60");
+      Q.accounts = rpc("admin_accounts");
+      Q.health = rpc("admin_health");
+      Q.flags = get("feature_flags?select=key,enabled,description,updated_at&order=key");
+      Q.seasons = get("season_settings?select=season,pools,waivers,trades,notify&order=season.desc&limit=3");
+      Q.audit = get("audit_log?select=id,at,actor,actor_label,action,season,week,details&order=id.desc&limit=100");
+      Q.invites = get("invites?select=email,team_id,invited_at,accepted_at&order=invited_at");
+    }
+    var keys = Object.keys(Q);
+    return Promise.all(keys.map(function (k) { return Q[k]; })).then(function (rs) {
+      var R = {}, ok = function (k) { var x = R[k]; return x && x.ok ? x.data || [] : []; };
+      keys.forEach(function (k, i) { R[k] = rs[i]; });
+      cm.roles = ok("roles"); cm.usage = ok("usage");
+      var u = { day: 0, month: 0 }; cm.usage.forEach(function (x) { u.day += x.today; u.month += x.month; }); cm.emailCounts = u;
+      cm.requests = ok("requests");
+      cm.emailLog = ok("emailLog"); cm.health = R.health && R.health.ok ? R.health.data : null;
+      cm.flags = ok("flags"); cm.seasons = ok("seasons"); cm.audit = ok("audit");
+      cm.week = window.B5TeamPage ? window.B5TeamPage.currentWeek(ok("games")) : null;
+      cm.maxOwners = (ok("league")[0] || {}).max_owners_per_team || 2;
+      cm.board = ok("board")[0] || null;
+      cm.crossposted = {}; ok("crossposts").forEach(function (t) { cm.crossposted[t.source_key] = t.id; });
+      var lc = ok("live"); cm.live = lc.filter(function (x) { return x.week === (lc[0] || {}).week; });
+      cm.poolImports = ok("poolImports"); cm.shadow = ok("shadow");
+      cm.teams = ok("teams"); cm.invites = ok("invites"); cm.managers = ok("managers"); cm.keep = R.keep && R.keep.ok ? R.keep.data : null;
+      // Accounts: an administrator gets them with emails (admin_accounts); a commissioner from profiles + invite emails.
       var emails = {};
-      (r[5].data || []).forEach(function (i) { emails[i.user_id] = i.email; });
+      ok("inviteEmails").forEach(function (i) { emails[i.user_id] = i.email; });
       if (me.session.user.email) emails[me.session.user.id] = me.session.user.email;
-      cm.accounts = (r[4].data || []).map(function (p) {
-        return { id: p.id, label: (p.display_name || "(no name)") + (emails[p.id] ? " (" + emails[p.id] + ")" : "") + (p.id === me.session.user.id ? " · you" : "") };
+      var adminAccts = ok("accounts");
+      cm.adminAccounts = adminAccts;
+      var base = adminAccts.length ? adminAccts.map(function (a) { emails[a.user_id] = a.email; return { id: a.user_id, display_name: a.display_name }; }) : ok("profiles");
+      cm.accounts = base.map(function (p) {
+        return { id: p.id, name: p.display_name || "(no name)", label: (p.display_name || "(no name)") + (emails[p.id] ? " (" + emails[p.id] + ")" : "") + (p.id === me.session.user.id ? " · you" : "") };
       });
-      var bad = r.filter(function (x) { return !x.ok; });
-      if (bad.length) cm.msg = { err: "Some data didn't load: " + bad[0].error };
-      return cm.week ? A.api(cfg, s, "rpc/lineup_status", { method: "POST", body: JSON.stringify({ p_season: Number(L.season), p_week: cm.week }) }, f)
+      var bad = keys.filter(function (k) { return !R[k].ok; });
+      if (bad.length) cm.msg = { err: "Some data didn't load (" + bad.join(", ") + "): " + R[bad[0]].error };
+      return page === "commish" && cm.week ? A.api(cfg, s, "rpc/lineup_status", { method: "POST", body: JSON.stringify({ p_season: Number(L.season), p_week: cm.week }) }, f)
         .then(function (x) { cm.lineups = (x.ok && x.data) || []; }) : null;
     });
+  }
+
+  var accountName = function (id) { var a = (cm.accounts || []).filter(function (x) { return x.id === id; })[0]; return a ? a.name : "an account"; };
+  // League officers: everyone holding a role, with grant/revoke controls only for the role(s) you hold.
+  function officersHtml() {
+    var held = {};
+    (cm.roles || []).forEach(function (r) { (held[r.user_id] = held[r.user_id] || []).push(r.role); });
+    var badge = function (r) { return '<span class="tag role-' + r + '">' + (r === "admin" ? "Administrator" : "Commissioner") + "</span>"; };
+    var can = function (r) { return r === "admin" ? isAdm() : isCom(); };
+    var rows = Object.keys(held).map(function (u) {
+      return "<li><b>" + esc(accountName(u)) + "</b>" + (u === me.session.user.id ? ' <span class="muted small">(you)</span>' : "") + " " + held[u].sort().map(badge).join(" ") +
+        held[u].filter(can).map(function (r) { return ' <button class="linkish" type="button" data-cm="revoke-role" data-user="' + esc(u) + '" data-role="' + r + '">revoke ' + (r === "admin" ? "administrator" : "commissioner") + "</button>"; }).join("") + "</li>";
+    }).join("");
+    var grantable = ["commissioner", "admin"].filter(can);
+    var form = grantable.length && (cm.accounts || []).length ? '<form class="po-inline" data-cm="grant-role"><label>Account <select name="user" required><option value="">Pick an account</option>' +
+      cm.accounts.map(function (a) { return '<option value="' + esc(a.id) + '">' + esc(a.label) + "</option>"; }).join("") + "</select></label>" +
+      '<label>Role <select name="role">' + grantable.map(function (r) { return '<option value="' + r + '">' + (r === "admin" ? "Administrator" : "Commissioner") + "</option>"; }).join("") + "</select></label>" +
+      '<button class="btn ghost" type="submit">Grant</button></form>' : "";
+    return '<div class="card"><h3>League officers</h3><ul class="checks">' + (rows || "<li>No officers?</li>") + "</ul>" + form +
+      '<p class="muted small">Commissioners run the league (trades, scores, money, settings, moderation); administrators keep the site running (health, jobs, email, accounts, modes, audit log). ' +
+      "Commissioners grant and revoke the commissioner role, administrators the administrator role; there's always at least one of each. Every change is in the audit log and emailed to the person.</p></div>";
+  }
+  // Actions on a commissioner's own team waiting for another commissioner.
+  function requestsHtml() {
+    var mine = me.session.user.id, myTeams = (me.teams || []).map(function (t) { return t.team_id; });
+    var pending = (cm.requests || []).filter(function (r) { return r.status === "pending"; }), done = (cm.requests || []).filter(function (r) { return r.status !== "pending"; }).slice(0, 8);
+    if (!pending.length && !done.length) return "";
+    var labels = { trade_decide: "Trade decision", reverse_drop: "Drop reversal", score_override: "Score override" };
+    var row = function (r) {
+      var conflicted = r.requested_by === mine || r.teams.some(function (t) { return myTeams.indexOf(t) >= 0; });
+      return "<li><b>" + esc(labels[r.action] || r.action) + "</b> requested by " + esc(accountName(r.requested_by)) + ' <span class="muted small">' + esc(et(r.requested_at)) + "</span><br>" + esc(r.summary) +
+        (r.status === "pending" ? (conflicted ? (r.requested_by === mine ? ' <button class="linkish" type="button" data-cm="cancel-request" data-id="' + r.id + '">cancel</button>' : ' <span class="muted small">(your team: another commissioner decides)</span>')
+          : ' <button class="btn" type="button" data-cm="decide-request" data-approve="1" data-id="' + r.id + '">Approve</button> <button class="btn ghost" type="button" data-cm="decide-request" data-approve="0" data-id="' + r.id + '">Reject</button>')
+          : ' <span class="tag">' + esc(r.status) + "</span>" + (r.decided_by ? ' <span class="muted small">by ' + esc(accountName(r.decided_by)) + "</span>" : "")) + "</li>";
+    };
+    return '<div class="card"><h3>Waiting for another commissioner</h3><p class="muted small">A commissioner\'s trade decisions, drop reversals and score overrides on his own team need a different commissioner when the league has one.</p>' +
+      (pending.length ? '<ul class="checks">' + pending.map(row).join("") + "</ul>" : '<p class="muted">Nothing waiting.</p>') +
+      (done.length ? '<details><summary>Recent</summary><ul class="checks">' + done.map(row).join("") + "</ul></details>" : "") + "</div>";
   }
 
   // This week's lineups: submitted or not, "Email lineup to owners", reminders to the rest.
@@ -278,7 +334,8 @@
     var c = cm.emailCounts || { day: 0, month: 0 }, names = {};
     (cm.accounts || []).forEach(function (a) { names[a.id] = a.label || a.id; });
     var who = function (u) { return u ? names[u] || "account " + String(u).slice(0, 8) : "deleted account"; };
-    var kinds = { dm: "Direct message", mentions: "@mention", trades: "Trade", waivers: "Waivers", announcements: "Announcement", lineup: "Lineup reminder" };
+    var kinds = { dm: "Direct message", mentions: "@mention", trades: "Trade", waivers: "Waivers", announcements: "Commissioner", lineup: "Lineup reminder", lineup_saved: "Lineup saved",
+      league_lineups: "Other lineups", league_trades: "League trade", league_waivers: "League waivers", league_moves: "League moves", scoring: "Daily scoring", account: "Account notice" };
     var rows = (cm.emailLog || []).map(function (x) {
       return "<tr><td>" + esc(et(x.at)) + "</td><td>" + esc(kinds[x.kind] || x.kind) + "</td><td>" + esc(who(x.user_id)) + "</td><td>" +
         (x.status === "sent" ? "Sent" : x.status === "failed" ? '<b class="po-owe">Failed</b>' + (x.attempt > 1 ? " (retry)" : "") : '<span class="muted">Skipped</span>') +
@@ -287,28 +344,21 @@
     var u = {}; (cm.usage || []).forEach(function (x) { u[x.priority] = x.today; });
     var near = c.day >= 60 ? '<p class="acct-msg err">Near the free-tier daily limit (' + esc(c.day) + " of 95 today). Scoring digests pause at 60, lineup emails at 75, waiver and league emails at 85; DMs, trades and commissioner messages may use up to 95.</p>"
       : c.month >= 2400 ? '<p class="acct-msg err">Near the monthly limit (' + esc(c.month) + " of 2,900). Lower-priority emails pause first.</p>" : "";
+    if (!isAdm()) rows = "";   // the log is the administrators'; commissioners see the counts
     return '<div class="card"><h3>Email notifications</h3>' + near + '<p class="small">Sent today: <b>' + esc(c.day) + "</b> of 95 · this month: <b>" + esc(c.month) + "</b> of 2,900 (Resend's free plan: 100 a day, 3,000 a month).</p>" +
       '<p class="muted small">Today by priority: DMs/trades/commissioner ' + esc(u[1] || 0) + " · waivers/league " + esc(u[2] || 0) + " · lineups " + esc(u[3] || 0) + " · scoring " + esc(u[4] || 0) + ".</p>" +
       (rows ? '<details><summary>Latest ' + (cm.emailLog || []).length + ' (type, recipient, status; never the contents)</summary><div class="table-wrap"><table class="cm-table"><thead><tr><th>When</th><th>Type</th><th>To</th><th>Status</th></tr></thead><tbody>' + rows + "</tbody></table></div></details>"
-        : '<p class="muted small">No emails yet.</p>') + "</div>";
+        : isAdm() ? '<p class="muted small">No emails yet.</p>' : "") +
+      (isAdm() ? '<p><button class="btn ghost" type="button" data-cm="test-email">Send me a test email</button> <button class="btn ghost" type="button" data-cm="retry-emails">Retry failed emails (last 7 days)</button></p>' : "") + "</div>";
   }
 
   function renderCommish(root) {
     if (!ready()) { root.innerHTML = '<section><h2>Commissioner</h2><div class="card"><p>Sign-in isn\'t set up yet.</p></div></section>'; return; }
     if (!me) { root.innerHTML = '<section><h2>Commissioner</h2><div class="card"><p><a href="#account">Sign in</a> first.</p></div></section>'; return; }
-    if (!(me.profile && me.profile.is_commissioner)) { root.innerHTML = '<section><h2>Commissioner</h2><div class="card"><p>This screen is for the commissioner only.</p></div></section>'; return; }
+    if (!isCom()) { root.innerHTML = '<section><h2>Commissioner</h2><div class="card"><p>This screen is for commissioners.' + (isAdm() ? ' Your tools are on the <a href="#admin">Admin</a> page.' : "") + "</p></div></section>"; return; }
     var m = cm.msg ? '<p class="acct-msg ' + (cm.msg.err ? "err" : "ok") + '">' + esc(cm.msg.err || cm.msg.ok) + "</p>" : "";
     cm.msg = null;
 
-    var hb = (cm.keep && cm.keep.heartbeats) || [];
-    var warn = window.B5Keepalive ? window.B5Keepalive.warning(cm.keep, Date.now()) : null;
-    var keep = '<div class="card"><h3>Database keep-alive</h3>' +
-      (warn ? '<p class="acct-msg err">' + esc(warn) + "</p>" : '<p class="acct-msg ok">Keep-alive is running.</p>') +
-      '<ul class="checks">' + (hb.length ? hb.map(function (h) {
-        return "<li>" + esc(h.name === "cloudflare-cron" ? "Cloudflare Worker" : h.name === "nightly" ? "GitHub nightly job (backup)" : h.name) + ": " + esc(ago(h.at)) + " (" + esc(et(h.at)) + ")</li>";
-      }).join("") : "<li>No heartbeats yet.</li>") + "</ul></div>";
-
-    var shadow = shadowHtml(cm.shadow);
     var teamOpts = '<option value="">No team</option>' + cm.teams.map(function (t) { return window.B5Team.option(t.id); }).join("");
     var seedTeams = cm.teams.length ? "" :
       '<p class="acct-msg err">No teams in the database yet. <button class="btn ghost" type="button" data-cm="seed-teams">Add the ' + esc(window.B5Team.ids().length) + " teams from the site</button></p>";
@@ -345,7 +395,7 @@
     }).join("") + "</ul>" + '<p class="muted small">Up to ' + esc(maxOwners) + " owners per team, each with his own login; an account owns one team. Removing one owner leaves the other.</p>"
       : '<p class="muted">No managers have joined yet.</p>';
 
-    root.innerHTML = "<section><h2>Commissioner</h2>" + m + poolImportHtml(cm.poolImports || []) + '<div class="card"><h3>Payouts</h3><p>Fees, payouts, manual awards, overrides and CSV export: <a href="#commish-payouts">open the payout tools</a>.</p></div>' + keep + lineupsHtml() + emailLogHtml() + boardHtml() + liveCompareHtml(cm.live || []) + shadow +
+    root.innerHTML = "<section><h2>Commissioner</h2>" + m + requestsHtml() + '<div class="card"><h3>Payouts</h3><p>Fees, payouts, manual awards, overrides and CSV export: <a href="#commish-payouts">open the payout tools</a>.</p></div>' + lineupsHtml() + emailLogHtml() + boardHtml() + officersHtml() +
       '<div class="card"><h3>Invite a manager</h3>' + seedTeams +
       '<form class="acct-form" data-cm="invite">' +
       '<label>Email<input name="email" type="email" autocomplete="off" required></label>' +
@@ -357,6 +407,61 @@
       "Removing an invite stops new sign-ups; to cut off someone who already joined, also remove them from their team.</p></div>" +
       '<div class="card"><h3>Invites</h3>' + invites + "</div>" +
       '<div class="card"><h3>Team managers</h3>' + mgrs + assign + "</div></section>";
+  }
+
+  function renderAdmin(root) {
+    if (!ready()) { root.innerHTML = '<section><h2>Admin</h2><div class="card"><p>Sign-in isn\'t set up yet.</p></div></section>'; return; }
+    if (!me) { root.innerHTML = '<section><h2>Admin</h2><div class="card"><p><a href="#account">Sign in</a> first.</p></div></section>'; return; }
+    if (!isAdm()) { root.innerHTML = '<section><h2>Admin</h2><div class="card"><p>This screen is for administrators.</p></div></section>'; return; }
+    var m = cm.msg ? '<p class="acct-msg ' + (cm.msg.err ? "err" : "ok") + '">' + esc(cm.msg.err || cm.msg.ok) + "</p>" : "";
+    cm.msg = null;
+    var h = cm.health || {}, hb = h.heartbeats || (cm.keep && cm.keep.heartbeats) || [];
+    var warn = window.B5Keepalive ? window.B5Keepalive.warning(cm.keep, Date.now()) : null;
+    var jobs = (h.jobs || []).map(function (j) {
+      return "<tr><td>" + esc(j.job) + '</td><td class="muted small">' + esc(j.schedule) + "</td><td>" + (j.last_status === "failed" ? '<b class="po-owe">failed</b>' : esc(j.last_status || "–")) +
+        '</td><td class="muted small">' + esc(j.last_run ? ago(j.last_run) : "") + "</td></tr>";
+    }).join("");
+    var ls = h.live_scorer, em = h.email || {};
+    var health = '<div class="card"><h3>System health</h3>' + (warn ? '<p class="acct-msg err">' + esc(warn) + "</p>" : '<p class="acct-msg ok">Keep-alive is running.</p>') +
+      '<ul class="checks">' + hb.map(function (x) { return "<li>" + esc(x.name === "cloudflare-cron" ? "Cloudflare keep-alive Worker" : x.name === "nightly" ? "GitHub nightly job" : x.name) + ": " + esc(ago(x.at)) + " (" + esc(et(x.at)) + ")</li>"; }).join("") +
+      (ls ? "<li>Live scorer (b5-live): week " + esc(ls.week) + " " + esc(ls.status) + ", last pass " + esc(ago(ls.updated_at)) + (ls.delayed ? ' <b class="po-owe">delayed</b>' : "") + "</li>" : "") +
+      (h.pool_import ? "<li>Confidence import: week " + esc(h.pool_import.week) + " " + esc(h.pool_import.status) + " (" + esc(et(h.pool_import.at)) + ")</li>" : "") +
+      "<li>Email: " + esc(em.pending || 0) + " waiting, " + esc(em.failed_24h || 0) + " failed in 24 h" + (em.last_sent ? ", last sent " + esc(ago(em.last_sent)) : "") + "</li></ul>" +
+      (jobs ? '<details><summary>Scheduled jobs (pg_cron)</summary><div class="table-wrap"><table class="cm-table"><thead><tr><th>Job</th><th>Schedule</th><th>Last run</th><th></th></tr></thead><tbody>' + jobs + "</tbody></table></div></details>" : "") +
+      '<p class="small">Re-run GitHub jobs: <a href="https://github.com/techwormvending/b5football/actions/workflows/finalize.yml" target="_blank" rel="noopener">nightly finalization + MFL/nflverse syncs</a> · ' +
+      '<a href="https://github.com/techwormvending/b5football/actions/workflows/pool-import.yml" target="_blank" rel="noopener">pool import backfill</a> · ' +
+      '<a href="https://github.com/techwormvending/b5football/actions/workflows/deploy-functions.yml" target="_blank" rel="noopener">deploy Edge Functions</a> (Run workflow on GitHub).</p></div>';
+    var flags = '<div class="card"><h3>Feature flags and season modes</h3><ul class="checks">' + (cm.flags || []).map(function (x) {
+      return '<li><label class="acct-check"><input type="checkbox" data-cm="flag" data-key="' + esc(x.key) + '"' + (x.enabled ? " checked" : "") + "> <b>" + esc(x.key) + "</b></label> " + '<span class="muted small">' + esc(x.description) + "</span></li>";
+    }).join("") + "</ul>" + (cm.seasons || []).map(function (ss) {
+      var sel = function (key, val, opts) {
+        return "<label>" + esc(key) + ' <select data-cm="mode" data-season="' + esc(ss.season) + '" data-key="' + esc(key) + '">' + opts.map(function (o) {
+          return '<option value="' + esc(JSON.stringify(o[0])) + '"' + (JSON.stringify(o[0]) === JSON.stringify(val) ? " selected" : "") + ">" + esc(o[1]) + "</option>";
+        }).join("") + "</select></label>";
+      };
+      var tf = [[false, "test (MFL official)"], [true, "live"]];
+      return "<h4>" + esc(ss.season) + '</h4><div class="mode-row">' + sel("pools.mode", (ss.pools || {}).mode || "closed", [["test", "test"], ["official", "official"], ["closed", "closed"]]) +
+        sel("waivers.live", !!(ss.waivers || {}).live, tf) + sel("trades.live", !!(ss.trades || {}).live, tf) +
+        sel("notify.lineupReminders", (ss.notify || {}).lineupReminders !== false, [[true, "on"], [false, "off"]]) + "</div>";
+    }).join("") + '<p class="muted small">Each change is in the audit log. Scoring, waiver, payout and trade rules themselves are the commissioners\'.</p></div>';
+    var accts = '<div class="card"><h3>Accounts</h3><div class="table-wrap"><table class="cm-table"><thead><tr><th>Account</th><th>Team</th><th>Roles</th><th>Last sign-in</th><th></th></tr></thead><tbody>' +
+      (cm.adminAccounts || []).map(function (a) {
+        return "<tr" + (a.disabled ? ' class="muted"' : "") + "><td>" + esc(a.display_name || "(no name)") + '<br><span class="muted small">' + esc(a.email || "") + "</span></td><td>" + (a.teams || []).map(tlink).join(", ") +
+          "</td><td>" + (a.roles || []).map(function (r) { return '<span class="tag">' + (r === "admin" ? "Admin" : "Commish") + "</span>"; }).join(" ") + (a.disabled ? ' <span class="tag cm-bad">Disabled</span>' : "") +
+          '</td><td class="small">' + esc(a.last_sign_in_at ? et(a.last_sign_in_at) : "never") + '</td><td class="cm-actions">' +
+          (a.email ? '<button class="btn ghost" type="button" data-cm="send" data-email="' + esc(a.email) + '">Send link</button>' : "") +
+          '<button class="btn ghost" type="button" data-cm="sign-out" data-user="' + esc(a.user_id) + '">Sign out everywhere</button>' +
+          '<button class="btn ghost" type="button" data-cm="' + (a.disabled ? "enable" : "disable") + '" data-user="' + esc(a.user_id) + '">' + (a.disabled ? "Enable" : "Disable") + "</button></td></tr>";
+      }).join("") + "</tbody></table></div>" +
+      ((cm.invites || []).filter(function (i) { return !i.accepted_at; }).length ? "<h4>Invites not used yet</h4><ul class=\"checks\">" + cm.invites.filter(function (i) { return !i.accepted_at; }).map(function (i) {
+        return "<li>" + esc(i.email) + " " + tlink(i.team_id) + ' <button class="linkish" type="button" data-cm="remove-invite" data-email="' + esc(i.email) + '">remove invite</button></li>';
+      }).join("") + "</ul>" : "") +
+      '<p class="muted small">A disabled account keeps its data but has no team rights, no officer powers and no emails; its sessions end (an access token already issued lasts up to an hour).</p></div>';
+    var audit = '<div class="card"><h3>Audit log</h3><details><summary>Latest ' + (cm.audit || []).length + "</summary><ul class=\"checks audit-list\">" + (cm.audit || []).map(function (a) {
+      return "<li><b>" + esc(a.action) + '</b> <span class="muted small">' + esc(et(a.at)) + " · " + esc(a.actor ? accountName(a.actor) : a.actor_label || "system") + "</span>" +
+        '<br><span class="muted small">' + esc(JSON.stringify(a.details).slice(0, 220)) + "</span></li>";
+    }).join("") + "</ul></details></div>";
+    root.innerHTML = "<section><h2>Admin</h2>" + m + health + emailLogHtml() + flags + accts + officersHtml() + poolImportHtml(cm.poolImports || []) + liveCompareHtml(cm.live || []) + shadowHtml(cm.shadow || []) + audit + "</section>";
   }
 
   // Confidence Pool official import (2026 test mode): one row per week, newest first.
@@ -445,14 +550,18 @@
       '<p class="muted small">Our engine scores MFL\'s starters from nflverse stats; MFL stays official for 2026. A week appears once MFL posts its scores.</p></div>';
   }
 
-  function startCommish(root) {
-    root.innerHTML = '<section><h2>Commissioner</h2><p class="muted">Loading…</p></section>';
-    var redraw = function () { return loadCommish().then(function () { renderCommish(root); }); };
+  function startCommish(root, page) {
+    page = page || "commish";
+    var title = page === "admin" ? "Admin" : "Commissioner", render = page === "admin" ? renderAdmin : renderCommish;
+    root.innerHTML = '<section><h2>' + title + '</h2><p class="muted">Loading…</p></section>';
+    var redraw = function () { return loadCommish(page).then(function () { render(root); }); };
     load().then(function () {
       refreshNav();
-      if (me && me.profile && me.profile.is_commissioner) return redraw();
-      renderCommish(root);
-    }, function () { root.innerHTML = '<section><h2>Commissioner</h2><p class="acct-msg err">Couldn\'t load.</p></section>'; });
+      if (page === "admin" ? isAdm() : isCom()) return redraw();
+      render(root);
+    }, function () { root.innerHTML = '<section><h2>' + title + '</h2><p class="acct-msg err">Couldn\'t load.</p></section>'; });
+    var rpcCall = function (n, b) { return A.api(cfg, me.session, "rpc/" + n, { method: "POST", body: JSON.stringify(b || {}) }, f); };
+    var said = function (r, text) { return r.ok ? { msgOk: text || (typeof r.data === "string" ? r.data : "Done.") } : r; };
 
     var act = function (p) { return p.then(function (r) { cm.msg = r && r.ok === false ? { err: r.error } : (r && r.msgOk ? { ok: r.msgOk } : cm.msg); return redraw(); }); };
 
@@ -463,9 +572,18 @@
         var wk = new FormData(pf).get("week");
         act(A.api(cfg, me.session, "rpc/run_pool_import", { method: "POST", body: JSON.stringify(wk ? { p_week: Number(wk) } : {}) }, f).then(function (r) {
           if (!r.ok) return r;
-          setTimeout(function () { if (location.hash === "#commish") redraw(); }, 20000);   // results land in about 10-20 s
+          setTimeout(function () { if (location.hash === "#" + page) redraw(); }, 20000);   // results land in about 10-20 s
           return { msgOk: (r.data || "Import requested") + ". Results appear here in a few seconds." };
         }));
+        return;
+      }
+      var gf = e.target.closest("[data-cm='grant-role']");
+      if (gf) {
+        e.preventDefault();
+        var gd = new FormData(gf);
+        if (!window.confirm("Grant " + (gd.get("role") === "admin" ? "administrator" : "commissioner") + " to " + accountName(gd.get("user")) + "?")) return;
+        act(rpcCall("grant_role", { p_user: gd.get("user"), p_role: gd.get("role") }).then(function (r) { return said(r, r.ok ? r.data + ": " + accountName(gd.get("user")) + " (they get an email)." : null); })
+          .then(function (r) { return load().then(function () { refreshNav(); return r; }); }));
         return;
       }
       var af = e.target.closest("[data-cm='assign']");
@@ -494,6 +612,18 @@
     });
 
     root.addEventListener("change", function (e) {
+      var fl = e.target.closest("[data-cm='flag']");
+      if (fl) {
+        act(A.api(cfg, me.session, "feature_flags?key=eq." + encodeURIComponent(fl.dataset.key), { method: "PATCH", body: JSON.stringify({ enabled: fl.checked }), headers: { Prefer: "return=minimal" } }, f)
+          .then(function (r) { return said(r, fl.dataset.key + (fl.checked ? " on." : " off.")); }));
+        return;
+      }
+      var md = e.target.closest("[data-cm='mode']");
+      if (md) {
+        if (!window.confirm("Switch " + md.dataset.key + " for " + md.dataset.season + " to " + md.value + "?")) { redraw(); return; }
+        act(rpcCall("admin_set_mode", { p_season: Number(md.dataset.season), p_key: md.dataset.key, p_value: JSON.parse(md.value) }).then(function (r) { return said(r); }));
+        return;
+      }
       var t = e.target.closest("[data-cm='board-toggle']");
       if (!t) return;
       var patch = {}; patch[t.dataset.key] = t.checked; patch.updated_at = new Date().toISOString();
@@ -526,6 +656,26 @@
         var imgs = a.image && /^https:\/\//.test(a.image) ? [a.image] : [];
         act(A.api(cfg, me.session, "rpc/board_new_thread", { method: "POST", body: JSON.stringify({ p_title: a.title, p_body: text || a.title, p_images: imgs, p_source_key: b.dataset.key }) }, f)
           .then(function (r) { return r.ok ? { msgOk: "Posted to the board." } : r; }));
+      } else if (kind === "revoke-role") {
+        if (!window.confirm("Revoke " + (b.dataset.role === "admin" ? "administrator" : "commissioner") + " from " + accountName(b.dataset.user) + "?")) return;
+        act(rpcCall("revoke_role", { p_user: b.dataset.user, p_role: b.dataset.role }).then(function (r) { return said(r, r.ok ? r.data + " (they get an email)." : null); })
+          .then(function (r) { return load().then(function () { refreshNav(); return r; }); }));
+      } else if (kind === "decide-request") {
+        var approve = b.dataset.approve === "1", note = window.prompt((approve ? "Approve" : "Reject") + " this request? Note (optional):", "");
+        if (note == null) return;
+        act(rpcCall("decide_officer_request", { p_id: Number(b.dataset.id), p_approve: approve, p_note: note || null }).then(function (r) { return said(r); }));
+      } else if (kind === "cancel-request") {
+        act(rpcCall("cancel_officer_request", { p_id: Number(b.dataset.id) }).then(function (r) { return said(r, "Request cancelled."); }));
+      } else if (kind === "sign-out") {
+        if (!window.confirm("Sign " + accountName(b.dataset.user) + " out of every session?")) return;
+        act(rpcCall("admin_sign_out", { p_user: b.dataset.user }).then(function (r) { return said(r); }));
+      } else if (kind === "disable" || kind === "enable") {
+        if (kind === "disable" && !window.confirm("Disable " + accountName(b.dataset.user) + "? They lose team rights, officer powers and emails until re-enabled.")) return;
+        act(rpcCall("admin_set_disabled", { p_user: b.dataset.user, p_disabled: kind === "disable" }).then(function (r) { return said(r); }));
+      } else if (kind === "test-email") {
+        act(rpcCall("admin_test_email").then(function (r) { return said(r); }));
+      } else if (kind === "retry-emails") {
+        act(rpcCall("admin_retry_failed_emails").then(function (r) { return said(r, r.ok ? r.data + " failed email(s) queued again." : null); }));
       } else if (kind === "email-lineup") {
         b.disabled = true;
         act(A.api(cfg, me.session, "rpc/commish_email_lineup", { method: "POST", body: JSON.stringify({ p_season: Number(L.season), p_week: cm.week, p_team: b.dataset.team }) }, f)
@@ -587,7 +737,7 @@
   window.B5Account = {
     start: function (page, root) {
       if (page === "account") startAccount(root);
-      else if (page === "commish") startCommish(root);
+      else if (page === "commish" || page === "admin") startCommish(root, page);
     },
     unsubscribe: unsubscribe,
     presence: presence,

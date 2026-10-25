@@ -185,7 +185,7 @@
     st.busy = true;
     return p.then(function (r) {
       st.busy = false;
-      st.msg = r.ok ? { ok: okMsg } : { err: friendly(r.error) };
+      st.msg = r.ok ? { ok: typeof okMsg === "function" ? okMsg(r) : okMsg } : { err: friendly(r.error) };
       if (r.ok && then) return then(r);
       return (st.mode === "list" ? loadTrades() : Promise.resolve()).then(render);
     });
@@ -208,7 +208,7 @@
       var t = st.trades.filter(function (x) { return x.id === id; })[0] || {};
       var note = root.prompt((k === "approve" ? "Approve" : "Reject") + " this trade? Note for both teams (optional):" + (t.commissioner_party ? "\n\n⚠ You own one of these teams: this decision is flagged and recorded in the audit log." : ""), "");
       if (note == null) return;
-      after(rpc("trade_decide", { p_trade: id, p_approve: k === "approve", p_note: note || null }), k === "approve" ? (t.test ? "Approved (test: rosters unchanged)." : "Approved: rosters updated and posted to the Board.") : "Rejected.");
+      after(rpc("trade_decide", { p_trade: id, p_approve: k === "approve", p_note: note || null }), function (r) { return /another commissioner|flagged/.test(String(r.data)) ? r.data + "." : k === "approve" ? (t.test ? "Approved (test: rosters unchanged)." : "Approved: rosters updated and posted to the Board.") : "Rejected."; });
     }
   }
 

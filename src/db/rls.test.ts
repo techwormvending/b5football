@@ -22,7 +22,7 @@ async function seed(db: PGlite) {
       ('${COMMISH}', 'commish@example.com', '{"display_name":"Commish"}'),
       ('${ALICE}', 'alice@example.com', '{}'),
       ('${BOB}', 'bob@example.com', '{}');
-    update public.profiles set is_commissioner = true where id = '${COMMISH}';
+    update public.profiles set is_commissioner = true, is_admin = true where id = '${COMMISH}';   -- like the league's real account: both roles
     insert into public.teams (id, name, division) values ('0001', 'NSFW', 'Black'), ('0002', 'Stealers', 'Gold');
     insert into public.team_managers values ('0001', '${ALICE}'), ('0002', '${BOB}');
     insert into public.nfl_players (id, name, position, nfl_team) values
@@ -211,7 +211,7 @@ describe("commissioner", () => {
     assert.equal(await affected(db, user(COMMISH), `update public.transactions set status = 'approved', decided_by = '${COMMISH}', decided_at = now() where id = 1`), 1);
     assert.equal(await affected(db, user(COMMISH), `update public.standings set wins = 5 where team_id = '0001'`), 1);
     assert.equal(await affected(db, user(COMMISH), `insert into public.score_overrides (season, week, target_key, type, points, reason) values (${S}, ${W}, 'DEF:PHI', 'points', 10, 'Forfeit')`), 1);
-    assert.equal((await rows(db, user(COMMISH), `select * from public.audit_log`)).length, 1);
+    assert.equal((await rows(db, user(COMMISH), `select * from public.audit_log where action = 'seed'`)).length, 1, "(he's also an administrator, who reads the audit log)");
     assert.deepEqual(await rows(db, user(COMMISH), `select title from public.announcements order by id`), [{ title: "Live" }, { title: "Draft" }]);
     assert.equal(await affected(db, user(COMMISH), `update public.profiles set is_commissioner = true where id = '${BOB}'`), 1);
   });
@@ -694,9 +694,9 @@ describe("pools: survivor and confidence picks", () => {
     assert.equal(await tick("2026-12-08T11:00:00Z"), "not in test mode", "2027: no MFL import");
   });
 
-  test("Run import now: commissioner only; the import log is commissioner only", async () => {
+  test("Run import now: administrators only; the import log is for officers", async () => {
     await db.exec(`insert into public.nfl_games (season, week, game_key, home, away, kickoff) values (${S}, 5, 'A@B', 'B', 'A', now() - interval '2 days')`);
-    await assert.rejects(as(db, user(ALICE), tx => tx.query(`select public.run_pool_import()`)), /Only the commissioner/);
+    await assert.rejects(as(db, user(ALICE), tx => tx.query(`select public.run_pool_import()`)), /Only an administrator/);
     await denied(db, anon, `select public.run_pool_import()`, /permission denied/);
     const [r] = await rows(db, user(COMMISH), `select public.run_pool_import(5) as r`);
     assert.match((r as { r: string }).r, /Import requested for 2026 week 5/);
@@ -899,7 +899,7 @@ describe("co-owners (up to 2 per team)", () => {
     assert.equal((await rows(db, user(MIKE), `select * from public.audit_log`)).length, 0);
     await denied(db, user(MIKE), `update public.profiles set is_commissioner = true where id = '${MIKE}'`, /commissioner|row-level/).catch(async () =>
       assert.deepEqual(await rows(db, user(MIKE), `select is_commissioner from public.profiles where id = '${MIKE}'`), [{ is_commissioner: false }]));
-    await denied(db, user(MIKE), `select public.run_pool_import()`, /Only the commissioner|permission denied/);
+    await denied(db, user(MIKE), `select public.run_pool_import()`, /Only an administrator|permission denied/);
     // ...but the team is theirs too: Mike sets Mac Daddies' lineup like Adam does.
     await as(db, user(MIKE), tx => tx.query(`select public.save_lineup(${S}, ${W}, '0011', array['QB-MD',null,null,null,null,null,null,null,null])`));
     assert.deepEqual(await rows(db, user(COMMISH), `select actor, kind from public.team_activity where team_id = '0011'`), [{ actor: MIKE, kind: "lineup" }]);
@@ -2004,6 +2004,173 @@ describe("open lineups and more email types", () => {
     const tok = (await db.query<{ t: string }>(`select private.notify_token('${BOB}', 'league_lineups') as t`)).rows[0]!.t;
     assert.equal((await rowsT(db, anon, `select public.notify_unsubscribe($1) as k`, [tok]))[0]!.k, "league_lineups");
     assert.equal((await db.query<{ v: string }>(`select league_lineups as v from public.notify_settings where user_id = '${BOB}'`)).rows[0]!.v, "off");
+  });
+});
+
+describe("roles: administrator and commissioner", () => {
+  const ADMIN = "00000000-0000-0000-0000-0000000000ad";   // administrator only, no team
+  const COM2 = "00000000-0000-0000-0000-0000000000c2";    // commissioner only, no team
+  const T = 2028;
+  beforeEach(async () => {
+    await db.exec(`
+      insert into auth.users (id, email, raw_user_meta_data) values ('${ADMIN}', 'admin@example.com', '{"display_name":"Ada"}'), ('${COM2}', 'com2@example.com', '{"display_name":"Cy"}');
+      update public.profiles set is_admin = true where id = '${ADMIN}';
+      update public.profiles set is_commissioner = true where id = '${COM2}';
+      delete from public.notify_queue;`);
+  });
+  const roles = (u: string) => db.query<{ role: string }>(`select role from public.user_roles where user_id = '${u}' order by role`).then(r => r.rows.map(x => x.role));
+  const call = (who: Who, sql: string) => rowsT(db, who, sql);
+
+  test("the league's account holds both roles; the profile flags mirror the roles", async () => {
+    assert.deepEqual(await roles(COMMISH), ["admin", "commissioner"]);
+    const p = (await db.query<{ is_commissioner: boolean; is_admin: boolean }>(`select is_commissioner, is_admin from public.profiles where id = '${COMMISH}'`)).rows[0]!;
+    assert.deepEqual([p.is_commissioner, p.is_admin], [true, true]);
+    assert.deepEqual(await roles(ALICE), [], "nobody else changed");
+    assert.equal((await call(user(ALICE), `select user_id, role from public.user_roles`)).length, 4, "signed-in users see the officers (badges)");
+    await denied(db, anon, `select * from public.user_roles`, /permission denied/);
+  });
+
+  test("an administrator keeps the site running but can't change scores, money, rosters or league settings", async () => {
+    // Technical: health, audit log, email log, keep-alive, pool import, flags, modes.
+    assert.ok((await call(user(ADMIN), `select public.admin_health() as h`))[0]!.h.flags.email_notifications);
+    await db.exec(`insert into public.email_log (user_id, kind, ref, status) values ('${ALICE}', 'dm', 'conv:1', 'sent')`);
+    assert.equal((await call(user(ADMIN), `select * from public.email_log`)).length, 1);
+    assert.ok((await call(user(ADMIN), `select * from public.audit_log`)).length >= 1);
+    assert.ok((await call(user(ADMIN), `select public.keepalive_status() as k`))[0]!.k);
+    assert.equal((await call(user(ADMIN), `select user_id, email from public.admin_accounts() where user_id = '${ALICE}'`))[0]!.email, "alice@example.com");
+    await db.exec(`insert into public.season_settings (season, team_count, buy_in, prizes, trades) values (${T}, 12, 360, '{}', '{"live": false}')`);
+    assert.equal((await call(user(ADMIN), `select public.admin_set_mode(${T}, 'trades.live', 'true') as r`))[0]!.r, "trades.live = true");
+    assert.equal((await db.query<{ v: boolean }>(`select (trades ->> 'live')::boolean as v from public.season_settings where season = ${T}`)).rows[0]!.v, true);
+    assert.equal(await affected(db, user(ADMIN), `update public.feature_flags set enabled = false where key = 'email_notifications'`), 1);
+    assert.equal((await db.query<{ t: string }>(`select private.notify_tick() as t`)).rows[0]!.t, "off", "the kill switch stops email");
+    // League: nothing.
+    assert.equal(await affected(db, user(ADMIN), `update public.standings set wins = 9`), 0);
+    await denied(db, user(ADMIN), `insert into public.score_overrides (season, week, target_key, type, points, reason) values (${S}, ${W}, 'DEF:PHI', 'points', 10, 'x')`);
+    await denied(db, user(ADMIN), `insert into public.team_fees (season, team_id, amount_due) values (${S}, '0001', 360)`);
+    await denied(db, user(ADMIN), `insert into public.roster_entries (season, team_id, player_id) values (${S}, '0001', 'QB-FA')`, /row-level|permission/);
+    assert.equal(await affected(db, user(ADMIN), `update public.season_settings set buy_in = 1 where season = ${T}`), 0, "league settings are the commissioner's");
+    await assert.rejects(as(db, user(ADMIN), tx => tx.query(`select public.trade_decide(1, true)`)), /Only the commissioner/);
+    await assert.rejects(as(db, user(ADMIN), tx => tx.query(`select public.grant_role('${BOB}', 'commissioner')`)), /Only a commissioner/);
+    await denied(db, user(ADMIN), `insert into public.invites (email) values ('new@example.com')`);
+  });
+
+  test("a commissioner runs the league but sees only email status, not the log; can't flip season modes", async () => {
+    await db.exec(`insert into public.email_log (user_id, kind, ref, status) values ('${ALICE}', 'dm', 'conv:1', 'sent');
+      insert into public.season_settings (season, team_count, buy_in, prizes, trades) values (${T}, 12, 360, '{}', '{"live": false}')`);
+    assert.deepEqual(await call(user(COM2), `select * from public.email_log`), [], "no log rows");
+    assert.equal((await call(user(COM2), `select today from public.notify_usage() where priority = 1`))[0]!.today, 1, "but today's counts");
+    await assert.rejects(as(db, user(COM2), tx => tx.query(`select public.admin_health()`)), /Administrators only/);
+    assert.deepEqual(await call(user(COM2), `select * from public.audit_log`), []);
+    await assert.rejects(as(db, user(COM2), tx => tx.query(`update public.season_settings set trades = '{"live": true}' where season = ${T}`)), /changed by an administrator/);
+    assert.equal(await affected(db, user(COM2), `update public.season_settings set buy_in = 400 where season = ${T}`), 1, "league settings: yes");
+    assert.equal(await affected(db, user(COM2), `update public.standings set wins = 9 where team_id = '0001'`), 1);
+    await assert.rejects(as(db, user(COM2), tx => tx.query(`select public.run_pool_import()`)), /Only an administrator/);
+  });
+
+  test("neither role reads private DMs (only reported ones, and only commissioners)", async () => {
+    const c = Number((await call(user(ALICE), `select public.dm_open('${BOB}'::uuid, null) as id`))[0]!.id);
+    await as(db, user(ALICE), tx => tx.query(`insert into public.dm_messages (conversation_id, body) values (${c}, 'private')`));
+    for (const u of [COMMISH, ADMIN, COM2]) assert.deepEqual(await call(user(u), `select body from public.dm_messages`), [], u);
+    await as(db, user(BOB), tx => tx.query(`select public.dm_report(${c}, 'x')`));
+    assert.equal((await call(user(COM2), `select body from public.dm_messages`)).length, 2, "reported: commissioners");
+    assert.deepEqual(await call(user(ADMIN), `select body from public.dm_messages`), [], "administrators still don't");
+  });
+
+  test("granting and revoking: each role manages its own; always one of each; audited and emailed", async () => {
+    assert.equal((await call(user(COM2), `select public.grant_role('${BOB}', 'commissioner') as r`))[0]!.r, "Granted");
+    await assert.rejects(as(db, user(COM2), tx => tx.query(`select public.grant_role('${BOB}', 'admin')`)), /Only an administrator/);
+    assert.equal((await call(user(ADMIN), `select public.grant_role('${BOB}', 'admin') as r`))[0]!.r, "Granted");
+    assert.deepEqual(await roles(BOB), ["admin", "commissioner"]);
+    const a = (await db.query<{ action: string }>(`select action from public.audit_log where action like 'roles:%' and details ->> 'user' = '${BOB}' order by id`)).rows.map(r => r.action);
+    assert.deepEqual(a, ["roles:grant", "roles:grant"]);
+    const q = (await db.query<{ kind: string; payload: { role: string; action: string; by: string } }>(`select kind, payload from public.notify_queue where user_id = '${BOB}' order by id`)).rows;
+    assert.deepEqual(q.map(x => [x.kind, x.payload.role, x.payload.action, x.payload.by]), [["account", "commissioner", "grant", "Cy"], ["account", "admin", "grant", "Ada"]]);
+    // Co-owners don't inherit roles.
+    const AL = "00000000-0000-0000-0000-0000000000a2";
+    await db.exec(`insert into auth.users (id, email) values ('${AL}', 'al@example.com'); insert into public.team_managers values ('0002', '${AL}')`);
+    assert.deepEqual(await roles(AL), []);
+    // Last of each: revoke down to one, then refused.
+    await call(user(ADMIN), `select public.revoke_role('${BOB}', 'admin')`);
+    await call(user(ADMIN), `select public.revoke_role('${COMMISH}', 'admin')`);
+    await assert.rejects(as(db, user(ADMIN), tx => tx.query(`select public.revoke_role('${ADMIN}', 'admin')`)), /at least one administrator/);
+    await call(user(COM2), `select public.revoke_role('${BOB}', 'commissioner')`);
+    await call(user(COM2), `select public.revoke_role('${COMMISH}', 'commissioner')`);
+    await assert.rejects(as(db, user(COM2), tx => tx.query(`select public.revoke_role('${COM2}', 'commissioner')`)), /at least one commissioner/);
+    await assert.rejects(as(db, user(ADMIN), tx => tx.query(`select public.admin_set_disabled('${COM2}', true)`)), /last active commissioner/, "disabling the last one is refused too");
+    // The old direct flag is now a grant with the same rules.
+    await assert.rejects(as(db, user(COM2), tx => tx.query(`update public.profiles set is_commissioner = false where id = '${COM2}'`)), /at least one commissioner/);
+    await denied(db, user(ALICE), `update public.profiles set is_admin = true where id = '${ALICE}'`, /Only an administrator/);
+  });
+
+  test("a disabled account keeps its data but loses its team rights and powers; admins re-enable it", async () => {
+    await assert.rejects(as(db, user(COM2), tx => tx.query(`select public.admin_set_disabled('${ALICE}', true)`)), /Administrators only/);
+    assert.equal((await call(user(ADMIN), `select public.admin_set_disabled('${ALICE}', true) as r`))[0]!.r, "Disabled");
+    await denied(db, user(ALICE), `insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '0001', 0, 'QB-DET')`);
+    assert.deepEqual(await call(user(ALICE), `select id from public.board_threads`), []);
+    assert.equal((await db.query<{ m: boolean }>(`select '${ALICE}' in (select private.member_ids()) as m`)).rows[0]!.m, false, "no emails either");
+    await call(user(ADMIN), `select public.admin_set_disabled('${ALICE}', false)`);
+    assert.equal(await affected(db, user(ALICE), `insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '0001', 0, 'QB-DET')`), 1);
+    assert.deepEqual((await db.query<{ action: string }>(`select action from public.audit_log where action in ('admin:disable', 'admin:enable') order by id`)).rows.map(r => r.action), ["admin:disable", "admin:enable"]);
+    await denied(db, user(ALICE), `update public.profiles set disabled = true where id = '${ALICE}'`, /Admin page/);
+  });
+
+  describe("conflict of interest: actions on the commissioner's own team", () => {
+    beforeEach(async () => {
+      await db.exec(`
+        insert into public.teams (id, name, division) values ('0004', 'Mac Daddies', 'Black');
+        insert into public.team_managers values ('0004', '${COMMISH}');
+        insert into public.nfl_players (id, name, position, nfl_team) values ('WR-MD', 'Mac WR', 'WR', 'NYG'), ('WR-ST', 'Steel WR', 'WR', 'NYG');
+        insert into public.season_settings (season, team_count, buy_in, prizes, waivers, trades) values (${T}, 12, 360, '{}', '{"live": true}', '{"live": true}');
+        insert into public.nfl_games (season, week, game_key, home, away, kickoff) values (${T}, 1, 'NYG@MIA', 'MIA', 'NYG', now() + interval '2 days');
+        insert into public.roster_entries (season, team_id, player_id) values (${T}, '0004', 'WR-MD'), (${T}, '0002', 'WR-ST');`);
+    });
+    const acceptedTrade = async () => {
+      const id = Number((await call(user(COMMISH), `select public.trade_propose(${T}, '0004', '0002', '{WR-MD}', '{WR-ST}') as id`))[0]!.id);
+      await as(db, user(BOB), tx => tx.query(`select public.trade_respond(${id}, true)`));
+      return id;
+    };
+    const status = (id: number) => db.query<{ status: string }>(`select status from public.trades where id = ${id}`).then(r => r.rows[0]!.status);
+
+    test("trade approval: another commissioner must approve; the requester can't approve his own request", async () => {
+      const id = await acceptedTrade();
+      const msg = (await call(user(COMMISH), `select public.trade_decide(${id}, true, 'fair') as r`))[0]!.r;
+      assert.match(msg, /sent to another commissioner for approval \(request #\d+\)/);
+      assert.equal(await status(id), "accepted", "nothing happens yet");
+      const [req] = await call(user(COM2), `select id, action, status, summary from public.officer_requests`);
+      assert.equal(req!.action, "trade_decide");
+      assert.deepEqual(await call(user(ALICE), `select id from public.officer_requests`), [], "commissioners only");
+      await assert.rejects(as(db, user(COMMISH), tx => tx.query(`select public.decide_officer_request(${req!.id}, true)`)), /Another commissioner/);
+      assert.equal((await call(user(COM2), `select public.decide_officer_request(${req!.id}, true, 'ok') as r`))[0]!.r, "Approved and done");
+      assert.equal(await status(id), "approved");
+      assert.deepEqual((await db.query<{ action: string }>(`select action from public.audit_log where action like 'coi:%' order by id`)).rows.map(r => r.action), ["coi:request", "coi:approved"]);
+    });
+
+    test("with no other commissioner: allowed, flagged in the audit log and on the Board", async () => {
+      await db.exec(`delete from public.user_roles where user_id = '${COM2}'`);
+      const id = await acceptedTrade();
+      assert.match((await call(user(COMMISH), `select public.trade_decide(${id}, true) as r`))[0]!.r, /flagged in the audit log and on the Board/);
+      assert.equal(await status(id), "approved");
+      const [a] = (await db.query<{ id: number; details: { flag: string } }>(`select id, details from public.audit_log where action = 'coi:own_team_unreviewed'`)).rows;
+      assert.match(a!.details.flag, /No other commissioner/);
+      assert.equal((await db.query(`select 1 from public.board_threads where source_key = 'coi:${a!.id}' and is_bot`)).rows.length, 1);
+    });
+
+    test("score override and drop reversal on his own team wait for another commissioner", async () => {
+      assert.equal(await affected(db, user(COMMISH), `insert into public.score_overrides (season, week, target_key, type, points, reason) values (${T}, 1, 'nflverse:WR-MD', 'points', 30, 'stat fix')`), 0, "held back");
+      const [req] = await call(user(COM2), `select id, action from public.officer_requests where status = 'pending'`);
+      assert.equal(req!.action, "score_override");
+      await call(user(COM2), `select public.decide_officer_request(${req!.id}, true)`);
+      assert.equal((await db.query(`select 1 from public.score_overrides where target_key = 'nflverse:WR-MD'`)).rows.length, 1, "written once approved");
+      assert.equal(await affected(db, user(COMMISH), `insert into public.score_overrides (season, week, target_key, type, points, reason) values (${T}, 1, 'nflverse:WR-ST', 'points', 1, 'not his')`), 1, "other teams: as before");
+      // Drop reversal of his own drop.
+      await db.exec(`insert into public.transactions (season, team_id, type, status, players_out, via, created_by) values (${T}, '0004', 'drop', 'processed', '{WR-MD}', 'free_agent', '${COMMISH}');
+        delete from public.roster_entries where player_id = 'WR-MD'`);
+      const drop = Number((await db.query<{ id: number }>(`select id from public.transactions where '{WR-MD}' = players_out`)).rows[0]!.id);
+      assert.match((await call(user(COMMISH), `select public.reverse_drop(${drop}) as r`))[0]!.r, /sent to another commissioner/);
+      const [r2] = await call(user(COM2), `select id from public.officer_requests where action = 'reverse_drop' and status = 'pending'`);
+      await call(user(COM2), `select public.decide_officer_request(${r2!.id}, true)`);
+      assert.equal((await db.query<{ status: string }>(`select status from public.transactions where id = ${drop}`)).rows[0]!.status, "reversed");
+    });
   });
 });
 

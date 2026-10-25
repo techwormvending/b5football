@@ -5,7 +5,7 @@
    one-click "Turn off these emails" link (signed token, no sign-in) and the List-Unsubscribe headers. */
 
 export type NotifyKind = "dm" | "mentions" | "trades" | "waivers" | "announcements" | "lineup"
-  | "lineup_saved" | "league_lineups" | "league_trades" | "league_waivers" | "league_moves" | "scoring";
+  | "lineup_saved" | "league_lineups" | "league_trades" | "league_waivers" | "league_moves" | "scoring" | "account";
 export interface Person { name?: string | null; team?: string | null }
 export interface NotifyItem { id: number; user_id: string; kind: NotifyKind; email: string; token: string; data: Record<string, any> }   // eslint-disable-line @typescript-eslint/no-explicit-any
 export interface Rendered { subject: string; html: string; text: string; headers: Record<string, string> }
@@ -16,13 +16,13 @@ export const SETTING: Record<NotifyKind, string> = {
   dm: "Direct messages", mentions: "@mentions", trades: "My trades", league_trades: "All league trades",
   waivers: "My waiver results", league_waivers: "League-wide waiver results", league_moves: "League first-come adds/drops",
   lineup_saved: "My lineup confirmation", league_lineups: "Other teams' lineups", lineup: "Lineup reminders (bye/out starters)",
-  scoring: "Daily scoring update", announcements: "Commissioner announcements and messages"
+  scoring: "Daily scoring update", announcements: "Commissioner announcements and messages", account: "Account notices"
 };
 /** Short label for "You won't get <label> emails anymore". */
 export const KIND_LABEL: Record<NotifyKind, string> = {
   dm: "direct message", mentions: "@mention", trades: "trade", league_trades: "league trade", waivers: "waiver result",
   league_waivers: "league waiver result", league_moves: "league add/drop", lineup_saved: "lineup confirmation",
-  league_lineups: "other teams' lineup", lineup: "lineup reminder", scoring: "daily scoring", announcements: "commissioner"
+  league_lineups: "other teams' lineup", lineup: "lineup reminder", scoring: "daily scoring", announcements: "commissioner", account: "account notice"
 };
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 const who = (p: Person | null | undefined) => !p ? "A league member" : p.team ? `${p.name || "A league member"} (${p.team})` : p.name || "A league member";
@@ -121,6 +121,13 @@ export function content(item: NotifyItem): Body {
         ? { subject: `${teams[0]?.team ?? "A team"} changed their lineup`, heading: `${teams[0]?.team ?? "A team"} changed their lineup`, lines, button: "See the team" }
         : { subject: `Lineup changes: ${plural(teams.length, "team")}`, heading: "Lineup changes since the last digest", lines, button: "See the teams" };
     }
+    case "account": {
+      if (d.type === "test") return { subject: "B5 test email", heading: "Your B5 email works", lines: ["This is the test email an administrator asked for. Nothing else to do."], button: "Open B5" };
+      const role = d.role === "admin" ? "administrator" : "commissioner";
+      return d.action === "grant"
+        ? { subject: `You're now a B5 ${role}`, heading: `You're now a B5 ${role}`, lines: [`${d.by} gave you the ${role} role.`, d.role === "admin" ? "Your tools are on the Admin page." : "Your tools are on the Commish page."], button: "Open B5" }
+        : { subject: `Your B5 ${role} role was removed`, heading: `Your B5 ${role} role was removed`, lines: [`${d.by} removed your ${role} role.`], button: "Open B5" };
+    }
     case "scoring": {
       const tag = d.unofficial ? " (unofficial)" : "";
       const day = new Date(String(d.day) + "T12:00:00Z").toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
@@ -142,7 +149,8 @@ export function renderEmail(item: NotifyItem, o: RenderOpts): Rendered {
   const link = site + "/" + String(item.data?.link || "#home").replace(/^\/?/, "");
   const off = `${site}/#unsubscribe/${item.token}`, settings = `${site}/#account/email`;
   const replyNote = "Replying to this email isn't supported: use the button above to answer on B5.";
-  const why = `Why you got this: "${SETTING[item.kind]}" is on in your B5 email settings.`;
+  const notice = item.kind === "account";   // role changes and test emails: always sent, no unsubscribe
+  const why = notice ? "Why you got this: it's a notice about your B5 account (these always go out)." : `Why you got this: "${SETTING[item.kind]}" is on in your B5 email settings.`;
   const html = `<!doctype html><html><body style="margin:0;padding:0;background:#f4f4f1;font-family:Arial,Helvetica,sans-serif;color:#151515">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:10px;overflow:hidden">
@@ -155,11 +163,11 @@ ${b.quote ? `<blockquote style="margin:12px 0;padding:10px 14px;border-left:4px 
 </td></tr>
 <tr><td style="padding:14px 20px;border-top:1px solid #e6e6e1;font-size:12px;color:#666;line-height:1.5">
 ${esc(replyNote)}<br>
-${esc(why)} <a href="${esc(settings)}" style="color:#666">Change this setting</a><br>
-<a href="${esc(off)}" style="color:#666">Turn off these emails</a>
+${esc(why)}${notice ? "" : ` <a href="${esc(settings)}" style="color:#666">Change this setting</a><br>
+<a href="${esc(off)}" style="color:#666">Turn off these emails</a>`}
 </td></tr></table></td></tr></table></body></html>`;
   const text = [b.heading, "", ...b.lines, ...(b.quote ? ["", `"${b.quote}"`] : []), "", `${b.button}: ${link}`, "", "--", replyNote,
-    why, `Change this setting: ${settings}`, `Turn off these emails: ${off}`].join("\n");
+    why, ...(notice ? [] : [`Change this setting: ${settings}`, `Turn off these emails: ${off}`])].join("\n");
   return { subject: b.subject.slice(0, 180), html, text,
-    headers: { "List-Unsubscribe": `<${o.functionsUrl.replace(/\/+$/, "")}/notify?u=${encodeURIComponent(item.token)}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } };
+    headers: notice ? {} : { "List-Unsubscribe": `<${o.functionsUrl.replace(/\/+$/, "")}/notify?u=${encodeURIComponent(item.token)}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } };
 }

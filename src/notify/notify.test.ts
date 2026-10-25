@@ -131,3 +131,14 @@ test("new types: lineup confirmation, other teams' lineups, league waivers and m
     "Guillotine danger (lowest so far): Stealers, 80.0", "Stat correction changed a result: NSFW → Stealers now wins.", "Scores are unofficial until the week is finalized."]);
   assert.equal(content(item("league_trades", { status: "approved", from_team: "A", to_team: "B", summary: "A get X; B get Y" })).subject, "League trade completed: A and B");
 });
+
+test("account notices (role changes, test email): always sent, no unsubscribe link or header", () => {
+  const g = renderEmail(item("account", { type: "role", role: "commissioner", action: "grant", by: "Adam", link: "#account" }), O);
+  assert.equal(g.subject, "You're now a B5 commissioner");
+  assert.match(g.text, /Adam gave you the commissioner role\./);
+  assert.doesNotMatch(g.html, /Turn off these emails|Change this setting/);
+  assert.deepEqual(g.headers, {});
+  assert.match(g.html, /a notice about your B5 account/);
+  assert.equal(content(item("account", { type: "role", role: "admin", action: "revoke", by: "Cy" })).subject, "Your B5 administrator role was removed");
+  assert.equal(content(item("account", { type: "test" })).subject, "B5 test email");
+});

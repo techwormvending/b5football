@@ -215,7 +215,7 @@
     st.busy = true;
     return p.then(function (r) {
       st.busy = false;
-      st.msg = r && r.ok === false ? { err: friendly(r.error) } : { ok: okMsg };
+      st.msg = r && r.ok === false ? { err: friendly(r.error) } : { ok: typeof okMsg === "function" ? okMsg(r) : okMsg };
       st.pick = null;
       return load();
     }).then(render, function () { render(); });
@@ -245,7 +245,7 @@
       if (rep == null) return;
       var at = /^now$/i.test(rep.trim()) ? new Date() : parseEt(rep);
       if (!at) { st.msg = { err: "Couldn't read that time." }; render(); return; }
-      after(rpc("reverse_drop", { p_transaction: Number(id), p_reported_at: at.toISOString() }), "Drop reversed.");
+      after(rpc("reverse_drop", { p_transaction: Number(id), p_reported_at: at.toISOString() }), function (r) { return String(r.data || "Drop reversed") + "."; });
     }
   }
   // "2:15 PM" (today, ET) -> Date

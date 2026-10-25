@@ -245,6 +245,7 @@
     // Rendered by account.js (sign-in, commissioner screen)
     account() { return `<div id="acctRoot"></div>`; },
     commish() { return `<div id="acctRoot"></div>`; },
+    admin() { return `<div id="acctRoot"></div>`; },
     live() { return `<div id="lvRoot"></div>`; },
     board() { return `<div id="bdRoot"></div>`; },
     chat() { return `<div id="chRoot"></div>`; },
@@ -363,7 +364,7 @@
     if ((page === "survivor" || page === "confidence") && window.B5Pools) window.B5Pools.start(page, document.getElementById("plRoot"), r.week);
     if ((page === "payouts" || page === "commish-payouts") && window.B5Payouts) window.B5Payouts.start(page === "payouts" ? "public" : "admin", document.getElementById("poRoot"));
     if (page === "myteam" && window.B5MyTeam) window.B5MyTeam.start(document.getElementById("mtRoot"));
-    if ((page === "account" || page === "commish") && window.B5Account) window.B5Account.start(page, document.getElementById("acctRoot"));
+    if ((page === "account" || page === "commish" || page === "admin") && window.B5Account) window.B5Account.start(page, document.getElementById("acctRoot"));
     if (page === "unsubscribe" && window.B5Account) window.B5Account.unsubscribe(document.getElementById("acctRoot"), r.token);
     window.scrollTo(0, 0);
   }
