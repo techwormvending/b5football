@@ -261,6 +261,8 @@ ul.checks li { padding-left: 26px; position: relative; margin: 8px 0; }
 ul.checks li::before { content: "▸"; position: absolute; left: 6px; color: var(--gold); }
 
 .foot { padding: 24px 16px 40px; color: var(--chalk-dim); font-size: 13px; border-top: 1px solid var(--card-line); }
+.foot-legal { margin: 8px 0 0; line-height: 1.45; overflow-wrap: anywhere; }
+.foot-legal.small { font-size: 11px; opacity: .85; margin-top: 4px; }
 
 /* Many nav items (14 for the commissioner): tighter links and no season subtitle on every desktop
    width. The header is capped at 1100 px, so wider screens don't add room. */

@@ -44,6 +44,7 @@
   document.getElementById("brandSub").textContent = `${L.season} · ${L.format}`;
   document.getElementById("footText").textContent =
     `${L.name}${L.established ? " · Est. " + L.established : ""}`;
+  document.getElementById("footYear").textContent = new Date().getFullYear();
 
   const nav = document.getElementById("nav");
   const toggle = document.querySelector(".nav-toggle");
