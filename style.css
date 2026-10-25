@@ -187,6 +187,7 @@ a.game:hover { border-color: var(--gold); }
 .test-tag { background: rgba(255, 182, 18, .25); color: var(--gold); font-size: .7em; vertical-align: middle; }
 .lu-missing { color: #ff8a80; }
 .lu-warn { margin-top: 8px; }
+.lv-name .lv-src { justify-self: start; margin-left: 0; }
 .lv-src { font-size: .65rem; padding: 1px 5px; border-radius: 4px; margin-left: 4px; vertical-align: middle; border: 1px solid var(--gold); color: var(--gold); }
 .lv-src.mfl { border-color: #888; color: #bbb; }
 .lv-toggle { display: inline-flex; gap: 6px; align-items: center; font-size: .85rem; margin: 6px 0; }
@@ -364,6 +365,13 @@ ul.checks li::before { content: "▸"; position: absolute; left: 6px; color: var
 .lv-g-st { font: 500 11px var(--head); letter-spacing: .06em; text-transform: uppercase; color: var(--chalk-dim); }
 .lv-g.lv-live { border-color: var(--gold); }
 .lv-g.lv-live .lv-g-st { color: var(--gold); }
+/* Possession (blue) and red zone (red, overrides blue): WCAG AA on the dark cards (#6cb8ff ~7.9:1, #ff6e6e ~6.1:1 on #1e1e1e). Icon + RZ tag, not color alone. */
+.lv-ball { color: #6cb8ff; }
+.lv-rz { color: #ff6e6e; }
+.lv-pg.lv-ball, .lv-pg.lv-rz { font-weight: 600; }
+.lv-fb { font-size: .95em; }
+.lv-rztag { display: inline-block; padding: 0 4px; border-radius: 3px; background: #ff6e6e; color: #111; font: 700 10px var(--head); letter-spacing: .04em; vertical-align: 1px; }
+.lv-g-dd { font-size: 11px; font-weight: 600; }
 .lv-board { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
 .lv-card { display: block; color: inherit; text-decoration: none; padding: 14px 16px; }
 .lv-card:hover { border-color: var(--gold); }
@@ -399,6 +407,9 @@ div.lv-p { cursor: default; }
 .lv-pn, .lv-pg { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lv-pg { margin: 0; font-size: 11px; }
 .lv-p.playing .lv-pg { color: var(--gold); }
+/* Possession beats "playing" gold; red zone beats blue. The line wraps so down & distance is never cut off. */
+.lv-p .lv-pg.lv-ball { color: #6cb8ff; white-space: normal; }
+.lv-p .lv-pg.lv-rz { color: #ff6e6e; white-space: normal; }
 div.lv-p.small { margin: 0; font-size: 12px; align-self: center; }
 .lv-slot.bench .pos { background: #3a3a3a; color: var(--chalk-dim); }
 .lv-pp { min-width: 36px; text-align: center; font: 700 16px var(--head); color: var(--chalk); }

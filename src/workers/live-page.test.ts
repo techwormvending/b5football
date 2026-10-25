@@ -204,3 +204,26 @@ test("2026 test lineups: a team's TEST lineup if it saved one, else MFL's; the t
   assert.deepEqual(o.slots.map((s: { player_id: string }) => s.player_id), ["QB-M", "QB-B"]);
   assert.equal(o.src["0001"], "mfl");
 });
+
+test("possession and red zone: blue for the team with the ball, red + RZ in the red zone, never for defenses; strip too", () => {
+  const now = Date.parse("2026-10-18T18:30:00Z");
+  const g = (possession: string | null, red_zone = false, extra: Record<string, unknown> = {}) => ({ game_key: "KC@LV", home: "LV", away: "KC", kickoff: "2026-10-18T17:00:00Z",
+    status: "in_progress", home_score: 3, away_score: 10, period: 2, clock: "4:12", status_detail: "4:12 - 2nd", possession, red_zone, down_distance: possession ? "2nd & 6 at LV 14" : null, ...extra });
+  const b = (x: unknown, nfl: string, pos: string) => JSON.parse(JSON.stringify(V.ballFor(x, nfl, pos, now)));
+  assert.deepEqual(b(g("KC"), "KC", "WR"), { rz: false, text: "2nd & 6 at LV 14" }, "possession: blue");
+  assert.deepEqual(b(g("KC", true), "KC", "K"), { rz: true, text: "2nd & 6 at LV 14" }, "red zone overrides blue (kickers too)");
+  assert.equal(b(g("KC", true), "LV", "RB"), null, "the other team: normal");
+  assert.equal(b(g("KC", true), "KC", "DEF"), null, "defenses never");
+  assert.equal(b(g("KC", true), "DEF:KC", "DEF"), null);
+  assert.equal(b(g(null), "KC", "WR"), null, "halftime / end of quarter: no possession");
+  assert.equal(b(g("KC", true, { status: "final" }), "KC", "WR"), null, "game over");
+  // Change of possession flips it
+  assert.equal(b(g("LV"), "LV", "TE")!.rz, false);
+  assert.equal(b(g("LV"), "KC", "WR"), null);
+  // Strip
+  const strip = String(V.nflStripHtml({ games: [g("KC", true)] }));
+  assert.match(strip, /lv-g-team lv-rz"><span><span class="lv-fb" aria-label="Red zone">🏈<\/span> KC <span class="lv-rztag">RZ<\/span><\/span><b>10<\/b>/);
+  assert.match(strip, /lv-g-team"><span>LV<\/span><b>3<\/b>/, "the defending team stays normal");
+  assert.match(String(V.nflStripHtml({ games: [g("LV")] })), /lv-g-team lv-ball"><span><span class="lv-fb" aria-label="Has the ball">🏈<\/span> LV<\/span>/);
+  assert.doesNotMatch(String(V.nflStripHtml({ games: [g(null)] })), /lv-ball|lv-rz/);
+});

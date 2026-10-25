@@ -54,6 +54,20 @@
     var text = s === "final" ? "Final" : s === "live" ? (g.status_detail || (g.period ? "Q" + g.period + " " + (g.clock || "") : "Live")) : fmtKick(g.kickoff);
     return { state: s, opp: opp, text: text, game: g };
   }
+  /** His NFL team has the ball in a game in progress: { rz, text } (text = "2nd & 6 at KC 14"), else
+      null. Red zone = a drive inside the opponent's 20. Offense and kickers only: a defense gains
+      nothing from its own team having the ball. Halftime / end of a quarter come with no possession. */
+  function ballFor(g, nfl, pos, now) {
+    if (!g || !nfl || pos === "DEF" || String(nfl).indexOf("DEF:") === 0) return null;
+    if (gameState(g, now) !== "live" || !g.possession || g.possession !== nfl) return null;
+    return { rz: !!g.red_zone, text: g.down_distance || "" };
+  }
+  /** The game line's class, icon and tag for a ball (blue = has the ball, red + RZ = red zone). */
+  function ballHtml(b) {
+    if (!b) return { cls: "", pre: "", post: "" };
+    return { cls: b.rz ? " lv-rz" : " lv-ball", pre: '<span class="lv-fb" title="' + (b.rz ? "Red zone" : "Has the ball") + '" aria-label="' + (b.rz ? "Red zone" : "Has the ball") + '">🏈</span> ',
+      post: (b.text ? " · " + esc(b.text) : "") + (b.rz ? ' <span class="lv-rztag">RZ</span>' : "") };
+  }
   /** Injury status (public.player_injuries, from nflverse) -> warning level: reserve lists and Out
       are "out"; Doubtful; Questionable. Tag = the short label shown next to the player. */
   var INJ = { IR: ["out", "IR"], PUP: ["out", "PUP"], Suspended: ["out", "SUSP"], Reserve: ["out", "RES"], Out: ["out", "OUT"], Doubtful: ["doubtful", "D"], Questionable: ["questionable", "Q"] };
@@ -211,7 +225,7 @@
     var w = st.week, q = "?season=eq." + season + "&week=eq." + w;
     return Promise.all([
       api("score_weeks" + q + "&select=status,live_delayed,updated_at"),
-      api("nfl_games" + q + "&select=game_key,home,away,kickoff,status,home_score,away_score,period,clock,status_detail&order=kickoff"),
+      api("nfl_games" + q + "&select=game_key,home,away,kickoff,status,home_score,away_score,period,clock,status_detail,possession,red_zone,down_distance&order=kickoff"),
       api("matchups" + q + "&select=home_team,away_team,home_score,away_score,is_playoff"),
       api("rpc/live_lineups", { method: "POST", body: JSON.stringify({ p_season: season, p_week: w }) }),
       testSeason() ? api("rpc/test_lineup_slots", { method: "POST", body: JSON.stringify({ p_season: season, p_week: w }) }) : Promise.resolve({ ok: true, data: [] })
@@ -261,9 +275,14 @@
     var now = Date.now();
     return '<div class="lv-strip" aria-label="NFL games">' + d.games.map(function (g) {
       var s = gameState(g, now), sc = s !== "pre" && g.home_score != null;
-      var side = function (t, x) { return '<span class="lv-g-team">' + esc(t) + (sc ? " <b>" + esc(x) + "</b>" : "") + "</span>"; };
+      var side = function (t, x) {
+        var b = s === "live" && g.possession === t ? { rz: !!g.red_zone } : null;
+        return '<span class="lv-g-team' + (b ? (b.rz ? " lv-rz" : " lv-ball") : "") + '"><span>' + (b ? '<span class="lv-fb" aria-label="' + (b.rz ? "Red zone" : "Has the ball") + '">🏈</span> ' : "") +
+          esc(t) + (b && b.rz ? ' <span class="lv-rztag">RZ</span>' : "") + "</span>" + (sc ? "<b>" + esc(x) + "</b>" : "") + "</span>";
+      };
       return '<div class="lv-g lv-' + s + '">' + side(g.away, g.away_score) + side(g.home, g.home_score) +
-        '<span class="lv-g-st">' + esc(s === "final" ? "Final" : s === "live" ? (g.status_detail || "Live") : fmtKick(g.kickoff)) + "</span></div>";
+        '<span class="lv-g-st">' + esc(s === "final" ? "Final" : s === "live" ? (g.status_detail || "Live") : fmtKick(g.kickoff)) + "</span>" +
+        (s === "live" && g.possession && g.down_distance ? '<span class="lv-g-dd' + (g.red_zone ? " lv-rz" : " lv-ball") + '">' + esc(g.down_distance) + "</span>" : "") + "</div>";
     }).join("") + "</div>";
   }
   var teamSlots = function (d, team) { return d.slots.filter(function (s) { return s.team_id === team; }); };
@@ -309,9 +328,10 @@
     var g = p.game, live = g.state === "live", bye = g.state === "bye";
     var lv = p.injury && injuryLevel(p.injury.status), warn = !p.bench && (bye || (lv === "out" && g.state !== "final"));
     var tag = lv ? ' <span class="lv-inj ' + lv + '" title="' + esc(p.injury.status + (p.injury.injury ? ": " + p.injury.injury : "")) + '">' + esc(injuryTag(p.injury.status)) + "</span>" : "";
+    var ball = ballHtml(ballFor(g.game, p.nfl_team, p.pos, Date.now()));
     var shown = bye ? '<span class="lv-bye' + (p.bench ? " bench" : "") + '">BYE</span>' : esc(g.state === "pre" && !p.scored ? "–" : pts(p.points));
     return '<button type="button" class="lv-p ' + side + (live ? " playing" : "") + (warn ? " on-bye" : "") + '" data-lv-player="' + esc(p.id) + '" aria-expanded="' + (st.open[p.id] ? "true" : "false") + '">' +
-      '<span class="lv-pn">' + esc(p.name) + tag + '</span><span class="lv-pg small muted">' + esc((p.bench ? p.pos + " · " : "") + (p.nfl_team || "") + (g.opp ? " " + g.opp : "")) + " · " + esc(g.text) + "</span></button>" +
+      '<span class="lv-pn">' + esc(p.name) + tag + '</span><span class="lv-pg small' + (ball.cls || " muted") + '">' + ball.pre + esc((p.bench ? p.pos + " · " : "") + (p.nfl_team || "") + (g.opp ? " " + g.opp : "")) + " · " + esc(g.text) + ball.post + "</span></button>" +
       '<span class="lv-pp ' + side + '">' + shown + "</span>";
   }
   function slotRow(pos, a, h, extra) {
@@ -474,7 +494,7 @@
   }
 
   root.B5Live = { start: start, stop: stop, gameState: gameState, playerGame: playerGame, progress: progress, progressText: progressText, cardStatus: cardStatus,
-    staleness: staleness, ago: ago, lineupView: lineupView, withTestLineups: withTestLineups, feed: feed, lineSum: lineSum,
+    staleness: staleness, ago: ago, lineupView: lineupView, withTestLineups: withTestLineups, ballFor: ballFor, nflStripHtml: function (d) { return nflStrip(d); }, feed: feed, lineSum: lineSum,
     weekChipsHtml: function (w) { st.week = w; return weekChips(); }, pickMatchup: pickMatchup,
     cardsHtml: function (d, team, mine) { st.d = d; st.sel = team || null; st.me = mine ? { teams: mine.map(function (t) { return { team_id: t }; }) } : null; return cardsHtml(d); } };
 })(typeof globalThis !== "undefined" ? globalThis : this);

@@ -54,12 +54,33 @@ export interface LiveResult {
   delayed: boolean; errors: string[];
 }
 
-interface SbEvent { id?: string; date?: string; competitions?: { status?: { period?: number; displayClock?: string; type?: { state?: string; shortDetail?: string } }; competitors?: { homeAway?: string; score?: string; team?: { abbreviation?: string } }[] }[] }
+interface SbSituation { possession?: string; isRedZone?: boolean; downDistanceText?: string; possessionText?: string; down?: number }
+interface SbCompetition { status?: { period?: number; displayClock?: string; type?: { state?: string; name?: string; shortDetail?: string } };
+  competitors?: { homeAway?: string; score?: string; team?: { id?: string; abbreviation?: string } }[]; situation?: SbSituation }
+interface SbEvent { id?: string; date?: string; competitions?: SbCompetition[] }
+
+/** Who has the ball, red zone, and "2nd & 6 at KC 14" for an in-progress game (ESPN's situation block).
+    Nobody has the ball at halftime, at the end of a quarter, or when ESPN gives no possession. The red
+    zone is ESPN's flag, or the ball inside the opponent's 20 by the ball position ("KC 14", KC defending). */
+export function gameSituation(c: SbCompetition | undefined): { possession: string | null; red_zone: boolean; down_distance: string | null } {
+  const none = { possession: null, red_zone: false, down_distance: null };
+  const st = c?.status?.type, sit = c?.situation;
+  if (st?.state !== "in" || !sit?.possession) return none;
+  if (/HALFTIME|END_PERIOD|END_OF_PERIOD/i.test(st.name ?? "") || /^(Halftime|End of)/i.test(st.shortDetail ?? "")) return none;
+  const team = c?.competitors?.find(x => x.team?.id === String(sit.possession))?.team?.abbreviation;
+  let possession: string;
+  try { possession = canon(team ?? ""); } catch { return none; }
+  const m = /^([A-Z]{2,3})\s+(\d{1,2})$/.exec(sit.possessionText ?? "");
+  let side: string | null = null;
+  try { side = m ? canon(m[1]!) : null; } catch { side = null; }
+  const red = sit.isRedZone === true || (!!m && side !== null && side !== possession && Number(m[2]) <= 20);
+  return { possession, red_zone: red, down_distance: sit.downDistanceText || null };
+}
 
 /** Live/final NFL scores and game clock from the scoreboard, as nfl_games rows (pools score from these; #live shows them). */
 export function scoreboardGames(events: SbEvent[], season: number, week: number, at: string) {
   const out: { season: number; week: number; game_key: string; home: string; away: string; kickoff: string | null; status: string; home_score: number; away_score: number;
-    period: number | null; clock: string | null; status_detail: string | null; updated_at: string }[] = [];
+    period: number | null; clock: string | null; status_detail: string | null; possession: string | null; red_zone: boolean; down_distance: string | null; updated_at: string }[] = [];
   for (const e of events) {
     const c = e.competitions?.[0], state = c?.status?.type?.state;
     if (state !== "in" && state !== "post") continue;
@@ -68,7 +89,7 @@ export function scoreboardGames(events: SbEvent[], season: number, week: number,
     try { home = canon(h?.team?.abbreviation ?? ""); away = canon(a?.team?.abbreviation ?? ""); } catch { continue; }
     out.push({ season, week, game_key: `${away}@${home}`, home, away, kickoff: e.date ? new Date(e.date).toISOString() : null,
       status: state === "post" ? "final" : "in_progress", home_score: Number(h?.score ?? 0), away_score: Number(a?.score ?? 0),
-      period: c?.status?.period ?? null, clock: c?.status?.displayClock ?? null, status_detail: c?.status?.type?.shortDetail ?? null, updated_at: at });
+      period: c?.status?.period ?? null, clock: c?.status?.displayClock ?? null, status_detail: c?.status?.type?.shortDetail ?? null, ...gameSituation(c), updated_at: at });
   }
   return out;
 }

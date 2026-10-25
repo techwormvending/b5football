@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { activeEvents, espnIds, mirrorSlots, runLive, scoreboardGames, teamTotals } from "./liveRun.ts";
+import { activeEvents, espnIds, gameSituation, mirrorSlots, runLive, scoreboardGames, teamTotals } from "./liveRun.ts";
 import { handle } from "./edgeHandler.ts";
 import type { EspnSummary } from "../ingest/espn.ts";
 
@@ -202,8 +202,8 @@ test("mirrored slots follow QB RB RB WR WR WR TE K DEF; unmapped or extra starte
 test("scoreboard scores become nfl_games rows (in progress / final); unknown teams and upcoming games are skipped", () => {
   const ev = (state: string, a: string, h: string, as: string, hs: string) => ({ date: "2026-10-18T17:00Z", competitions: [{ status: { type: { state } }, competitors: [{ homeAway: "home", score: hs, team: { abbreviation: h } }, { homeAway: "away", score: as, team: { abbreviation: a } }] }] });
   assert.deepEqual(scoreboardGames([ev("in", "WSH", "SF", "7", "10"), ev("post", "NYJ", "NE", "19", "26"), ev("pre", "A", "B", "0", "0"), ev("in", "XXX", "NE", "0", "0")], 2026, 6, "T"), [
-    { season: 2026, week: 6, game_key: "WAS@SF", home: "SF", away: "WAS", kickoff: "2026-10-18T17:00:00.000Z", status: "in_progress", home_score: 10, away_score: 7, period: null, clock: null, status_detail: null, updated_at: "T" },
-    { season: 2026, week: 6, game_key: "NYJ@NE", home: "NE", away: "NYJ", kickoff: "2026-10-18T17:00:00.000Z", status: "final", home_score: 26, away_score: 19, period: null, clock: null, status_detail: null, updated_at: "T" }]);
+    { season: 2026, week: 6, game_key: "WAS@SF", home: "SF", away: "WAS", kickoff: "2026-10-18T17:00:00.000Z", status: "in_progress", home_score: 10, away_score: 7, period: null, clock: null, status_detail: null, possession: null, red_zone: false, down_distance: null, updated_at: "T" },
+    { season: 2026, week: 6, game_key: "NYJ@NE", home: "NE", away: "NYJ", kickoff: "2026-10-18T17:00:00.000Z", status: "final", home_score: 26, away_score: 19, period: null, clock: null, status_detail: null, possession: null, red_zone: false, down_distance: null, updated_at: "T" }]);
 });
 
 describe("edge handler: weekly pool import job", () => {
@@ -230,5 +230,47 @@ describe("edge handler: MFL starters job (2026, before kickoff)", () => {
     assert.deepEqual(await r.json(), { teams: 1, changedLineups: 1, compared: 1, missing: [], ignored: [] });
     assert.ok(w.calls.some(c => c.includes("TYPE=liveScoring&L=22689&W=7")));
     assert.ok(!w.calls.some(c => c.includes("espn.com")));
+  });
+});
+
+describe("game situation from ESPN's scoreboard (recorded payloads, trimmed)", () => {
+  // KC (team id 12) at LV (13), Sunday 2026-10-18.
+  const comp = (status: Record<string, unknown>, situation?: Record<string, unknown>) => ({
+    status: { period: 2, displayClock: "4:12", ...status },
+    competitors: [{ homeAway: "home", score: "3", team: { id: "13", abbreviation: "LV" } }, { homeAway: "away", score: "10", team: { id: "12", abbreviation: "KC" } }],
+    ...(situation ? { situation } : {})
+  });
+  const live = { type: { state: "in", name: "STATUS_IN_PROGRESS", shortDetail: "4:12 - 2nd" } };
+  test("possession: the team with the ball, down & distance, not the red zone", () => {
+    assert.deepEqual(gameSituation(comp(live, { down: 2, distance: 6, yardLine: 46, downDistanceText: "2nd & 6 at KC 46", possessionText: "KC 46", isRedZone: false, possession: "12" })),
+      { possession: "KC", red_zone: false, down_distance: "2nd & 6 at KC 46" });
+  });
+  test("red zone: ESPN's flag, or the ball inside the opponent's 20", () => {
+    assert.deepEqual(gameSituation(comp(live, { downDistanceText: "1st & 10 at LV 14", possessionText: "LV 14", isRedZone: true, possession: "12" })),
+      { possession: "KC", red_zone: true, down_distance: "1st & 10 at LV 14" });
+    assert.equal(gameSituation(comp(live, { downDistanceText: "3rd & 2 at LV 18", possessionText: "LV 18", possession: "12" })).red_zone, true, "flag missing: ball position decides");
+    assert.equal(gameSituation(comp(live, { downDistanceText: "3rd & 2 at KC 18", possessionText: "KC 18", possession: "12" })).red_zone, false, "own 18 isn't the red zone");
+  });
+  test("change of possession: the other team has the ball now", () => {
+    const a = gameSituation(comp(live, { downDistanceText: "1st & 10 at LV 14", possessionText: "LV 14", isRedZone: true, possession: "12" }));
+    const b = gameSituation(comp(live, { downDistanceText: "1st & 10 at LV 20", possessionText: "LV 20", isRedZone: false, possession: "13" }));
+    assert.equal(a.possession, "KC");
+    assert.deepEqual(b, { possession: "LV", red_zone: false, down_distance: "1st & 10 at LV 20" });
+  });
+  test("halftime, end of a quarter, no possession, final: nobody has the ball", () => {
+    const sit = { downDistanceText: "1st & 10 at LV 14", possessionText: "LV 14", isRedZone: true, possession: "12" };
+    const none = { possession: null, red_zone: false, down_distance: null };
+    assert.deepEqual(gameSituation(comp({ type: { state: "in", name: "STATUS_HALFTIME", shortDetail: "Halftime" } }, sit)), none);
+    assert.deepEqual(gameSituation(comp({ type: { state: "in", name: "STATUS_END_PERIOD", shortDetail: "End of 1st" } }, sit)), none);
+    assert.deepEqual(gameSituation(comp(live, { lastPlay: {}, homeTimeouts: 3 })), none, "situation without possession");
+    assert.deepEqual(gameSituation(comp(live)), none, "no situation block");
+    assert.deepEqual(gameSituation(comp({ type: { state: "post", name: "STATUS_FINAL", shortDetail: "Final" } }, sit)), none);
+  });
+  test("nfl_games rows carry it (ESPN's WSH becomes WAS)", () => {
+    const ev = { date: "2026-10-18T17:00Z", competitions: [{ status: { type: { state: "in" } },
+      competitors: [{ homeAway: "home", score: "10", team: { id: "25", abbreviation: "SF" } }, { homeAway: "away", score: "7", team: { id: "28", abbreviation: "WSH" } }],
+      situation: { possession: "28", possessionText: "SF 9", downDistanceText: "1st & Goal at SF 9", isRedZone: true } }] };
+    const [g] = scoreboardGames([ev], 2026, 6, "T");
+    assert.deepEqual([g!.possession, g!.red_zone, g!.down_distance], ["WAS", true, "1st & Goal at SF 9"]);
   });
 });
