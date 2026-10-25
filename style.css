@@ -183,6 +183,13 @@ a.game:hover { border-color: var(--gold); }
 .pl-loss { background: rgba(210, 69, 47, .18); color: #ffb3a6; }
 .pl-test { margin: 8px 0 0; padding: 8px 10px; border-radius: 6px; background: rgba(255, 182, 18, .14); border: 1px dashed var(--gold); }
 .pl-testpick { font-style: italic; opacity: .85; }
+.test-label { margin: 6px 0 10px; padding: 8px 10px; border-radius: 6px; background: rgba(255, 182, 18, .14); border: 1px dashed var(--gold); font-weight: 600; }
+.test-tag { background: rgba(255, 182, 18, .25); color: var(--gold); font-size: .7em; vertical-align: middle; }
+.lu-missing { color: #ff8a80; }
+.lu-warn { margin-top: 8px; }
+.lv-src { font-size: .65rem; padding: 1px 5px; border-radius: 4px; margin-left: 4px; vertical-align: middle; border: 1px solid var(--gold); color: var(--gold); }
+.lv-src.mfl { border-color: #888; color: #bbb; }
+.lv-toggle { display: inline-flex; gap: 6px; align-items: center; font-size: .85rem; margin: 6px 0; }
 .pl-alive { color: #9be3b5; font-weight: 600; }
 .pl-games { display: grid; gap: 8px; }
 .pl-game { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

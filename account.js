@@ -216,6 +216,9 @@
     var rpc = function (n, b) { return A.api(cfg, s, "rpc/" + n, { method: "POST", body: JSON.stringify(b || {}) }, f); };
     Q.roles = get("user_roles?select=user_id,role,granted_at");
     Q.usage = rpc("notify_usage");
+    // 2026 test lineups: Tuesday's official MFL lineup import (status on Admin, the score check on Commish).
+    Q.lineupImports = get("lineup_imports?season=eq." + Number(L.season) + "&select=week,status,attempts,attempted_at,succeeded_at,teams,archived_test,message,compare,triggered_by&order=week.desc");
+    Q.shadow = get("shadow_results?season=eq." + Number(L.season) + "&select=week,team_id,mfl_score,our_score,matched,details&order=week,team_id");
     if (page === "commish") {
       Q.teams = get("teams?select=id,name,division&order=id");
       Q.invites = get("invites?select=email,team_id,is_commissioner,invited_at,accepted_at&order=invited_at");
@@ -230,7 +233,6 @@
     } else {
       Q.keep = rpc("keepalive_status");
       Q.poolImports = get("pool_imports?season=eq." + Number(L.season) + "&select=week,status,source,attempts,attempted_at,succeeded_at,picks,teams,replaced_test,message,compare,triggered_by&order=week.desc");
-      Q.shadow = get("shadow_results?season=eq." + Number(L.season) + "&select=week,team_id,mfl_score,our_score,matched,details&order=week,team_id");
       Q.live = get("live_compare?season=eq." + Number(L.season) + "&select=week,team_id,our_points,mfl_points,players,diff_since,checked_at&order=week.desc,team_id&limit=36");
       Q.emailLog = get("email_log?select=at,user_id,kind,status,reason,attempt&order=at.desc&limit=60");
       Q.accounts = rpc("admin_accounts");
@@ -254,7 +256,7 @@
       cm.board = ok("board")[0] || null;
       cm.crossposted = {}; ok("crossposts").forEach(function (t) { cm.crossposted[t.source_key] = t.id; });
       var lc = ok("live"); cm.live = lc.filter(function (x) { return x.week === (lc[0] || {}).week; });
-      cm.poolImports = ok("poolImports"); cm.shadow = ok("shadow");
+      cm.poolImports = ok("poolImports"); cm.shadow = ok("shadow"); cm.lineupImports = ok("lineupImports");
       cm.teams = ok("teams"); cm.invites = ok("invites"); cm.managers = ok("managers"); cm.keep = R.keep && R.keep.ok ? R.keep.data : null;
       // Accounts: an administrator gets them with emails (admin_accounts); a commissioner from profiles + invite emails.
       var emails = {};
@@ -395,7 +397,7 @@
     }).join("") + "</ul>" + '<p class="muted small">Up to ' + esc(maxOwners) + " owners per team, each with his own login; an account owns one team. Removing one owner leaves the other.</p>"
       : '<p class="muted">No managers have joined yet.</p>';
 
-    root.innerHTML = "<section><h2>Commissioner</h2>" + m + requestsHtml() + '<div class="card"><h3>Payouts</h3><p>Fees, payouts, manual awards, overrides and CSV export: <a href="#commish-payouts">open the payout tools</a>.</p></div>' + lineupsHtml() + emailLogHtml() + boardHtml() + officersHtml() +
+    root.innerHTML = "<section><h2>Commissioner</h2>" + m + requestsHtml() + '<div class="card"><h3>Payouts</h3><p>Fees, payouts, manual awards, overrides and CSV export: <a href="#commish-payouts">open the payout tools</a>.</p></div>' + lineupCheckHtml(cm.lineupImports || []) + shadowHtml(cm.shadow || []) + lineupsHtml() + emailLogHtml() + boardHtml() + officersHtml() +
       '<div class="card"><h3>Invite a manager</h3>' + seedTeams +
       '<form class="acct-form" data-cm="invite">' +
       '<label>Email<input name="email" type="email" autocomplete="off" required></label>' +
@@ -461,7 +463,7 @@
       return "<li><b>" + esc(a.action) + '</b> <span class="muted small">' + esc(et(a.at)) + " · " + esc(a.actor ? accountName(a.actor) : a.actor_label || "system") + "</span>" +
         '<br><span class="muted small">' + esc(JSON.stringify(a.details).slice(0, 220)) + "</span></li>";
     }).join("") + "</ul></details></div>";
-    root.innerHTML = "<section><h2>Admin</h2>" + m + health + emailLogHtml() + flags + accts + officersHtml() + poolImportHtml(cm.poolImports || []) + liveCompareHtml(cm.live || []) + shadowHtml(cm.shadow || []) + audit + "</section>";
+    root.innerHTML = "<section><h2>Admin</h2>" + m + health + emailLogHtml() + flags + accts + officersHtml() + lineupImportHtml(cm.lineupImports || []) + poolImportHtml(cm.poolImports || []) + liveCompareHtml(cm.live || []) + shadowHtml(cm.shadow || []) + audit + "</section>";
   }
 
   // Confidence Pool official import (2026 test mode): one row per week, newest first.
@@ -476,9 +478,39 @@
         (mm.length ? "<ul>" + mm.map(function (z) { return "<li>" + tlink(z.team_id) + " " + esc(z.what) + " total: ours " + esc(z.ours) + ", MFL " + esc(z.mfl) + "</li>"; }).join("") + "</ul>" : "") + "</li>";
     }).join("") + "</ul>" : '<p class="muted">No imports yet.</p>';
     return '<div class="card"><h3>Confidence Pool: official MFL import</h3>' + warn +
-      '<p class="muted small">Tuesdays 6:00 AM ET the official MFL picks replace the TEST picks for the week that just finished; then our totals are checked against MFL\'s results.</p>' +
+      '<p class="muted small">Tuesdays 6:00 AM ET the official MFL picks replace the TEST picks for the week that just finished; then our totals are checked against MFL\'s results. <b>Run import now</b> also imports that week\'s official lineups.</p>' +
       '<form class="po-inline" data-cm="pool-import"><label>Week <input name="week" type="number" min="1" max="18" placeholder="latest"></label>' +
       '<button class="btn" type="submit">Run import now</button></form>' + list + "</div>";
+  }
+
+  // 2026 test lineups, Tuesday: the official MFL lineups replace the test ones (Admin: did it work).
+  function lineupImportHtml(rows) {
+    var latest = rows.slice().sort(function (a, b) { return Date.parse(b.attempted_at) - Date.parse(a.attempted_at); })[0];
+    var warn = latest && latest.status === "failed"
+      ? '<p class="acct-msg err"><b>Import failed</b> for week ' + esc(latest.week) + " (" + esc(et(latest.attempted_at)) + "): " + esc(latest.message) + " It retries every hour today; <b>Run import now</b> below runs it at once.</p>" : "";
+    var list = rows.length ? '<ul class="checks">' + rows.map(function (x) {
+      return "<li><b>Week " + esc(x.week) + "</b>: " + (x.status === "ok" ? '<span class="tag">Imported</span> ' : '<span class="tag cm-bad">Failed</span> ') + esc(et(x.succeeded_at || x.attempted_at)) +
+        (x.attempts > 1 ? " (" + esc(x.attempts) + " attempts)" : "") + '<br><span class="muted small">' + esc(x.message || "") + "</span></li>";
+    }).join("") + "</ul>" : '<p class="muted">No lineup imports yet.</p>';
+    return '<div class="card"><h3>Lineups: official MFL import</h3>' + warn +
+      '<p class="muted small">Tuesdays 6:00 AM ET (with the Confidence Pool import) the official MFL starting lineups replace the TEST lineups for the week that just finished. Only a complete import (all teams, scores posted, every player mapped) replaces anything; scores, standings and payouts use the official lineups.</p>' +
+      list + "</div>";
+  }
+  // Commish: our final team scores from the official lineups vs MFL's weekly results.
+  function lineupCheckHtml(rows) {
+    var ok = rows.filter(function (x) { return x.status === "ok"; });
+    if (!ok.length) return '<div class="card"><h3>Official lineups vs MFL scores</h3><p class="muted">Nothing imported yet. Each Tuesday the official MFL lineups are imported and our scores checked against MFL\'s.</p>' +
+      (rows.some(function (x) { return x.status === "failed"; }) ? '<p class="acct-msg err">The last lineup import failed; the Admin page has the details.</p>' : "") + "</div>";
+    var n = function (x) { return Number(x).toFixed(2).replace(/\.?0+$/, ""); };
+    var items = ok.map(function (x) {
+      var mm = (x.compare && x.compare.mismatches) || [];
+      if (!mm.length) return '<li><span class="tag">Match</span> Week ' + esc(x.week) + ": all " + esc(x.teams) + " teams match MFL</li>";
+      return '<li><details open><summary><span class="tag cm-bad">Mismatch</span> Week ' + esc(x.week) + ": " + esc(mm.length) + " team" + (mm.length === 1 ? "" : "s") + " differ</summary><ul>" + mm.map(function (z) {
+        return "<li>" + tlink(z.team_id) + ": ours " + esc(n(z.ours)) + ", MFL " + esc(n(z.mfl)) +
+          ((z.players || []).length ? "<ul>" + z.players.map(function (p) { return "<li>" + esc(p.player_id) + ": ours " + esc(n(p.ours)) + ", MFL " + esc(n(p.mfl)) + "</li>"; }).join("") + "</ul>" : "") + "</li>";
+      }).join("") + "</ul></details></li>";
+    }).join("");
+    return '<div class="card"><h3>Official lineups vs MFL scores</h3><ul class="checks">' + items + "</ul></div>";
   }
 
   // Message board: B5 Bot toggles and announcement cross-posts (home-page announcements live in league-data.js).

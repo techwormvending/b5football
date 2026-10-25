@@ -152,7 +152,8 @@
   // ---- Data -------------------------------------------------------------------------
   // st.sel = the selected matchup's team (either side). st.d = the week (cards); st.dd = the
   // selected matchup's detail ({key, roster, scores, events}).
-  var st = { me: null, week: null, sel: null, d: null, dd: null, open: {}, el: null, tick: null, poll: null, loading: false, err: null };
+  var st = { me: null, week: null, sel: null, d: null, dd: null, open: {}, el: null, tick: null, poll: null, loading: false, err: null, showOfficial: false };
+  try { st.showOfficial = root.localStorage.getItem("b5-live-official") === "1"; } catch (e) { /* storage blocked */ }
   var session = function () { return st.me && st.me.session; };
   var api = function (path, init) { return A.api(cfg, session(), path, init || {}, f); };
   var ok = function (x) { return x && x.ok ? x.data || [] : []; };
@@ -176,16 +177,47 @@
       return (M && M.pickWeek ? M.pickWeek(g, Date.now()) : null) || g.reduce(function (m, x) { return Math.max(m, x.week); }, 1);
     });
   }
+  /** 2026 test mode: each team's TEST lineup if one was saved this week (status "test"), else its
+      MFL lineup; with "Show official MFL lineups" on, MFL's for everyone. src: team -> "test" | "mfl". */
+  function withTestLineups(official, test, showOfficial) {
+    var has = {}, src = {};
+    (test || []).forEach(function (t) { if (t.status === "test") has[t.team_id] = true; });
+    var use = function (team) { return !showOfficial && has[team]; };
+    official.concat(test || []).forEach(function (x) { src[x.team_id] = use(x.team_id) ? "test" : "mfl"; });
+    var slots = official.filter(function (x) { return !use(x.team_id); }).concat((test || []).filter(function (x) { return use(x.team_id); }));
+    return { slots: slots, src: src, anyTest: Object.keys(has).length > 0 };
+  }
+  var testSeason = function () { return season < Number(L.lineupsFrom || 0); };
+  function compose(d) {
+    var c = withTestLineups(d.official, d.test, st.showOfficial);
+    d.slots = c.slots; d.src = c.src; d.anyTest = c.anyTest;
+    return d;
+  }
+  /** A team's score on the card: its test lineup's points (never stored), else the matchup's official total. */
+  function teamScore(d, m, team) {
+    if (d.src && d.src[team] === "test") return teamSlots(d, team).reduce(function (t, x) { return t + Number(x.points || 0); }, 0);
+    return Number((team === m.away_team ? m.away_score : m.home_score) || 0);
+  }
+  var srcTag = function (d, team) {
+    if (!testSeason() || !d.src) return "";
+    return d.src[team] === "test" ? ' <span class="lv-src" title="This team\'s TEST lineup (not official)">Test</span>' : ' <span class="lv-src mfl" title="The official MFL lineup">MFL</span>';
+  };
+  function srcHtml(d) {
+    if (!testSeason() || !d.anyTest) return "";
+    return '<label class="lv-toggle"><input type="checkbox" data-lv-official' + (st.showOfficial ? " checked" : "") + "> Show official MFL lineups</label>";
+  }
+
   function loadWeek() {
     var w = st.week, q = "?season=eq." + season + "&week=eq." + w;
     return Promise.all([
       api("score_weeks" + q + "&select=status,live_delayed,updated_at"),
       api("nfl_games" + q + "&select=game_key,home,away,kickoff,status,home_score,away_score,period,clock,status_detail&order=kickoff"),
       api("matchups" + q + "&select=home_team,away_team,home_score,away_score,is_playoff"),
-      api("rpc/live_lineups", { method: "POST", body: JSON.stringify({ p_season: season, p_week: w }) })
+      api("rpc/live_lineups", { method: "POST", body: JSON.stringify({ p_season: season, p_week: w }) }),
+      testSeason() ? api("rpc/test_lineup_slots", { method: "POST", body: JSON.stringify({ p_season: season, p_week: w }) }) : Promise.resolve({ ok: true, data: [] })
     ]).then(function (r) {
       if (!r[1].ok && !r[2].ok) throw new Error(r[2].error || "couldn't load the week");
-      return { week: w, sw: ok(r[0])[0] || null, games: ok(r[1]), matchups: ok(r[2]), slots: ok(r[3]) };
+      return compose({ week: w, sw: ok(r[0])[0] || null, games: ok(r[1]), matchups: ok(r[2]), official: ok(r[3]), test: ok(r[4]) });
     });
   }
   /** The selected matchup's rosters, player scores (with breakdown lines) and scoring plays. */
@@ -246,10 +278,10 @@
     var cards = d.matchups.slice().sort(byAway).map(function (m) {
       var a = m.away_team, h = m.home_team;
       var pa = progress(teamSlots(d, a), d.games, now), ph = progress(teamSlots(d, h), d.games, now);
-      var sa = Number(m.away_score || 0), sh = Number(m.home_score || 0), cs = cardStatus(d.sw, pa, ph);
+      var sa = teamScore(d, m, a), sh = teamScore(d, m, h), cs = cardStatus(d.sw, pa, ph);
       var lead = cs.key === "upcoming" || sa === sh ? null : sa > sh ? "a" : "h";
       var row = function (id, s, p, isLead) {
-        return '<div class="lv-row' + (isLead ? " lead" : "") + '">' + T.logo(id) + '<div class="lv-name">' + T.link(id, { logo: false, bold: true }) + '<span class="muted small">' + esc(progressText(p)) + "</span>" + warnHtml(p) +
+        return '<div class="lv-row' + (isLead ? " lead" : "") + '">' + T.logo(id) + '<div class="lv-name">' + T.link(id, { logo: false, bold: true }) + srcTag(d, id) + '<span class="muted small">' + esc(progressText(p)) + "</span>" + warnHtml(p) +
           '</div><span class="lv-pts">' + esc(pts(s)) + "</span></div>";
       };
       var isSel = pairKey(m) === sel;
@@ -303,7 +335,7 @@
     var pa = progress(teamSlots(d, a), d.games, now), ph = progress(teamSlots(d, h), d.games, now), cs = cardStatus(d.sw, pa, ph);
     var lead = cs.key === "upcoming" || va.total === vh.total ? null : va.total > vh.total ? "a" : "h";
     var ht = function (id, v, p, isLead) {
-      return '<div class="lv-ht' + (isLead ? " lead" : "") + '">' + T.logo(id) + T.link(id, { logo: false, bold: true }) + '<span class="lv-big">' + esc(pts(v.total)) + '</span><span class="muted small">' + esc(progressText(p)) + "</span>" + warnHtml(p) + "</div>";
+      return '<div class="lv-ht' + (isLead ? " lead" : "") + '">' + T.logo(id) + T.link(id, { logo: false, bold: true }) + srcTag(d, id) + '<span class="lv-big">' + esc(pts(v.total)) + '</span><span class="muted small">' + esc(progressText(p)) + "</span>" + warnHtml(p) + "</div>";
     };
     var head = '<div class="card lv-head"><span class="tag lv-st">' + esc(cs.text) + (d.sw && d.sw.status === "pending_review" ? " · awaiting commissioner sign-off" : "") + "</span>" +
       '<div class="lv-vs">' + ht(a, va, pa, lead === "a") + ht(h, vh, ph, lead === "h") + "</div></div>";
@@ -332,7 +364,7 @@
   // re-filled in place, so a Realtime update never reloads the page or the selected matchup.
   function shellHtml() {
     return '<section class="lv"><h2>Live</h2>' + unofficial() + weekChips() +
-      '<div class="lv-fresh" data-lv="fresh"></div><div data-lv="strip"></div><div data-lv="cards"><p class="muted">Loading…</p></div>' +
+      '<div class="lv-fresh" data-lv="fresh"></div><div data-lv="src"></div><div data-lv="strip"></div><div data-lv="cards"><p class="muted">Loading…</p></div>' +
       '<div class="lv-detail" id="lvDetail" data-lv="detail"></div>' +
       '<p class="muted small">Updates by itself during games. Starters are shown from their kickoff on.</p></section>';
   }
@@ -346,6 +378,7 @@
     }
     var y = root.scrollY, d = st.d;
     part("fresh").innerHTML = freshHtml(d);
+    part("src").innerHTML = srcHtml(d);
     var sx = part("strip").firstChild ? part("strip").firstChild.scrollLeft : 0;
     part("strip").innerHTML = nflStrip(d);
     if (part("strip").firstChild) part("strip").firstChild.scrollLeft = sx;
@@ -422,6 +455,14 @@
       });
     }).catch(function (e) { if (st.el === el) el.innerHTML = '<section class="lv"><h2>Live</h2><p class="acct-msg err">Couldn\'t load: ' + esc(e.message) + "</p></section>"; });
 
+    rootEl.addEventListener("change", function (e) {
+      var t = e.target.closest("[data-lv-official]");
+      if (!t || !st.d) return;
+      st.showOfficial = !!t.checked;
+      try { root.localStorage.setItem("b5-live-official", st.showOfficial ? "1" : "0"); } catch (err) { /* storage blocked */ }
+      compose(st.d); st.dd = null; render();
+      loadDetail(st.d, selected()).then(function (dd) { st.dd = dd; render(); });
+    });
     rootEl.addEventListener("click", function (e) {
       var card = e.target.closest("a.card-cover[data-lv-team]");
       if (card && !(e.metaKey || e.ctrlKey || e.shiftKey)) { e.preventDefault(); select(card.dataset.lvTeam); return; }
@@ -433,7 +474,7 @@
   }
 
   root.B5Live = { start: start, stop: stop, gameState: gameState, playerGame: playerGame, progress: progress, progressText: progressText, cardStatus: cardStatus,
-    staleness: staleness, ago: ago, lineupView: lineupView, feed: feed, lineSum: lineSum,
+    staleness: staleness, ago: ago, lineupView: lineupView, withTestLineups: withTestLineups, feed: feed, lineSum: lineSum,
     weekChipsHtml: function (w) { st.week = w; return weekChips(); }, pickMatchup: pickMatchup,
     cardsHtml: function (d, team, mine) { st.d = d; st.sel = team || null; st.me = mine ? { teams: mine.map(function (t) { return { team_id: t }; }) } : null; return cardsHtml(d); } };
 })(typeof globalThis !== "undefined" ? globalThis : this);

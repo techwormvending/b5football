@@ -111,8 +111,8 @@ export function content(item: NotifyItem): Body {
         lines: ps.map(p => `${p.pos} ${p.name}: ${p.problem === "bye" ? "on bye" : p.problem.toUpperCase()} (swap by ${et(p.deadline)})`), button: "Set your lineup" };
     }
     case "lineup_saved":
-      return { subject: `Lineup saved: ${d.team}, week ${d.week}`, heading: `${d.team}: week ${d.week} lineup saved`,
-        lines: [`Saved by ${d.saved_by || "an owner"}${d.saved_at ? `, ${et(d.saved_at)}` : ""}.`, ...lineupLines(d)], button: "Open My Team" };
+      return { subject: `${d.test ? "TEST lineup" : "Lineup"} saved: ${d.team}, week ${d.week}`, heading: `${d.team}: week ${d.week} ${d.test ? "TEST lineup" : "lineup"} saved`,
+        lines: [...(d.test ? ["TEST lineup: MFL is official for 2026."] : []), `Saved by ${d.saved_by || "an owner"}${d.saved_at ? `, ${et(d.saved_at)}` : ""}.`, ...lineupLines(d)], button: "Open My Team" };
     case "league_lineups": {
       const teams: (Record<string, any> & { team: string; by?: string; at?: string })[] = d.teams || [];   // eslint-disable-line @typescript-eslint/no-explicit-any
       const lines = teams.flatMap(t => [`${t.team} (week ${t.week}, by ${t.by || "an owner"}${t.at ? `, ${et(t.at)}` : ""}):`,

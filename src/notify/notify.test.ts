@@ -115,6 +115,9 @@ test("new types: lineup confirmation, other teams' lineups, league waivers and m
   const s = content(item("lineup_saved", lineup));
   assert.equal(s.subject, "Lineup saved: Mac Daddies, week 7");
   assert.deepEqual(s.lines, ["Saved by Mike, Fri 9:14 PM ET.", "QB Joe Burrow (CIN)", "Bench: Bo Nix", "⚠ Bye Guy: on bye"]);
+  const t = content(item("lineup_saved", { ...lineup, test: true }));   // 2026 test lineups
+  assert.equal(t.subject, "TEST lineup saved: Mac Daddies, week 7");
+  assert.equal(t.lines[0], "TEST lineup: MFL is official for 2026.");
   assert.equal(content(item("announcements", { ...lineup, commissioner: "lineup" })).subject, "From the commissioner: your week 7 lineup");
   assert.equal(content(item("announcements", { commissioner: "reminder", team: "NSFW", week: 7 })).subject, "Reminder: set your week 7 lineup");
   const dg = content(item("league_lineups", { mode: "digest", teams: [{ team: "NSFW", week: 7, by: "Alice", starters: [{ slot: "QB", name: "Goff" }] }, { team: "H.N.I.C", week: 7, starters: [] }] }));

@@ -114,3 +114,12 @@ test("co-owners: team activity reads as who changed what; last change; the other
   assert.equal(X.isConflict("Player x is locked: his game has kicked off"), false);
   assert.match(fs.readFileSync(path.resolve(import.meta.dirname, "../../myteam.js"), "utf8"), /p_expected_version: expected/, "saves send the version the page loaded");
 });
+
+test("test lineups: missing slots are named, bye/OUT starters warned, 'Saved Sat 9:14 PM by Mike'", () => {
+  const X = M as unknown as { missingSlots(d: (string | null)[]): string[]; lineupWarnings(p: unknown[]): string[]; savedText(at: string, by: string): string };
+  assert.deepEqual(plain(X.missingSlots(["a", "b", "c", "d", "e", "f", null, "h", null])), ["TE", "DEF"]);
+  assert.deepEqual(plain(X.missingSlots(["a", "b", "c", "d", "e", "f", "g", "h", "i"])), []);
+  assert.deepEqual(plain(X.lineupWarnings([{ name: "Puka", bye: true }, null, { name: "Kittle", injury: "Out" }, { name: "Q Guy", injury: "Questionable" }, { name: "IR Guy", injury: "IR" }])),
+    ["Puka is on bye", "Kittle is listed OUT", "IR Guy is listed IR"]);
+  assert.equal(X.savedText("2026-10-25T01:14:00Z", "Mike"), "Saved Sat 9:14 PM by Mike");
+});

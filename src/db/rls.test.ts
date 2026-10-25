@@ -59,6 +59,10 @@ const affected = async (db: PGlite, who: Who, sql: string, params: unknown[] = [
 const denied = (db: PGlite, who: Who, sql: string, re: RegExp = /row-level security|permission denied|only the commissioner|locked|not on team|cannot play|must be pending/i) =>
   assert.rejects(as(db, who, (tx: Transaction) => tx.query(sql)), re);
 
+// These older lineup tests save partial lineups; the league setting is off by default (see "test lineups").
+const allowPartialLineups = () => db.exec(`insert into public.season_settings (season, team_count, buy_in, prizes, lineups) values (${S}, 12, 360, '{}', '{"allowPartial": true}')
+  on conflict (season) do update set lineups = excluded.lineups`);
+
 let db: PGlite;
 beforeEach(async () => { db = await freshDb(); await seed(db); });
 
@@ -81,7 +85,7 @@ describe("every table is protected", () => {
 
 test("no default grants leak: anon only ever has SELECT, and only on public-data tables", async () => {
   const PUBLIC = new Set(["teams", "nfl_players", "nfl_games", "roster_entries", "score_weeks", "player_scores", "matchups", "standings", "announcements",
-    "season_settings", "team_scores", "awards", "guillotine", "survivor_status", "confidence_scores", "score_events", "player_injuries", "league_settings", "draft_picks", "lineup_slots"]);
+    "season_settings", "team_scores", "awards", "guillotine", "survivor_status", "confidence_scores", "score_events", "player_injuries", "league_settings", "draft_picks", "lineup_slots", "test_lineups"]);
   const g = (await db.query<{ table_name: string; privilege_type: string }>(`
     select table_name, privilege_type from information_schema.role_table_grants
     where table_schema = 'public' and grantee = 'anon'`)).rows;
@@ -320,6 +324,7 @@ describe("save_lineup (the My Team page's Save button)", () => {
       `select slot, player_id from public.save_lineup($1, $2, $3, $4::text[])`, [S, W, team, players])).then(r => r.rows);
   const lineup = (...p: (string | null)[]) => [...p, ...Array(9 - p.length).fill(null)];
   beforeEach(async () => {
+    await allowPartialLineups();
     await db.exec(`
       insert into public.nfl_players (id, name, position, nfl_team) values ('WR-DET', 'Amon-Ra St. Brown', 'WR', 'DET'), ('WR-KC', 'Rashee Rice', 'WR', 'KC');
       insert into public.roster_entries (season, team_id, player_id) values (${S}, '0001', 'WR-DET'), (${S}, '0001', 'WR-KC');`);
@@ -362,6 +367,7 @@ describe("commissioner who also manages a team (Mac Daddies, 0011)", () => {
   const MINE = "0011";
   const audit = () => db.query<{ action: string; actor: string | null }>(`select action, actor from public.audit_log where action like 'own_team:%' order by id`).then(r => r.rows);
   beforeEach(async () => {
+    await allowPartialLineups();
     await db.exec(`
       insert into public.teams (id, name, division) values ('${MINE}', 'Mac Daddies', 'Gold');
       insert into public.team_managers values ('${MINE}', '${COMMISH}');
@@ -689,7 +695,9 @@ describe("pools: survivor and confidence picks", () => {
     await db.exec(`insert into public.pool_imports (season, week, status, attempted_at) values (${S}, 6, 'failed', '2026-10-20T10:00:05Z')`);
     assert.equal(await tick("2026-10-20T11:00:00Z"), "requested 2026 week 6");
     await db.exec(`update public.pool_imports set status = 'ok', succeeded_at = '2026-10-20T11:00:30Z'`);
-    assert.equal(await tick("2026-10-20T12:00:00Z"), "already imported today");
+    assert.equal(await tick("2026-10-20T12:00:00Z"), "requested 2026 week 6", "the lineups aren't in yet");
+    await db.exec(`insert into public.lineup_imports (season, week, status, succeeded_at) values (${S}, 6, 'ok', '2026-10-20T12:00:40Z')`);
+    assert.equal(await tick("2026-10-20T13:00:00Z"), "already imported today");
     await db.exec(`update public.season_settings set pools = '{"mode": "official"}'`);
     assert.equal(await tick("2026-12-08T11:00:00Z"), "not in test mode", "2027: no MFL import");
   });
@@ -815,6 +823,7 @@ describe("co-owners (up to 2 per team)", () => {
   const MIKE = "00000000-0000-0000-0000-0000000000a3";   // the commissioner's co-owner (Mac Daddies, 0011)
   const NEW = "00000000-0000-0000-0000-0000000000a4";
   beforeEach(async () => {
+    await allowPartialLineups();
     await db.exec(`
       update public.profiles set display_name = 'Alice' where id = '${ALICE}';
       update public.profiles set display_name = 'Adam' where id = '${COMMISH}';
@@ -2179,5 +2188,131 @@ describe("server jobs (service_role)", () => {
     assert.equal(await affected(db, service, `insert into public.heartbeats (name) values ('nightly') on conflict (name) do update set at = now()`), 1);
     assert.equal(await affected(db, service, `update public.standings set wins = 1`), 2);
     await denied(db, user(COMMISH), `select * from public.heartbeats`, /permission denied/);
+  });
+});
+
+describe("test lineups (2026 test mode)", () => {
+  // NSFW (0001, Alice): DET plays later this week (DET@ARI), KC already kicked off (KC@LV).
+  const save = (who: Who, players: (string | null)[], team = "0001", week = W) =>
+    as(db, who, tx => tx.query<{ r: { saved_by: string } }>(`select public.save_test_lineup($1, $2, $3, $4::text[]) as r`, [S, week, team, players])).then(r => r.rows[0]!.r);
+  // QB RB RB WR WR WR TE K DEF, everyone on DET (not started)
+  const FULL = ["QB-DET", "RB-DET", "RB-DET2", "WR-DET", "WR-DET2", "WR-DET3", "TE-DET", "K-DET", "DEF:DET"];
+  const stored = () => db.query<{ players: string[]; status: string }>(`select players, status from public.test_lineups where team_id = '0001'`).then(r => r.rows);
+  beforeEach(async () => {
+    await db.exec(`
+      insert into public.season_settings (season, team_count, buy_in, prizes, pools) values (${S}, 12, 360, '{}', '{"mode": "test"}');
+      update public.profiles set display_name = 'Mike' where id = '${ALICE}';
+      insert into public.nfl_players (id, name, position, nfl_team) values
+        ('RB-DET2', 'David Montgomery', 'RB', 'DET'), ('WR-DET', 'Amon-Ra St. Brown', 'WR', 'DET'), ('WR-DET2', 'Jameson Williams', 'WR', 'DET'),
+        ('WR-DET3', 'Kalif Raymond', 'WR', 'DET'), ('TE-DET', 'Sam LaPorta', 'TE', 'DET'), ('K-DET', 'Jake Bates', 'K', 'DET'),
+        ('DEF:DET', 'Lions', 'DEF', 'DET'), ('WR-KC', 'Rashee Rice', 'WR', 'KC'), ('RB-KC', 'Isiah Pacheco', 'RB', 'KC'), ('WR-BYE', 'Puka Nacua', 'WR', 'LAR');
+      insert into public.roster_entries (season, team_id, player_id) values
+        (${S}, '0001', 'RB-DET2'), (${S}, '0001', 'WR-DET'), (${S}, '0001', 'WR-DET2'), (${S}, '0001', 'WR-DET3'), (${S}, '0001', 'TE-DET'),
+        (${S}, '0001', 'K-DET'), (${S}, '0001', 'DEF:DET'), (${S}, '0001', 'WR-KC'), (${S}, '0001', 'RB-KC'), (${S}, '0001', 'WR-BYE');`);
+  });
+
+  test("a full lineup is required (league setting): the missing slots are named and nothing is saved", async () => {
+    await assert.rejects(save(user(ALICE), [...FULL.slice(0, 6), null, "K-DET", null]), /Fill every slot before saving: missing TE, DEF/);
+    await assert.rejects(save(user(ALICE), FULL.slice(0, 8)), /9 slots/);
+    assert.deepEqual(await stored(), []);
+    const r = await save(user(ALICE), FULL);
+    assert.equal(r.saved_by, "Mike");
+    assert.deepEqual(await stored(), [{ players: FULL, status: "test" }]);
+    // The setting can allow partial lineups
+    await db.exec(`update public.season_settings set lineups = '{"allowPartial": true}'`);
+    await save(user(ALICE), [...FULL.slice(0, 8), null]);
+  });
+
+  test("save_lineup (2027, site lineups official) has the same full-lineup rule", async () => {
+    await assert.rejects(as(db, user(ALICE), tx => tx.query(`select public.save_lineup(${S}, ${W}, '0001', array['QB-DET',null,null,null,null,null,null,null,null])`)),
+      /Fill every slot before saving: missing RB, RB, WR, WR, WR, TE, K, DEF/);
+  });
+
+  test("roster, position and duplicate rules", async () => {
+    await assert.rejects(save(user(ALICE), ["QB-ARI", ...FULL.slice(1)]), /isn't on your roster/);
+    await assert.rejects(save(user(ALICE), ["RB-KC", ...FULL.slice(1)]), /Isiah Pacheco \(RB\) can't play QB/);
+    await assert.rejects(save(user(ALICE), [FULL[0]!, "RB-DET", "RB-DET", ...FULL.slice(3)]), /only start once/);
+  });
+
+  test("kickoff lock on the server: a started starter stays in his slot; a started bench player can't move in; others move until kickoff", async () => {
+    // The official (MFL) lineup has WR-KC starting in slot 3; his game has started.
+    await db.exec(`insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '0001', 3, 'WR-KC')`);
+    const withKC = [...FULL.slice(0, 3), "WR-KC", ...FULL.slice(4)];
+    await assert.rejects(save(user(ALICE), FULL), /Rashee Rice is locked in the WR slot: his game has started/, "benching him");
+    await assert.rejects(save(user(ALICE), [...FULL.slice(0, 3), "WR-DET", "WR-KC", ...FULL.slice(5)]), /locked in the WR slot/, "moving him to another slot");
+    await save(user(ALICE), withKC);                                   // he stays; everyone else changes freely
+    const swapped = [FULL[0]!, "RB-DET2", "RB-DET", ...withKC.slice(3)];
+    await save(user(ALICE), swapped);                                  // swap two players whose games haven't started
+    // A bench player whose game has started can't come in (RB-KC)
+    await assert.rejects(save(user(ALICE), [FULL[0]!, "RB-KC", ...withKC.slice(2)]), /Isiah Pacheco can't move into the lineup: his game has started/);
+    // Once DET kicks off, the DET starters are locked too (a request after kickoff is refused)
+    await db.exec(`update public.nfl_games set kickoff = now() - interval '1 minute' where game_key = 'DET@ARI'`);
+    await assert.rejects(save(user(ALICE), withKC), /locked/);
+    assert.deepEqual((await stored())[0]!.players, swapped, "refused saves change nothing");
+    // Direct writes are impossible: the table is written only by the function
+    await denied(db, user(ALICE), `update public.test_lineups set players = '{}'`, /permission denied/);
+    await denied(db, user(ALICE), `insert into public.test_lineups (season, week, team_id, players) values (${S}, ${W}, '0001', '{a,b,c,d,e,f,g,h,i}')`, /permission denied/);
+  });
+
+  test("who may save; test mode only; the next week opens after Tuesday's import; lineups are public", async () => {
+    await assert.rejects(save(user(BOB), FULL), /own team/);
+    await denied(db, anon, `select public.save_test_lineup(${S}, ${W}, '0001', array['QB-DET'])`, /permission denied/);
+    await save(user(COMMISH), FULL);                                   // a commissioner can set any team
+    assert.equal((await rowsT(db, anon, `select * from public.test_lineups`)).length, 1, "lineups stay visible to everyone");
+    const slots = await rowsT(db, anon, `select slot, player_id, status, saved_by from public.test_lineup_slots(${S}, ${W})`);
+    assert.equal(slots.length, 9);
+    assert.equal(slots[0]!.saved_by, null, "who saved it is for members");
+    assert.equal((await rowsT(db, user(BOB), `select saved_by from public.test_lineup_slots(${S}, ${W})`))[0]!.saved_by, "Commish");
+    // The previous week ended 30 hours ago and its official lineups aren't imported yet: closed
+    await db.exec(`insert into public.nfl_games (season, week, game_key, home, away, kickoff) values (${S}, ${W - 1}, 'A@B', 'B', 'A', now() - interval '30 hours')`);
+    await assert.rejects(save(user(ALICE), FULL), /opens after Tuesday's import of the official week 5 lineups/);
+    assert.equal((await rowsT(db, anon, `select public.test_lineup_week(${S}) as w`))[0]!.w.open, false);
+    await db.exec(`insert into public.lineup_imports (season, week, status, succeeded_at) values (${S}, ${W - 1}, 'ok', now())`);
+    await save(user(ALICE), FULL);
+    assert.deepEqual((await rowsT(db, anon, `select public.test_lineup_week(${S}) as w`))[0]!.w, { week: W, open: true, reason: null, test_mode: true });
+    // 2027: test mode off
+    await db.exec(`update public.season_settings set pools = '{"mode": "official"}'`);
+    await assert.rejects(save(user(ALICE), FULL), /only for a test season/);
+  });
+
+  test("Tuesday swap: official lineups replace the test ones (server jobs only); scores use the official lineups; test vs official", async () => {
+    await save(user(ALICE), FULL);
+    await db.exec(`
+      insert into public.matchups (season, week, home_team, away_team, home_score, away_score) values (${S}, ${W}, '0001', '0002', 0, 0);
+      insert into public.score_weeks (season, week, status) values (${S}, ${W}, 'pending_review');
+      insert into public.player_scores (season, week, player_id, points, source) values
+        (${S}, ${W}, 'WR-DET', 10, 'final'), (${S}, ${W}, 'WR-KC', 4, 'final'), (${S}, ${W}, 'RB-DET', 7, 'final'), (${S}, ${W}, 'QB-ARI', 30, 'final')
+        on conflict (season, week, player_id) do update set points = excluded.points;`);
+    // QB-DET already scored 21.5 in the seed: test lineup = 21.5 + 7 + 10 = 38.5
+    const official = JSON.stringify([{ team_id: "0001", slot: 0, player_id: "QB-KC" }, { team_id: "0001", slot: 1, player_id: "RB-DET" }, { team_id: "0001", slot: 3, player_id: "WR-KC" },
+      { team_id: "0002", slot: 0, player_id: "QB-ARI" }]);
+    await denied(db, user(COMMISH), `select public.replace_week_lineups(${S}, ${W}, '${official}'::jsonb)`, /permission denied/);
+    await denied(db, user(ALICE), `select public.replace_week_lineups(${S}, ${W}, '${official}'::jsonb)`, /permission denied/);
+    const r = (await rowsT(db, service, `select public.replace_week_lineups(${S}, ${W}, '${official}'::jsonb) as r`))[0]!.r;
+    assert.equal(r.archived_test, 1);
+    assert.deepEqual((await rowsT(db, anon, `select team_id, slot, player_id from public.lineup_slots where week = ${W} order by team_id, slot`)).map(x => `${x.team_id}:${x.slot}:${x.player_id}`),
+      ["0001:0:QB-KC", "0001:1:RB-DET", "0001:3:WR-KC", "0002:0:QB-ARI"], "the official lineups replaced the mirror");
+    assert.deepEqual(await stored(), [{ players: FULL, status: "archived" }], "the test lineup is kept next to the official one");
+    // Official totals only: 0001 = 7 + 4 (QB-KC has no score) = 11; 0002 = 30
+    const m = (await rowsT(db, anon, `select home_score, away_score from public.matchups where week = ${W}`))[0]!;
+    assert.deepEqual([Number(m.home_score), Number(m.away_score)], [11, 30]);
+    assert.deepEqual((await rowsT(db, anon, `select team_id, points::float as p from public.team_scores where week = ${W} order by team_id`)).map(x => [x.team_id, x.p]), [["0001", 11], ["0002", 30]]);
+    const cmp = await rowsT(db, anon, `select team_id, test_points::float as t, official_points::float as o, has_test from public.test_lineup_scores(${S}, ${W})`);
+    assert.deepEqual(cmp.map(x => [x.team_id, x.t, x.o, x.has_test]), [["0001", 38.5, 11, true], ["0002", null, 30, false]], "your test lineup would have scored 38.5");
+    // The week is over for test lineups once it has ended
+    await db.exec(`update public.nfl_games set kickoff = now() - interval '5 hours' where week = ${W}`);
+    await assert.rejects(save(user(ALICE), FULL), /Week 6 is over/);
+  });
+
+  test("the lineup confirmation email works for test lineups (both owners, the user's setting)", async () => {
+    await db.exec(`delete from public.notify_queue`);
+    await save(user(ALICE), [FULL[0]!, FULL[1]!, FULL[2]!, "WR-BYE", ...FULL.slice(4)]);
+    const q = await db.query<{ user_id: string; kind: string; ref: string }>(`select user_id, kind, ref from public.notify_queue`);
+    assert.deepEqual(q.rows.map(x => [x.user_id, x.kind, x.ref]), [[ALICE, "lineup_saved", `tsaved:${S}:${W}:0001`]]);
+    const d = (await db.query<{ d: Record<string, unknown> }>(`select private.test_lineup_payload(${S}, ${W}, '0001') as d`)).rows[0]!.d;
+    assert.equal(d.test, true);
+    assert.equal((d.starters as unknown[]).length, 9);
+    assert.deepEqual(d.warnings, [{ name: "Puka Nacua", pos: "WR", problem: "bye" }]);
+    assert.equal(d.saved_by, "Mike");
   });
 });

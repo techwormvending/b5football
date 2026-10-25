@@ -9,6 +9,7 @@
    No secret is stored in the repo. */
 
 import { runLive, type LiveDeps } from "./liveRun.ts";
+import { runLineupImport } from "../league/lineupImport.ts";
 import { runPoolImport } from "../league/poolImport.ts";
 import { syncMflLive } from "./mflLive.ts";
 import { sbBase, sbHeaders, type SbConfig } from "../league/supabaseRest.ts";
@@ -36,12 +37,17 @@ export async function handle(req: Request, env: EdgeEnv, fetchImpl: typeof fetch
   let body: { nonce?: unknown; job?: unknown; season?: unknown; week?: unknown; by?: unknown } = {};
   try { body = (await req.json()) as typeof body; nonce = String(body.nonce ?? ""); } catch { /* no body */ }
   if (!nonce || !(await consumeNonce(sb, nonce, fetchImpl, now()))) return json({ error: "unauthorized" }, 401);
-  // Weekly official Confidence import (pg_cron Tuesdays 6 AM ET, or the commissioner's "Run import now")
+  // Weekly official import (pg_cron Tuesdays 6 AM ET, or "Run import now" on Admin): the official lineups
+  // first (they decide the week's scores), then the Confidence picks, whose import refreshes payouts.
   if (body.job === "pool_import") {
     const season = Number(body.season), week = Number(body.week);
     if (!season || !week) return json({ error: "season and week required" }, 400);
-    try { return json(await runPoolImport(sb, season, week, { by: String(body.by ?? "schedule"), fetchImpl, now: now() })); }
-    catch (err) { return json({ status: "failed", message: (err as Error).message }, 500); }
+    const by = String(body.by ?? "schedule");
+    let lineups: unknown;
+    try { lineups = await runLineupImport(sb, season, week, { by, fetchImpl, now: now() }); }
+    catch (err) { lineups = { status: "failed", message: (err as Error).message }; }
+    try { return json({ ...(await runPoolImport(sb, season, week, { by, fetchImpl, now: now() })), lineups }); }
+    catch (err) { return json({ status: "failed", message: (err as Error).message, lineups }, 500); }
   }
   // TEMPORARY 2026: MFL's starters before kickoff (pg_cron "b5-mfl-lineups"), plus the live comparison.
   if (body.job === "mfl_lineups") {

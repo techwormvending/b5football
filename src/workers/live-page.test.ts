@@ -190,3 +190,17 @@ test("cards: one per matchup, each a deep link to itself, the selected one highl
   assert.match(read("live.js"), /Unofficial — MFL is official for/);
 });
 
+
+test("2026 test lineups: a team's TEST lineup if it saved one, else MFL's; the toggle shows MFL's for everyone", () => {
+  const off = [{ team_id: "0001", slot: 0, player_id: "QB-M" }, { team_id: "0002", slot: 0, player_id: "QB-B" }];
+  const tst = [{ team_id: "0001", slot: 0, player_id: "QB-T", status: "test", points: 12 }, { team_id: "0003", slot: 0, player_id: "QB-X", status: "archived" }];
+  const c = JSON.parse(JSON.stringify(V.withTestLineups(off, tst, false)));
+  assert.deepEqual(c.slots.map((s: { player_id: string }) => s.player_id), ["QB-B", "QB-T"]);
+  assert.equal(c.src["0001"], "test");
+  assert.equal(c.src["0002"], "mfl");
+  assert.equal(c.src["0003"], "mfl", "an archived test lineup (the week was imported) isn't shown");
+  assert.equal(c.anyTest, true);
+  const o = JSON.parse(JSON.stringify(V.withTestLineups(off, tst, true)));
+  assert.deepEqual(o.slots.map((s: { player_id: string }) => s.player_id), ["QB-M", "QB-B"]);
+  assert.equal(o.src["0001"], "mfl");
+});

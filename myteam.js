@@ -8,6 +8,12 @@
    on the roster, right position, each player locked at his game's kickoff); the
    page only mirrors them so managers see locks before they hit Save.
 
+   2026 TEST lineups (season_settings.pools.mode = "test", the same switch as the
+   Confidence Pool): either owner sets the current week's lineup here, saved through
+   public.save_test_lineup() (full lineup, kickoff locks, all on the server). They never
+   count: the official MFL lineups replace them on Tuesday, and the page then shows
+   "your test lineup would have scored X" next to the official score.
+
    Uses auth.js (B5Auth) and account.js (B5Account.load for who is signed in).
    All data is escaped before it goes into HTML. */
 (function (root) {
@@ -66,6 +72,23 @@
   }
 
   /** Kickoff (ms) of a team's game in the given week's games, or null (bye). */
+  /** Slot names still empty in a draft lineup (a full lineup is required). */
+  function missingSlots(draft, slots) {
+    slots = slots || ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "K", "DEF"];
+    return slots.filter(function (pos, i) { return !draft[i]; });
+  }
+  var OUT = { IR: 1, PUP: 1, Suspended: 1, Reserve: 1, Out: 1 };
+  /** Starters on bye or listed out. players: [{id, name, bye, injury}] in slot order. */
+  function lineupWarnings(players) {
+    return players.filter(function (p) { return p && (p.bye || OUT[p.injury]); })
+      .map(function (p) { return p.name + (p.bye ? " is on bye" : " is listed " + (p.injury === "Out" ? "OUT" : p.injury)); });
+  }
+  /** "Saved Sat 9:14 PM by Mike" (Eastern). */
+  function savedText(at, by) {
+    if (!at) return "";
+    return "Saved " + new Date(at).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" }) + (by ? " by " + by : "");
+  }
+
   function kickoffFor(weekGames, nflTeam) {
     for (var i = 0; i < weekGames.length; i++) {
       var g = weekGames[i];
@@ -223,9 +246,10 @@
     if (!w) return "";
     if (w.error) return '<div class="card"><p class="acct-msg err">' + esc(w.error) + "</p></div>";
     var mine = (w.data && w.data.teams[st.teamId]) || [];
-    return '<div class="card"><h3>Week ' + esc(w.week) + ' lineup <span class="tag">' + esc(statusText(w.data)) + "</span></h3>" +
+    var test = st.lu && st.lu.test;
+    return '<div class="card"><h3>Week ' + esc(w.week) + (test ? " official MFL lineup" : " lineup") + ' <span class="tag">' + esc(statusText(w.data)) + "</span></h3>" +
       (mine.length ? lineupListHtml(mine) : '<p class="muted">No starters for week ' + esc(w.week) + " yet.</p>") +
-      '<p class="muted small">Mirrored from MFL. <b>MFL is official for ' + esc(L.season) + "</b>: set your lineup there. Points are this site\'s, from live ESPN stats, finalized nightly by nflverse." +
+      '<p class="muted small">Mirrored from MFL. <b>MFL is official for ' + esc(L.season) + "</b>: " + (test ? "this is the lineup that counts." : "set your lineup there.") + " Points are this site\'s, from live ESPN stats, finalized nightly by nflverse." +
       (w.matchup ? ' <a href="#live/' + esc(w.week) + "/" + esc(st.teamId) + '">Open the matchup</a>' : "") + "</p></div>";
   }
 
@@ -307,7 +331,8 @@
     if (k == null) return { text: "Bye", locked: false, bye: true };
     var g = lu.weekGames.filter(function (x) { return x.home === p.nfl || x.away === p.nfl; })[0];
     var opp = g.home === p.nfl ? "vs " + g.away : "@ " + g.home;
-    return { text: opp + " · " + fmtKick(k), locked: Date.now() >= k, bye: false };
+    var inj = lu.injuries && lu.injuries[p.id];
+    return { text: opp + " · " + fmtKick(k) + (inj && OUT[inj] ? " · " + (inj === "Out" ? "OUT" : inj) : ""), locked: Date.now() >= k, bye: false, injury: inj || null };
   }
 
   function editorHtml() {
@@ -332,14 +357,22 @@
         '<span class="muted lu-game">' + (cur ? (lockedHere ? "🔒 " : "") + esc(gi.bye ? "⚠ Bye week" : gi.text) : "") + "</span></div></div>";
     }).join("");
     var empty = lu.draft.filter(function (x) { return !x; }).length;
-    var status = lu.saved ? "Saved." : lu.carried ? "Carried over from week " + lu.carried + ". Save to confirm it." : "Not set yet.";
+    var missing = missingSlots(lu.draft, slots);
+    var warn = lineupWarnings(lu.draft.map(function (id) { var p = byId[id], g = luInfo(p); return p ? { name: p.name, bye: g.bye, injury: g.injury } : null; }));
+    var status = lu.test
+      ? (lu.saved ? savedText(lu.savedAt, lu.savedBy) + "." : "Not saved yet: this is your MFL lineup.")
+      : lu.saved ? "Saved." : lu.carried ? "Carried over from week " + lu.carried + ". Save to confirm it." : "Not set yet.";
     var first = lu.weekGames.length ? Math.min.apply(null, lu.weekGames.map(function (g) { return Date.parse(g.kickoff); })) : null;
-    return '<div class="card lu-edit"><h3>Week ' + esc(lu.week) + " lineup</h3>" +
+    return '<div class="card lu-edit"><h3>Week ' + esc(lu.week) + (lu.test ? ' TEST lineup <span class="tag test-tag">TEST</span>' : " lineup") + "</h3>" +
+      (lu.test ? '<p class="test-label">TEST lineup: MFL is official for ' + esc(L.season) + ".</p>" : "") +
       (lu.meta && lu.meta.changed_at ? '<p class="small lu-last">' + esc(lastChangedText(lu.meta, st.names || {})) + "</p>" : "") +
       '<p class="muted small lu-status">' + esc(status) + " " +
       esc(first && Date.now() < first ? "First game " + fmtKick(first) + " ET. Each player locks at his own kickoff." : "Players lock at their own kickoff.") + "</p>" +
-      rows + '<div class="lu-actions"><button class="btn" data-mt="save" type="button">Save lineup</button>' +
-      (empty ? '<span class="muted small">' + empty + " empty slot" + (empty > 1 ? "s" : "") + "</span>" : "") + "</div>" +
+      rows + (warn.length ? '<p class="acct-msg err lu-warn">⚠ ' + warn.map(esc).join(" · ") + "</p>" : "") +
+      '<div class="lu-actions"><button class="btn" data-mt="save" type="button"' + (missing.length && !lu.allowPartial ? " disabled" : "") + ">Save " + (lu.test ? "test " : "") + "lineup</button>" +
+      (missing.length ? '<span class="small lu-missing">' + (lu.allowPartial ? "" : "Fill every slot to save. ") + "Missing: " + esc(missing.join(", ")) + "</span>"
+        : empty ? '<span class="muted small">' + empty + " empty slot" + (empty > 1 ? "s" : "") + "</span>" : "") + "</div>" +
+      (lu.test ? '<p class="muted small">Test lineups never count: on Tuesday the official MFL lineups replace them, and you\'ll see what yours would have scored. Everyone can see lineups.</p>' : "") +
       msgHtml(lu.msg) + "</div>";
   }
 
@@ -374,6 +407,70 @@
     }).catch(function (e) { st.lu = { error: "Couldn't load your lineup: " + e.message }; });
   }
 
+  // ---- 2026 test lineups -------------------------------------------------------
+  // Draft = this week's test lineup, else the official (MFL) one. Locks are judged against
+  // that same lineup (as on the server).
+  function loadTestLineup(teamId) {
+    var s = st.me.session, season = Number(L.season);
+    var api = function (p, i) { return A.api(cfg, s, p, i || {}, f); };
+    return api("rpc/test_lineup_week", { method: "POST", body: JSON.stringify({ p_season: season }) }).then(function (w) {
+      if (!w.ok) throw new Error(w.error);
+      st.tw = w.data || {};
+      if (!st.tw.test_mode) { st.lu = null; return; }
+      var week = st.tw.week;
+      var base = "&season=eq." + season + "&team_id=eq." + encodeURIComponent(teamId);
+      var none = Promise.resolve({ ok: true, data: [] });
+      return Promise.all([
+        api("nfl_games?season=eq." + season + "&week=eq." + week + "&select=week,home,away,kickoff"),
+        api("roster_entries?select=player_id,acquired,nfl_players(name,position,nfl_team)" + base),
+        api("test_lineups?select=players,saved_at,saved_by,status&week=eq." + week + base),
+        api("lineup_slots?select=slot,player_id&week=eq." + week + base),
+        api("player_injuries?season=eq." + season + "&week=eq." + week + "&select=player_id,status"),
+        week > 1 ? api("rpc/test_lineup_scores", { method: "POST", body: JSON.stringify({ p_season: season, p_week: week - 1 }) }) : none,
+        api("season_settings?season=eq." + season + "&select=lineups")
+      ]).then(function (r) {
+        var bad = r.filter(function (x) { return !x.ok; })[0];
+        if (bad) throw new Error(bad.error);
+        var tl = (r[2].data || [])[0], draft = [null, null, null, null, null, null, null, null, null];
+        if (tl && tl.status === "test") draft = tl.players.slice();
+        else (r[3].data || []).forEach(function (x) { if (x.slot >= 0 && x.slot < 9) draft[x.slot] = x.player_id; });
+        var savedIds = {};
+        draft.forEach(function (id, i) { if (id) savedIds[id] = i; });
+        var inj = {};
+        (r[4].data || []).forEach(function (x) { inj[x.player_id] = x.status; });
+        var prev = ((r[5].data || []).filter(function (x) { return x.team_id === teamId; }))[0] || null;
+        var by = tl && tl.saved_by ? (st.names && st.names[tl.saved_by]) || null : null;
+        var done = function (name) {
+          st.lu = {
+            test: true, week: week, open: !!st.tw.open, reason: st.tw.reason, weekGames: r[0].data || [],
+            roster: (r[1].data || []).map(function (x) {
+              var p = x.nfl_players || {};
+              return { id: x.player_id, name: p.name || x.player_id, pos: p.position, nfl: p.nfl_team, acquired: x.acquired || "" };
+            }).sort(byPos),
+            draft: draft, saved: !!(tl && tl.status === "test"), savedAt: tl && tl.saved_at, savedBy: name, savedIds: savedIds, injuries: inj,
+            prev: prev && prev.has_test ? { week: week - 1, test: Number(prev.test_points || 0), official: Number(prev.official_points || 0) } : null,
+            allowPartial: !!(((r[6].data || [])[0] || {}).lineups || {}).allowPartial,
+            msg: st.lu && st.lu.keepMsg || null
+          };
+        };
+        if (by || !(tl && tl.saved_by)) return done(by);
+        return api("profiles?id=eq." + tl.saved_by + "&select=display_name").then(function (x) { done(((x.data || [])[0] || {}).display_name || "an owner"); });
+      });
+    }).catch(function (e) { st.lu = { test: true, error: "Couldn't load your test lineup: " + e.message }; });
+  }
+  function testPrevHtml() {
+    var p = st.lu && st.lu.prev;
+    if (!p) return "";
+    var d = Math.round((p.test - p.official) * 10) / 10;
+    return '<div class="card lu-prev"><h3>Week ' + esc(p.week) + ' test vs official</h3><p>Your test lineup would have scored <b>' + esc(p.test.toFixed(1)) +
+      "</b>. Official MFL lineup: <b>" + esc(p.official.toFixed(1)) + "</b>" + (d ? " (" + (d > 0 ? "+" : "") + esc(d.toFixed(1)) + ")" : "") + ".</p></div>";
+  }
+  function testClosedHtml() {
+    var lu = st.lu;
+    return '<div class="card lu-edit"><h3>TEST lineup <span class="tag test-tag">TEST</span></h3><p class="test-label">TEST lineup: MFL is official for ' + esc(L.season) + ".</p>" +
+      '<p class="muted">' + esc(lu.reason || "Test lineups are closed right now.") + "</p></div>";
+  }
+
   function render(rootEl) {
     var notice = root.B5AuthNotice && root.B5AuthNotice.signedIn ? { ok: "You're signed in." } : null;
     if (notice) root.B5AuthNotice = null;
@@ -392,11 +489,13 @@
       rootEl.innerHTML = '<section><h2>My Team</h2>' + msgHtml(notice) + '<div class="card"><p>You\'re not assigned to a team yet. Ask the commissioner.</p></div></section>';
       return;
     }
-    var open = lineupsOpen(L);
+    var open = lineupsOpen(L), test = !open && st.lu && st.lu.test;
     var rosterNote = L.rosters && L.rosters.asOf ? "As of " + fmtDate(L.rosters.asOf) + (L.rosters.week ? " (week " + L.rosters.week + ")" : "") + "." : "";
     rootEl.innerHTML = '<section class="mt">' + msgHtml(notice || st.msg) + headerHtml(t) +
-      '<div class="mt-cols"><div>' + (open ? editorHtml() : shadowLineupHtml() + closedHtml()) + activityHtml() + "</div><div>" +
-      (open ? rosterHtml(st.lu && st.lu.roster || [], "")
+      '<div class="mt-cols"><div>' + (open ? editorHtml()
+        : test ? (st.lu.error || st.lu.open ? editorHtml() : testClosedHtml()) + testPrevHtml() + shadowLineupHtml()
+        : shadowLineupHtml() + closedHtml()) + activityHtml() + "</div><div>" +
+      (open || (test && !st.lu.error) ? rosterHtml(st.lu && st.lu.roster || [], "")
         : st.dbRosters ? rosterHtml(st.dbRosters[t.id] || [], "Current roster (synced nightly).")
         : rosterHtml(leagueRoster(L, t.id), rosterNote)) + "</div></div></section>";
     st.msg = null;
@@ -404,7 +503,7 @@
 
   function show(rootEl) {
     var act = st.me && teamOf(st.teamId) ? loadActivity(st.teamId).catch(function () {}) : Promise.resolve();
-    if (!lineupsOpen(L) && st.me && teamOf(st.teamId)) return Promise.all([loadShadowWeek(st.teamId), act]).then(function () { render(rootEl); });
+    if (!lineupsOpen(L) && st.me && teamOf(st.teamId)) return Promise.all([loadShadowWeek(st.teamId), loadTestLineup(st.teamId), act]).then(function () { render(rootEl); });
     if (!lineupsOpen(L) || !st.me || !teamOf(st.teamId)) { render(rootEl); return Promise.resolve(); }
     return Promise.all([loadLineup(st.teamId), act]).then(function () { render(rootEl); });
   }
@@ -437,6 +536,8 @@
       if (!b || !st.lu) return;
       b.disabled = true;
       var send = function (s, expected) {
+        if (st.lu.test) return A.api(cfg, s, "rpc/save_test_lineup", { method: "POST", body: JSON.stringify({
+          p_season: Number(L.season), p_week: st.lu.week, p_team: st.teamId, p_players: st.lu.draft }) }, f);
         return A.api(cfg, s, "rpc/save_lineup", { method: "POST", body: JSON.stringify({
           p_season: Number(L.season), p_week: st.lu.week, p_team: st.teamId, p_players: st.lu.draft, p_expected_version: expected
         }) }, f);
@@ -453,8 +554,8 @@
         });
       }).then(function (r) {
         if (!r.ok) throw new Error(r.error);
-        if (!r.reloaded) st.lu.keepMsg = { ok: "Lineup saved " + fmtKick(Date.now()) + " ET." };
-        return Promise.all([loadLineup(st.teamId), loadActivity(st.teamId)]);
+        if (!r.reloaded) st.lu.keepMsg = { ok: (st.lu.test ? "Test lineup saved " : "Lineup saved ") + fmtKick(Date.now()) + " ET." };
+        return Promise.all([st.lu.test ? loadTestLineup(st.teamId) : loadLineup(st.teamId), loadActivity(st.teamId)]);
       }).catch(function (err) {
         // The database names players by ID; show names.
         var text = String(err.message || "");
@@ -464,5 +565,5 @@
     });
   }
 
-  root.B5MyTeam = { start: start, activityText: activityText, lastChangedText: lastChangedText, isConflict: isConflict, lineupListHtml: lineupListHtml, statusText: statusText, loadRosters: loadRosters, rostersFromRows: rostersFromRows, lineupsOpen: lineupsOpen, recordFor: recordFor, leagueRoster: leagueRoster, pickWeek: pickWeek, draftFrom: draftFrom, kickoffFor: kickoffFor };
+  root.B5MyTeam = { start: start, activityText: activityText, lastChangedText: lastChangedText, isConflict: isConflict, lineupListHtml: lineupListHtml, statusText: statusText, loadRosters: loadRosters, rostersFromRows: rostersFromRows, lineupsOpen: lineupsOpen, recordFor: recordFor, leagueRoster: leagueRoster, pickWeek: pickWeek, draftFrom: draftFrom, kickoffFor: kickoffFor, missingSlots: missingSlots, lineupWarnings: lineupWarnings, savedText: savedText };
 })(typeof globalThis !== "undefined" ? globalThis : this);
