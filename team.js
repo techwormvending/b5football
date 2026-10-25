@@ -78,12 +78,14 @@
     return "Not submitted yet";
   }
   /** The week's starting lineup in slot order (HTML; player names escaped). slots: live_lineups rows for one team. */
+  /** A player's name with the schedule pop-up (playername.js); plain escaped text without it. */
+  var pname = function (p, opts) { return root.B5Player ? root.B5Player.html(p, opts) : esc(p.name); };
   function lineupHtml(slots, st, week, seasonNo) {
     var by = {}; (slots || []).forEach(function (x) { by[x.slot] = x; });
     var rows = SLOTS.map(function (pos, i) {
       var x = by[i];
       return '<li><span class="pos pos-' + esc(pos) + '">' + esc(pos) + "</span>" + (x && x.player_id
-        ? '<span class="pname">' + esc(x.name) + ' <span class="muted nfl">' + esc(x.nfl_team || "") + "</span></span>" +
+        ? '<span class="pname">' + pname({ id: x.player_id, name: x.name, pos: x.pos || SLOTS[i], nfl: x.nfl_team, status: x.injury }) + ' <span class="muted nfl">' + esc(x.nfl_team || "") + "</span></span>" +
           (x.bye ? ' <span class="lv-bye">BYE</span>' : x.injury ? ' <span class="tag">' + esc(x.injury) + "</span>" : "")
         : '<span class="muted">Empty</span>') + "</li>";
     }).join("");
@@ -149,7 +151,7 @@
     var roster = lineupStatus(d.roster, d.slots);
     var rosterHtml = '<div class="card"><h3>Roster (' + roster.length + ")" + (d.week ? ' <span class="muted small">· week ' + esc(d.week) + " lineup</span>" : "") + "</h3>" +
       (roster.length ? '<ul class="roster-list">' + roster.map(function (p) {
-        return '<li><span class="pos pos-' + esc(p.pos) + '">' + esc(p.pos) + '</span><span class="pname">' + esc(p.name) + ' <span class="muted nfl">' + esc(p.nfl) + "</span></span>" +
+        return '<li><span class="pos pos-' + esc(p.pos) + '">' + esc(p.pos) + '</span><span class="pname">' + pname({ id: p.id, name: p.name, pos: p.pos, nfl: p.nfl }) + ' <span class="muted nfl">' + esc(p.nfl) + "</span></span>" +
           (p.status ? '<span class="muted small tp-st' + (/^Starter/.test(p.status) ? " on" : "") + '">' + esc(p.status) + "</span>" : "") + "</li>";
       }).join("") + "</ul>" : '<p class="muted">No roster yet.</p>') +
       "</div>";

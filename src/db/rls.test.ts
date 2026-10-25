@@ -2336,3 +2336,20 @@ describe("test lineups (2026 test mode)", () => {
     assert.equal(d.saved_by, "Mike");
   });
 });
+
+describe("player schedule pop-up: points allowed", () => {
+  test("points each team allows to each position per game, public read", async () => {
+    await db.exec(`
+      insert into public.nfl_players (id, name, position, nfl_team) values ('WR-DET', 'Amon-Ra St. Brown', 'WR', 'DET'), ('WR-ARI', 'Marvin Harrison Jr.', 'WR', 'ARI'), ('DEF:ARI', 'ARI Defense', 'DEF', 'ARI');
+      insert into public.player_scores (season, week, player_id, game_key, points, source) values
+        (${S}, 1, 'QB-DET', 'DET@ARI', 20, 'final'), (${S}, 1, 'WR-DET', 'DET@ARI', 10, 'final'),
+        (${S}, 2, 'QB-DET', 'KC@DET', 30, 'final'), (${S}, 1, 'WR-ARI', 'DET@ARI', 7, 'final'), (${S}, 1, 'DEF:ARI', 'DET@ARI', 4, 'final'),
+        (${S}, 3, 'QB-ARI', 'ARI@LV', 12, 'final')
+      on conflict (season, week, player_id) do update set points = excluded.points, game_key = excluded.game_key;`);
+    const r = await rowsT(db, anon, `select team, pos, games, avg::float as avg from public.points_allowed(${S}) order by team, pos`);
+    assert.deepEqual(r.map(x => [x.team, x.pos, x.games, x.avg]), [
+      ["ARI", "QB", 1, 20], ["ARI", "WR", 1, 10],           // DET's QB and WR against ARI in week 1
+      ["DET", "DEF", 1, 4], ["DET", "WR", 1, 7],            // ARI's defense and WR against DET
+      ["KC", "QB", 1, 30], ["LV", "QB", 1, 12]]);
+  });
+});

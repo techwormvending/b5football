@@ -43,15 +43,17 @@
     return out;
   }
   /** A transaction as a line: "Mac Daddies added Joe Burrow, dropped Bo Nix (waiver claim)". html: team names as TeamLinks. */
-  function txnText(t, names, html) {
+  function txnText(t, names, html, nameHtml) {
     var tn = function (id) { return html ? tlink(id) : TL().name(id); }, tx = function (x) { return html ? esc(x) : x; };
     var nm = function (id) { return names[id] || (/^mfl:/.test(id) ? "MFL player " + id.slice(4) : id); };
+    // html: each player name escaped (or a PlayerName when nameHtml is given), the glue words escaped too
+    var list = function (ids) { return (ids || []).map(function (id) { return html ? (nameHtml && names[id] ? nameHtml(id) : esc(nm(id))) : nm(id); }).join(tx(", ")); };
+    if (t.type === "trade") return tn(t.team_id) + tx(" traded ") + list(t.players_out) + tx(" to ") + tn(t.partner_team_id) + tx(" for ") + list(t.players_in) + tx(t.via === "mfl" ? " (on MFL)" : "");
     var parts = [];
-    if (t.type === "trade") return tn(t.team_id) + tx(" traded " + (t.players_out || []).map(nm).join(", ") + " to ") + tn(t.partner_team_id) + tx(" for " + (t.players_in || []).map(nm).join(", ") + (t.via === "mfl" ? " (on MFL)" : ""));
-    if ((t.players_in || []).length) parts.push("added " + t.players_in.map(nm).join(", "));
-    if ((t.players_out || []).length) parts.push("dropped " + t.players_out.map(nm).join(", "));
+    if ((t.players_in || []).length) parts.push(tx("added ") + list(t.players_in));
+    if ((t.players_out || []).length) parts.push(tx("dropped ") + list(t.players_out));
     var via = { waiver: "waiver claim", commissioner: "by the commissioner", mfl: "on MFL", trade: "part of a trade", free_agent: "" }[t.via] || "";
-    return tn(t.team_id) + tx(" " + parts.join(", ") + (via ? " (" + via + ")" : "") + (t.status === "reversed" ? " — reversed" : ""));
+    return tn(t.team_id) + tx(" ") + parts.join(tx(", ")) + tx((via ? " (" + via + ")" : "") + (t.status === "reversed" ? " — reversed" : ""));
   }
   /** The weekly calendar in words, from the season's settings. */
   function calendarText(w) {
@@ -61,6 +63,12 @@
     return "Each player locks at his own NFL kickoff until the week's last game ends. " + day(s.isodow) + " " + t(s.time) + " ET every free agent goes on waivers; " +
       "claims process " + day(p.isodow) + " " + t(p.time) + " ET (worst-to-first by total points, up to " + (w.rounds || 8) + " rounds); then first-come-first-served until each player's kickoff. " +
       "Dropped players are claims-only for " + (w.dropLockHours || 24) + " hours. Rosters max " + (w.rosterMax || 18) + ".";
+  }
+
+  /** A player's name with the schedule pop-up (playername.js), or plain escaped text. */
+  function pn(id) {
+    var n = (st.names || {})[id] || id, i = (st.info || {})[id] || {};
+    return root.B5Player && (st.names || {})[id] ? root.B5Player.html({ id: id, name: n, pos: i.pos, nfl: i.nfl }) : esc(n);
   }
 
   // ---- State / data --------------------------------------------------------------------------
@@ -93,17 +101,17 @@
       st.claims = ok(r[3]); st.order = ok(r[4]); st.runs = ok(r[5]); st.txns = ok(r[6]);
       st.people = {}; ok(r[7]).forEach(function (x) { st.people[x.user_id] = (x.profiles && x.profiles.display_name) || TL().name(x.team_id); });
       // Names for every player the claims and transactions mention.
-      st.names = {};
-      st.fa.forEach(function (p) { st.names[p.player_id] = p.name; });
-      st.roster.forEach(function (p) { st.names[p.id] = p.name; });
+      st.names = {}; st.info = {};
+      st.fa.forEach(function (p) { st.names[p.player_id] = p.name; st.info[p.player_id] = { pos: p.pos, nfl: p.nfl_team }; });
+      st.roster.forEach(function (p) { st.names[p.id] = p.name; st.info[p.id] = { pos: p.pos, nfl: p.nfl }; });
       var need = [];
       st.claims.forEach(function (c) { [c.add_player, c.drop_player].forEach(function (id) { if (id && !st.names[id]) need.push(id); }); });
       st.txns.forEach(function (t) { (t.players_in || []).concat(t.players_out || []).forEach(function (id) { if (id && !st.names[id] && !/^mfl:/.test(id)) need.push(id); }); });
       need = need.filter(function (x, i) { return need.indexOf(x) === i; });
       var chunks = [];
       for (var i = 0; i < need.length; i += 100) chunks.push(need.slice(i, i + 100));
-      return Promise.all(chunks.map(function (c) { return api("nfl_players?id=in.(" + inList(c) + ")&select=id,name"); })).then(function (rs) {
-        rs.forEach(function (x) { ok(x).forEach(function (p) { st.names[p.id] = p.name; }); });
+      return Promise.all(chunks.map(function (c) { return api("nfl_players?id=in.(" + inList(c) + ")&select=id,name,position,nfl_team"); })).then(function (rs) {
+        rs.forEach(function (x) { ok(x).forEach(function (p) { st.names[p.id] = p.name; st.info[p.id] = { pos: p.position, nfl: p.nfl_team }; }); });
       });
     });
   }
@@ -130,7 +138,7 @@
     var rows = list.slice(0, st.shown).map(function (p) {
       var a = action(p), open = st.pick === p.player_id;
       var btn = can && a.kind ? '<button type="button" class="btn' + (a.kind === "claim" ? " ghost" : "") + '" data-pl="pick" data-id="' + esc(p.player_id) + '">' + esc(a.label) + "</button>" : "";
-      return '<li class="fa-row"><span class="pos pos-' + esc(p.pos) + '">' + esc(p.pos) + '</span><div class="fa-main"><b>' + esc(p.name) + '</b><span class="muted small">' + esc(p.nfl_team || "FA") + " · " + esc(Number(p.points).toFixed(1)) + " pts · " +
+      return '<li class="fa-row"><span class="pos pos-' + esc(p.pos) + '">' + esc(p.pos) + '</span><div class="fa-main"><b>' + pn(p.player_id) + '</b><span class="muted small">' + esc(p.nfl_team || "FA") + " · " + esc(Number(p.points).toFixed(1)) + " pts · " +
         '<span class="fa-' + esc(p.status) + '">' + esc(a.note) + "</span></span></div>" + btn +
         (open ? '<form class="fa-confirm" data-pl-move="' + esc(a.kind) + '" data-id="' + esc(p.player_id) + '">' + dropSelect(full) +
           '<button class="btn" type="submit">' + (a.kind === "add" ? "Add " : "Claim ") + esc(p.name) + '</button><button class="btn ghost" type="button" data-pl="unpick">Cancel</button></form>' : "") + "</li>";
@@ -140,7 +148,7 @@
       (rows ? '<ul class="fa-list">' + rows + "</ul>" : '<p class="muted">No players match.</p>') +
       (list.length > st.shown ? '<button type="button" class="btn ghost" data-pl="more">Show more (' + (list.length - st.shown) + " more)</button>" : "") + "</div>" +
       (can && st.roster.length ? '<div class="card"><h3>Drop a player</h3><p class="muted small">Drop-only moves are fine. A player whose game has kicked off can\'t be dropped until the week\'s last game ends.</p><ul class="fa-list">' +
-        st.roster.map(function (p) { return '<li class="fa-row"><span class="pos pos-' + esc(p.pos) + '">' + esc(p.pos) + '</span><div class="fa-main"><b>' + esc(p.name) + '</b><span class="muted small">' + esc(p.nfl || "") + '</span></div><button type="button" class="btn ghost" data-pl="drop" data-id="' + esc(p.id) + '">Drop</button></li>'; }).join("") + "</ul></div>" : "");
+        st.roster.map(function (p) { return '<li class="fa-row"><span class="pos pos-' + esc(p.pos) + '">' + esc(p.pos) + '</span><div class="fa-main"><b>' + pn(p.id) + '</b><span class="muted small">' + esc(p.nfl || "") + '</span></div><button type="button" class="btn ghost" data-pl="drop" data-id="' + esc(p.id) + '">Drop</button></li>'; }).join("") + "</ul></div>" : "");
   }
   function claimsHtml() {
     var mine = st.claims.filter(function (c) { return c.team_id === myTeam() && c.status === "pending"; });
@@ -148,8 +156,8 @@
     var who = function (c) { var by = c.updated_by || c.created_by; return by ? (c.updated_by ? "reordered by " : "added by ") + (st.people[by] || "an owner") : ""; };
     return '<div class="card"><h3>Pending claims (' + mine.length + ")</h3>" +
       (mine.length ? '<p class="muted small">Drag ☰ (or use ▲ ▼) to rank them; they process ' + esc(when(nextProcess())) + ". Either owner can change them.</p><ol class=\"cl-list\" data-pl-list>" + mine.map(function (c, i) {
-        return '<li class="cl-row" data-id="' + c.id + '"><span class="cl-handle" data-pl-handle aria-label="Drag to reorder">☰</span><div class="fa-main"><b>' + (i + 1) + ". " + esc(st.names[c.add_player] || c.add_player) + "</b>" +
-          '<span class="muted small">' + (c.drop_player ? "drop " + esc(st.names[c.drop_player] || c.drop_player) : "no drop") + " · " + esc(who(c)) + "</span></div>" +
+        return '<li class="cl-row" data-id="' + c.id + '"><span class="cl-handle" data-pl-handle aria-label="Drag to reorder">☰</span><div class="fa-main"><b>' + (i + 1) + ". " + pn(c.add_player) + "</b>" +
+          '<span class="muted small">' + (c.drop_player ? "drop " + pn(c.drop_player) : "no drop") + " · " + esc(who(c)) + "</span></div>" +
           '<div class="cl-btns"><button type="button" data-pl="up" data-i="' + i + '" aria-label="Move up">▲</button><button type="button" data-pl="down" data-i="' + i + '" aria-label="Move down">▼</button>' +
           '<button type="button" data-pl="cancel" data-id="' + c.id + '" aria-label="Cancel claim">✕</button></div></li>';
       }).join("") + "</ol>" : '<p class="muted">No pending claims. Use Claim on a player who\'s on waivers or locked.</p>') + "</div>";
@@ -176,7 +184,7 @@
       var cs = st.claims.filter(function (c) { return c.run_id === r.id; }).sort(function (a, b) { return (rankOf[a.status] || 3) - (rankOf[b.status] || 3) || TL().name(a.team_id).localeCompare(TL().name(b.team_id)); });
       return '<div class="card"><h3>Waivers ' + esc(whenDate(r.ran_at)) + (r.kind === "forced" ? ' <span class="tag">run by the commissioner</span>' : "") + "</h3>" +
         '<ul class="checks">' + cs.map(function (c) {
-          return "<li><b>" + tlink(c.team_id) + "</b>: " + esc(st.names[c.add_player] || c.add_player) + (c.drop_player ? " (drop " + esc(st.names[c.drop_player] || c.drop_player) + ")" : "") +
+          return "<li><b>" + tlink(c.team_id) + "</b>: " + pn(c.add_player) + (c.drop_player ? " (drop " + pn(c.drop_player) + ")" : "") +
             ' — <span class="cl-' + esc(c.status) + '">' + esc(c.status) + "</span>" + (c.result ? ' <span class="muted small">' + esc(c.result) + "</span>" : "") + "</li>";
         }).join("") + "</ul></div>";
     }).join("");
@@ -185,14 +193,14 @@
     if (!st.txns.length) return '<div class="card muted">No transactions yet.</div>';
     return '<div class="card"><ul class="checks tx-log">' + st.txns.map(function (t) {
       var canReverse = isCommish() && t.status === "processed" && (t.players_out || []).length && t.type !== "trade" && t.via !== "mfl";
-      return "<li>" + txnText(t, st.names, true) + ' <span class="muted small">' + esc(whenDate(t.created_at)) + (t.created_by && st.people[t.created_by] ? " · " + esc(st.people[t.created_by]) : "") + "</span>" +
+      return "<li>" + txnText(t, st.names, true, pn) + ' <span class="muted small">' + esc(whenDate(t.created_at)) + (t.created_by && st.people[t.created_by] ? " · " + esc(st.people[t.created_by]) : "") + "</span>" +
         (canReverse ? ' <button class="linkish" type="button" data-pl="reverse" data-id="' + t.id + '">Reverse drop</button>' : "") + "</li>";
     }).join("") + "</ul></div>";
   }
   function commishHtml() {
     var pending = st.claims.filter(function (c) { return c.status === "pending"; });
     return '<div class="card"><h3>Pending claims, all teams (' + pending.length + ")</h3>" +
-      (pending.length ? '<ul class="checks">' + pending.map(function (c) { return "<li><b>" + tlink(c.team_id) + "</b> #" + c.rank + ": " + esc(st.names[c.add_player] || c.add_player) + (c.drop_player ? " (drop " + esc(st.names[c.drop_player] || c.drop_player) + ")" : "") + "</li>"; }).join("") + "</ul>" : '<p class="muted">None.</p>') +
+      (pending.length ? '<ul class="checks">' + pending.map(function (c) { return "<li><b>" + tlink(c.team_id) + "</b> #" + c.rank + ": " + pn(c.add_player) + (c.drop_player ? " (drop " + pn(c.drop_player) + ")" : "") + "</li>"; }).join("") + "</ul>" : '<p class="muted">None.</p>') +
       (st.live ? '<button type="button" class="btn" data-pl="run">Process waivers now</button>' : '<p class="muted small">Processing opens with live claims (' + esc(season + 1) + "); MFL runs " + esc(season) + "'s waivers.</p>") + "</div>" +
       '<div class="card"><h3>Waiver runs</h3>' + (st.runs.length ? '<ul class="checks">' + st.runs.map(function (r) {
         return "<li>" + esc(whenDate(r.ran_at)) + " · " + esc(r.kind) + " · " + esc(r.won) + " won · " + esc(r.status) + (r.status === "done" ? ' <button class="linkish" type="button" data-pl="undo" data-id="' + r.id + '">Undo this run</button>' : "") + "</li>";

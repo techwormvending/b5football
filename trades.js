@@ -99,7 +99,7 @@
     return list.length ? '<ul class="tr-list">' + list.map(function (a) {
       var locked = a.locked_until && Date.parse(a.locked_until) > Date.now(), on = chosen.indexOf(a.id) >= 0;
       return '<li><label class="' + (locked ? "muted" : "") + '"><input type="checkbox" data-tr-pick="' + esc(side + ":" + kind) + '" value="' + esc(a.id) + '"' + (on ? " checked" : "") + (locked ? " disabled" : "") + ">" +
-        (kind === "player" ? '<span class="pos pos-' + esc(a.pos) + '">' + esc(a.pos) + "</span> " + esc(a.name) + ' <span class="muted small">' + esc(a.nfl_team || "") + "</span>" : esc(a.label)) +
+        (kind === "player" ? '<span class="pos pos-' + esc(a.pos) + '">' + esc(a.pos) + "</span> " + (root.B5Player ? root.B5Player.html({ id: a.id, name: a.name, pos: a.pos, nfl: a.nfl_team }) : esc(a.name)) + ' <span class="muted small">' + esc(a.nfl_team || "") + "</span>" : esc(a.label)) +
         (locked ? ' <span class="small">🔒 until ' + esc(when(a.locked_until)) + "</span>" : "") + "</label></li>";
     }).join("") + "</ul>" : '<p class="muted small">None.</p>';
   }

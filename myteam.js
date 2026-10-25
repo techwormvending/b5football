@@ -171,6 +171,8 @@
     return rostersP;
   }
 
+  /** A player's name with the schedule pop-up (playername.js); plain escaped text without it. */
+  var pname = function (p, opts) { return root.B5Player ? root.B5Player.html(p, opts) : esc(p.name); };
   var TL = function () { return root.B5Team; };   // team names, logos and profile links (teamlink.js)
   var teamOf = function (id) { return id && TL().has(id) ? { id: id, division: TL().division(id) } : null; };
   var divName = function (id) { var d = (L.divisions || []).filter(function (x) { return x.id === id; })[0]; return d ? d.name : ""; };
@@ -217,7 +219,7 @@
     if (!players.length) return '<div class="card"><h3>Roster</h3><p class="muted">No players on this roster yet.</p></div>';
     return '<div class="card"><h3>Roster (' + players.length + ")</h3>" +
       '<ul class="mt-roster">' + players.map(function (p) {
-        return '<li><span class="pos pos-' + esc(p.pos) + '">' + esc(p.pos) + '</span><span class="pname">' + esc(p.name) +
+        return '<li><span class="pos pos-' + esc(p.pos) + '">' + esc(p.pos) + '</span><span class="pname">' + pname({ id: p.id, name: p.name, pos: p.pos, nfl: p.nfl }) +
           '</span><span class="muted nfl">' + esc(p.nfl || "FA") + (p.acquired ? " · " + esc(acq(p.acquired)) : "") + "</span></li>";
       }).join("") + "</ul>" + (note ? '<p class="muted small">' + esc(note) + "</p>" : "") + "</div>";
   }
@@ -273,7 +275,7 @@
       var p = bySlot[i];
       if (p && p.points != null) total += p.points;
       return '<li><span class="pos pos-' + esc(pos) + '">' + esc(pos) + "</span>" +
-        (p ? '<span class="pname">' + esc(p.name) + ' <span class="muted nfl">' + esc(p.nfl) + "</span></span>" +
+        (p ? '<span class="pname">' + pname({ id: p.id, name: p.name, pos: p.pos, nfl: p.nfl }) + ' <span class="muted nfl">' + esc(p.nfl) + "</span></span>" +
           '<span class="mu-pts">' + (p.points == null ? "–" : esc(p.points.toFixed(1))) + "</span>"
           : '<span class="pname muted">Empty</span><span class="mu-pts">–</span>') + "</li>";
     }).join("");
@@ -396,7 +398,7 @@
           return '<button type="button" class="lu-p' + (on ? " on" : "") + (gi.locked ? " locked" : "") + (on && bad ? " warn" : "") + '" role="checkbox" aria-checked="' + on + '"' +
             (off ? ' aria-disabled="true"' : "") + ' data-pid="' + esc(p.id) + '">' +
             '<span class="lu-box" aria-hidden="true">' + (gi.locked ? "🔒" : on ? "✓" : "") + "</span>" +
-            '<span class="lu-who"><span class="lu-pn">' + esc(p.name) + ' <span class="muted nfl">' + esc(p.nfl || "FA") + "</span></span>" +
+            '<span class="lu-who"><span class="lu-pn">' + pname({ id: p.id, name: p.name, pos: p.pos, nfl: p.nfl, status: inj }, { focusable: false }) + ' <span class="muted nfl">' + esc(p.nfl || "FA") + "</span></span>" +
             '<span class="lu-meta small muted">' + esc(gi.bye ? "Bye week" : gi.text) + "</span></span>" +
             (tag ? '<span class="lu-tag' + (bad ? " bad" : "") + '">' + esc(tag) + "</span>" : "") +
             '<span class="lu-pts">' + esc(pts) + "</span></button>";
