@@ -221,13 +221,38 @@ select:focus, input:focus { outline: 2px solid var(--gold); outline-offset: 1px;
 select:disabled { opacity: .75; }
 .linkish { background: none; border: 0; color: var(--gold); cursor: pointer; font: 14px var(--body); padding: 4px; text-decoration: underline; }
 .lu-status { margin: 6px 0 12px; }
-.lu-row { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid var(--card-line); }
-.lu-row .pos { margin-top: 10px; }
-.lu-pick { flex: 1; min-width: 0; display: grid; gap: 3px; }
-.lu-game { font-size: 12px; }
-.lu-row.locked select { border-color: rgba(255, 182, 18, .4); }
-.lu-actions { display: flex; align-items: center; gap: 12px; margin: 14px 0 12px; }
-.lu-actions .btn { cursor: pointer; }
+.lu-group { margin: 12px 0 4px; }
+.lu-gh { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; font-size: 13px; letter-spacing: .04em; color: var(--chalk-dim); }
+.lu-gh.full { color: var(--gold); }
+.lu-p { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; padding: 8px 10px; margin: 0 0 4px; text-align: left; font: inherit; color: inherit;
+  background: rgba(255, 255, 255, .03); border: 1px solid var(--card-line); border-radius: 8px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.lu-p:hover { border-color: rgba(255, 182, 18, .5); }
+.lu-p:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+.lu-p.on { background: rgba(255, 182, 18, .1); border-color: rgba(255, 182, 18, .55); }
+.lu-p[aria-disabled=true] { cursor: not-allowed; }
+.lu-p[aria-disabled=true]:not(.on):not(.locked) { opacity: .5; }
+.lu-p.locked { border-style: dashed; }
+.lu-p.warn { background: rgba(229, 57, 53, .14); border-color: #e53935; }
+.lu-p.warn .lu-pn { color: #ff8a80; }
+.lu-box { flex: 0 0 26px; height: 26px; display: grid; place-items: center; border: 2px solid var(--chalk-dim); border-radius: 6px; font-weight: 700; font-size: 15px; }
+.lu-p.on .lu-box { background: var(--gold); border-color: var(--gold); color: #111; }
+.lu-p.locked .lu-box { border-style: dashed; font-size: 13px; }
+.lu-who { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.lu-pn { font-weight: 600; overflow-wrap: anywhere; }
+.lu-meta { font-size: 12px; }
+.lu-tag { flex: 0 0 auto; font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--gold); color: var(--gold); }
+.lu-tag.bad { border-color: #e53935; background: #e53935; color: #fff; }
+.lu-pts { flex: 0 0 auto; min-width: 2.6em; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.lu-bar { position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; gap: 12px; margin: 12px -20px -20px; padding: 10px 20px calc(10px + env(safe-area-inset-bottom));
+  background: var(--ink-deep); border-top: 1px solid var(--gold); border-radius: 0 0 var(--radius) var(--radius); }
+.lu-bar-info { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.lu-counts { font-variant-numeric: tabular-nums; }
+.lu-state { color: var(--chalk-dim); }
+.lu-state.dirty { color: var(--gold); font-weight: 600; }
+.lu-hint.err { color: #ff8a80; }
+.lu-hint.ok { color: #9be3b5; }
+.lu-bar .btn { flex: 0 0 auto; cursor: pointer; }
+.lu-bar .btn[disabled] { opacity: .5; cursor: default; }
 code { background: rgba(255,255,255,.08); padding: 1px 5px; border-radius: 4px; }
 @media (max-width: 960px) { .mt-cols { grid-template-columns: 1fr; } }
 

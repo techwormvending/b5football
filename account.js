@@ -227,7 +227,7 @@
       Q.inviteEmails = get("invites?select=email,user_id&user_id=not.is.null");
       Q.board = get("board_settings?select=auto_recap,auto_awards");
       Q.crossposts = get("board_threads?source_key=like.announcement:*&select=id,source_key");
-      Q.league = get("league_settings?select=max_owners_per_team");
+      Q.league = get("league_settings?select=max_owners_per_team,allow_partial_lineups");
       Q.games = get("nfl_games?season=eq." + Number(L.season) + "&select=week,kickoff");
       Q.requests = get("officer_requests?select=*&order=requested_at.desc&limit=40");
     } else {
@@ -253,6 +253,7 @@
       cm.flags = ok("flags"); cm.seasons = ok("seasons"); cm.audit = ok("audit");
       cm.week = window.B5TeamPage ? window.B5TeamPage.currentWeek(ok("games")) : null;
       cm.maxOwners = (ok("league")[0] || {}).max_owners_per_team || 2;
+      cm.allowPartial = (ok("league")[0] || {}).allow_partial_lineups !== false;
       cm.board = ok("board")[0] || null;
       cm.crossposted = {}; ok("crossposts").forEach(function (t) { cm.crossposted[t.source_key] = t.id; });
       var lc = ok("live"); cm.live = lc.filter(function (x) { return x.week === (lc[0] || {}).week; });
@@ -397,7 +398,9 @@
     }).join("") + "</ul>" + '<p class="muted small">Up to ' + esc(maxOwners) + " owners per team, each with his own login; an account owns one team. Removing one owner leaves the other.</p>"
       : '<p class="muted">No managers have joined yet.</p>';
 
-    root.innerHTML = "<section><h2>Commissioner</h2>" + m + requestsHtml() + '<div class="card"><h3>Payouts</h3><p>Fees, payouts, manual awards, overrides and CSV export: <a href="#commish-payouts">open the payout tools</a>.</p></div>' + lineupCheckHtml(cm.lineupImports || []) + shadowHtml(cm.shadow || []) + lineupsHtml() + emailLogHtml() + boardHtml() + officersHtml() +
+    root.innerHTML = "<section><h2>Commissioner</h2>" + m + requestsHtml() + '<div class="card"><h3>Payouts</h3><p>Fees, payouts, manual awards, overrides and CSV export: <a href="#commish-payouts">open the payout tools</a>.</p></div>' + lineupCheckHtml(cm.lineupImports || []) + shadowHtml(cm.shadow || []) + lineupsHtml() +
+      '<div class="card"><h3>Lineup rules</h3><label class="acct-check"><input type="checkbox" data-cm="partial-toggle"' + (cm.allowPartial ? " checked" : "") + "> Allow partial lineups</label>" +
+      '<p class="muted small">On: a lineup can be saved with empty starter slots (an empty slot scores 0; owners see a warning). Off: every slot must be filled before saving. Changes are in the audit log.</p></div>' + emailLogHtml() + boardHtml() + officersHtml() +
       '<div class="card"><h3>Invite a manager</h3>' + seedTeams +
       '<form class="acct-form" data-cm="invite">' +
       '<label>Email<input name="email" type="email" autocomplete="off" required></label>' +
@@ -656,6 +659,12 @@
         act(rpcCall("admin_set_mode", { p_season: Number(md.dataset.season), p_key: md.dataset.key, p_value: JSON.parse(md.value) }).then(function (r) { return said(r); }));
         return;
       }
+      var pt = e.target.closest("[data-cm='partial-toggle']");
+      if (pt) {
+        act(A.api(cfg, me.session, "league_settings?id=eq.true", { method: "PATCH", body: JSON.stringify({ allow_partial_lineups: pt.checked, updated_at: new Date().toISOString() }), headers: { Prefer: "return=minimal" } }, f)
+          .then(function (r) { return r.ok ? { msgOk: pt.checked ? "Partial lineups allowed." : "Every slot must be filled now." } : r; }));
+        return;
+      }
       var t = e.target.closest("[data-cm='board-toggle']");
       if (!t) return;
       var patch = {}; patch[t.dataset.key] = t.checked; patch.updated_at = new Date().toISOString();
@@ -665,7 +674,7 @@
 
     root.addEventListener("click", function (e) {
       var b = e.target.closest("[data-cm]");
-      if (!b || b.tagName === "FORM" || b.dataset.cm === "board-toggle") return;
+      if (!b || b.tagName === "FORM" || b.dataset.cm === "board-toggle" || b.dataset.cm === "partial-toggle") return;
       var kind = b.dataset.cm;
       if (kind === "send") {
         b.disabled = true;

@@ -118,6 +118,8 @@ test("new types: lineup confirmation, other teams' lineups, league waivers and m
   const t = content(item("lineup_saved", { ...lineup, test: true }));   // 2026 test lineups
   assert.equal(t.subject, "TEST lineup saved: Mac Daddies, week 7");
   assert.equal(t.lines[0], "TEST lineup: MFL is official for 2026.");
+  const e = content(item("lineup_saved", { ...lineup, empty: ["DEF"] }));   // partial lineups are allowed
+  assert.ok(e.lines.includes("⚠ 1 empty slot (DEF) — scores 0 points"));
   assert.equal(content(item("announcements", { ...lineup, commissioner: "lineup" })).subject, "From the commissioner: your week 7 lineup");
   assert.equal(content(item("announcements", { commissioner: "reminder", team: "NSFW", week: 7 })).subject, "Reminder: set your week 7 lineup");
   const dg = content(item("league_lineups", { mode: "digest", teams: [{ team: "NSFW", week: 7, by: "Alice", starters: [{ slot: "QB", name: "Goff" }] }, { team: "H.N.I.C", week: 7, starters: [] }] }));

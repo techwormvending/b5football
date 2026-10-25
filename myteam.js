@@ -72,7 +72,50 @@
   }
 
   /** Kickoff (ms) of a team's game in the given week's games, or null (bye). */
-  /** Slot names still empty in a draft lineup (a full lineup is required). */
+  // ---- Checkbox lineup model (tested) -----------------------------------------------
+  // The lineup is still 9 slots (QB RB RB WR WR WR TE K DEF), as the server checks it: checking a
+  // player puts him in the first open slot of his position (his own slot from the saved lineup if
+  // it's open); unchecking empties his slot. Nobody else moves, so a locked starter keeps his slot.
+  var SLOTS9 = ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "K", "DEF"];
+  var GROUPS = ["QB", "RB", "WR", "TE", "K", "DEF"];
+  function limitsOf(slots) { var o = {}; (slots || SLOTS9).forEach(function (x) { o[x] = (o[x] || 0) + 1; }); return o; }
+  /** Starters per position: { QB: 1, RB: 2, ... }. */
+  function positionCounts(draft, slots) {
+    var o = {}; GROUPS.forEach(function (g) { o[g] = 0; });
+    (slots || SLOTS9).forEach(function (pos, i) { if (draft[i]) o[pos] = (o[pos] || 0) + 1; });
+    return o;
+  }
+  /** Whether a tap may change this player, else why not. p: {id, name, pos, locked}. */
+  function toggleCheck(draft, p, slots) {
+    var starter = draft.indexOf(p.id) >= 0;
+    if (p.locked) return { ok: false, reason: p.name + (starter ? " is locked in your lineup" : " is locked on your bench") + ": his game has started." };
+    if (!starter && positionCounts(draft, slots)[p.pos] >= (limitsOf(slots)[p.pos] || 0)) return { ok: false, reason: "Uncheck another " + p.pos + " first." };
+    return { ok: true };
+  }
+  /** The draft after tapping p (a new array; unchanged when the tap isn't allowed). base = the saved lineup. */
+  function toggleDraft(draft, p, base, slots) {
+    slots = slots || SLOTS9;
+    var d = draft.slice(), at = d.indexOf(p.id);
+    if (!toggleCheck(draft, p, slots).ok) return d;
+    if (at >= 0) { d[at] = null; return d; }
+    var mine = (base || []).indexOf(p.id);
+    var i = mine >= 0 && slots[mine] === p.pos && !d[mine] ? mine : slots.findIndex(function (pos, k) { return pos === p.pos && !d[k]; });
+    if (i >= 0) d[i] = p.id;
+    return d;
+  }
+  /** "QB 1/1 · RB 2/2 · WR 3/3 · TE 1/1 · K 1/1 · DEF 0/1" */
+  function countsText(draft, slots) {
+    var c = positionCounts(draft, slots), l = limitsOf(slots);
+    return GROUPS.map(function (g) { return g + " " + c[g] + "/" + l[g]; }).join(" · ");
+  }
+  /** "1 open slot: DEF — scores 0 points" (or "" when full). */
+  function openText(draft, slots) {
+    var m = missingSlots(draft, slots);
+    return m.length ? m.length + " open slot" + (m.length > 1 ? "s" : "") + ": " + m.join(", ") + " — scores 0 points" : "";
+  }
+  var TAGS = { IR: "IR", PUP: "PUP", Suspended: "SUSP", Reserve: "RES", Out: "OUT", Doubtful: "D", Questionable: "Q" };
+
+  /** Slot names still empty in a draft lineup. */
   function missingSlots(draft, slots) {
     slots = slots || ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "K", "DEF"];
     return slots.filter(function (pos, i) { return !draft[i]; });
@@ -339,42 +382,47 @@
     var lu = st.lu;
     if (lu.error) return '<div class="card"><h3>Lineup</h3><p class="acct-msg err">' + esc(lu.error) + "</p></div>";
     if (lu.week == null) return '<div class="card"><h3>Lineup</h3><p class="muted">No games left on the ' + esc(L.season) + " schedule.</p></div>";
-    var slots = L.lineupSlots || ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "K", "DEF"];
-    var byId = {};
-    lu.roster.forEach(function (p) { byId[p.id] = p; });
-    var used = {};
-    lu.draft.forEach(function (id) { if (id) used[id] = true; });
-    var rows = slots.map(function (pos, i) {
-      var cur = byId[lu.draft[i]], gi = luInfo(cur), lockedHere = !!(cur && gi.locked && lu.savedIds[cur.id] === i);
-      var opts = lu.roster.filter(function (p) { return p.pos === pos && (p.id === lu.draft[i] || !used[p.id]); }).map(function (p) {
-        var g = luInfo(p), sel = p.id === lu.draft[i];
-        return '<option value="' + esc(p.id) + '"' + (sel ? " selected" : "") + (g.locked && !sel ? " disabled" : "") + ">" +
-          esc(p.name) + " (" + esc(p.nfl || "FA") + ")" + (g.locked ? " 🔒" : g.bye ? " · BYE" : "") + "</option>";
-      }).join("");
-      return '<div class="lu-row' + (lockedHere ? " locked" : "") + '"><span class="pos pos-' + esc(pos) + '">' + esc(pos) + "</span>" +
-        '<div class="lu-pick"><select data-slot="' + i + '"' + (lockedHere ? " disabled" : "") + ' aria-label="' + esc(pos) + " slot " + (i + 1) + '">' +
-        '<option value="">Empty</option>' + opts + "</select>" +
-        '<span class="muted lu-game">' + (cur ? (lockedHere ? "🔒 " : "") + esc(gi.bye ? "⚠ Bye week" : gi.text) : "") + "</span></div></div>";
+    var slots = L.lineupSlots || SLOTS9, lim = limitsOf(slots), cnt = positionCounts(lu.draft, slots);
+    var groups = GROUPS.map(function (g) {
+      var ps = lu.roster.filter(function (p) { return p.pos === g; });
+      if (!ps.length && !lim[g]) return "";
+      var full = cnt[g] >= (lim[g] || 0);
+      return '<div class="lu-group"><h4 class="lu-gh' + (full ? " full" : "") + '">' + esc(g + " " + cnt[g] + "/" + (lim[g] || 0)) + "</h4>" +
+        (ps.length ? ps.map(function (p) {
+          var gi = luInfo(p), on = lu.draft.indexOf(p.id) >= 0, inj = lu.injuries && lu.injuries[p.id];
+          var tag = gi.bye ? "BYE" : TAGS[inj] || "", bad = gi.bye || OUT[inj];
+          var off = gi.locked || (!on && full);
+          var pts = gi.locked && lu.points && lu.points[p.id] != null ? Number(lu.points[p.id]).toFixed(1) : "";
+          return '<button type="button" class="lu-p' + (on ? " on" : "") + (gi.locked ? " locked" : "") + (on && bad ? " warn" : "") + '" role="checkbox" aria-checked="' + on + '"' +
+            (off ? ' aria-disabled="true"' : "") + ' data-pid="' + esc(p.id) + '">' +
+            '<span class="lu-box" aria-hidden="true">' + (gi.locked ? "🔒" : on ? "✓" : "") + "</span>" +
+            '<span class="lu-who"><span class="lu-pn">' + esc(p.name) + ' <span class="muted nfl">' + esc(p.nfl || "FA") + "</span></span>" +
+            '<span class="lu-meta small muted">' + esc(gi.bye ? "Bye week" : gi.text) + "</span></span>" +
+            (tag ? '<span class="lu-tag' + (bad ? " bad" : "") + '">' + esc(tag) + "</span>" : "") +
+            '<span class="lu-pts">' + esc(pts) + "</span></button>";
+        }).join("") : '<p class="muted small">No ' + esc(g) + " on the roster.</p>") + "</div>";
     }).join("");
-    var empty = lu.draft.filter(function (x) { return !x; }).length;
-    var missing = missingSlots(lu.draft, slots);
-    var warn = lineupWarnings(lu.draft.map(function (id) { var p = byId[id], g = luInfo(p); return p ? { name: p.name, bye: g.bye, injury: g.injury } : null; }));
-    var status = lu.test
-      ? (lu.saved ? savedText(lu.savedAt, lu.savedBy) + "." : "Not saved yet: this is your MFL lineup.")
-      : lu.saved ? "Saved." : lu.carried ? "Carried over from week " + lu.carried + ". Save to confirm it." : "Not set yet.";
+    var open = openText(lu.draft, slots), blocked = open && !lu.allowPartial;
+    var warn = lineupWarnings(lu.draft.map(function (id) { var p = lu.roster.filter(function (x) { return x.id === id; })[0], g = luInfo(p); return p ? { name: p.name, bye: g.bye, injury: g.injury } : null; }));
+    var dirty = isDirty(lu);
+    var saved = lu.test ? (lu.saved ? savedText(lu.savedAt, lu.savedBy) : "Not saved yet: this is your MFL lineup")
+      : lu.meta && lu.meta.changed_at ? savedText(lu.meta.changed_at, (st.names || {})[lu.meta.changed_by] || "an owner")
+      : lu.carried ? "Carried over from week " + lu.carried + ": save to confirm it" : "Not saved yet";
     var first = lu.weekGames.length ? Math.min.apply(null, lu.weekGames.map(function (g) { return Date.parse(g.kickoff); })) : null;
     return '<div class="card lu-edit"><h3>Week ' + esc(lu.week) + (lu.test ? ' TEST lineup <span class="tag test-tag">TEST</span>' : " lineup") + "</h3>" +
       (lu.test ? '<p class="test-label">TEST lineup: MFL is official for ' + esc(L.season) + ".</p>" : "") +
-      (lu.meta && lu.meta.changed_at ? '<p class="small lu-last">' + esc(lastChangedText(lu.meta, st.names || {})) + "</p>" : "") +
-      '<p class="muted small lu-status">' + esc(status) + " " +
-      esc(first && Date.now() < first ? "First game " + fmtKick(first) + " ET. Each player locks at his own kickoff." : "Players lock at their own kickoff.") + "</p>" +
-      rows + (warn.length ? '<p class="acct-msg err lu-warn">⚠ ' + warn.map(esc).join(" · ") + "</p>" : "") +
-      '<div class="lu-actions"><button class="btn" data-mt="save" type="button"' + (missing.length && !lu.allowPartial ? " disabled" : "") + ">Save " + (lu.test ? "test " : "") + "lineup</button>" +
-      (missing.length ? '<span class="small lu-missing">' + (lu.allowPartial ? "" : "Fill every slot to save. ") + "Missing: " + esc(missing.join(", ")) + "</span>"
-        : empty ? '<span class="muted small">' + empty + " empty slot" + (empty > 1 ? "s" : "") + "</span>" : "") + "</div>" +
+      '<p class="muted small lu-status">Check your starters. ' + esc(first && Date.now() < first ? "First game " + fmtKick(first) + " ET. " : "") +
+      "Each player locks at his own kickoff: 🔒 starters stay in, 🔒 bench players stay out.</p>" +
+      groups + (warn.length ? '<p class="acct-msg err lu-warn">⚠ ' + warn.map(esc).join(" · ") + "</p>" : "") +
       (lu.test ? '<p class="muted small">Test lineups never count: on Tuesday the official MFL lineups replace them, and you\'ll see what yours would have scored. Everyone can see lineups.</p>' : "") +
-      msgHtml(lu.msg) + "</div>";
+      '<div class="lu-bar" role="region" aria-label="Save lineup">' +
+      '<div class="lu-bar-info"><span class="lu-counts small">' + esc(countsText(lu.draft, slots)) + "</span>" +
+      (open ? '<span class="small lu-missing">⚠ ' + esc(blocked ? "Fill every slot to save. " + open.replace(/ — scores 0 points$/, "") : open) + "</span>" : "") +
+      '<span class="small lu-state' + (dirty ? " dirty" : "") + '">' + esc(dirty ? "Unsaved changes" : saved) + "</span>" +
+      (lu.msg ? '<span class="small lu-hint ' + (lu.msg.err ? "err" : "ok") + '" role="status">' + esc(lu.msg.err || lu.msg.ok) + "</span>" : "") + "</div>" +
+      '<button class="btn" data-mt="save" type="button"' + (blocked || (!dirty && (lu.saved || lu.meta)) ? " disabled" : "") + ">Save</button></div></div>";
   }
+  function isDirty(lu) { return !!(lu && lu.loaded && lu.draft && JSON.stringify(lu.draft) !== JSON.stringify(lu.loaded)); }
 
   function loadLineup(teamId) {
     var s = st.me.session, season = Number(L.season);
@@ -387,19 +435,27 @@
         api("roster_entries?select=player_id,acquired,nfl_players(name,position,nfl_team)" + base),
         week == null ? Promise.resolve({ ok: true, data: [] }) : api("lineup_slots?select=slot,player_id&week=eq." + week + base),
         week == null || week < 2 ? Promise.resolve({ ok: true, data: [] }) : api("lineup_slots?select=slot,player_id&week=eq." + (week - 1) + base),
-        week == null ? Promise.resolve({ ok: true, data: [] }) : api("lineup_meta?select=version,changed_by,changed_at&week=eq." + week + base)
+        week == null ? Promise.resolve({ ok: true, data: [] }) : api("lineup_meta?select=version,changed_by,changed_at&week=eq." + week + base),
+        week == null ? Promise.resolve({ ok: true, data: [] }) : api("player_injuries?season=eq." + season + "&week=eq." + week + "&select=player_id,status"),
+        week == null ? Promise.resolve({ ok: true, data: [] }) : api("player_scores?season=eq." + season + "&week=eq." + week + "&select=player_id,points"),
+        A.api(cfg, s, "rpc/lineup_rules", { method: "POST", body: JSON.stringify({ p_season: season }) }, f)
       ]).then(function (r) {
         var bad = r.filter(function (x) { return !x.ok; })[0];
         if (bad) throw new Error(bad.error);
-        var d = draftFrom(r[1].data, r[2].data, week - 1), savedIds = {};
-        (r[1].data || []).forEach(function (x) { savedIds[x.player_id] = x.slot; });
+        var d = draftFrom(r[1].data, r[2].data, week - 1), savedIds = {}, baseSlots = [null, null, null, null, null, null, null, null, null];
+        (r[1].data || []).forEach(function (x) { savedIds[x.player_id] = x.slot; if (x.slot >= 0 && x.slot < 9) baseSlots[x.slot] = x.player_id; });
+        var inj = {}, pts = {};
+        (r[4].data || []).forEach(function (x) { inj[x.player_id] = x.status; });
+        (r[5].data || []).forEach(function (x) { pts[x.player_id] = x.points; });
         st.lu = {
           week: week, weekGames: games.filter(function (x) { return x.week === week; }),
           roster: (r[0].data || []).map(function (x) {
             var p = x.nfl_players || {};
             return { id: x.player_id, name: p.name || x.player_id, pos: p.position, nfl: p.nfl_team, acquired: x.acquired || "" };
           }).sort(byPos),
-          draft: d.draft, saved: d.saved, carried: d.carried, savedIds: savedIds, msg: st.lu && st.lu.keepMsg || null,
+          draft: d.draft, loaded: d.saved ? d.draft.slice() : null, base: baseSlots, injuries: inj, points: pts,
+          allowPartial: !(r[6].ok && r[6].data && r[6].data.allow_partial === false),
+          saved: d.saved, carried: d.carried, savedIds: savedIds, msg: st.lu && st.lu.keepMsg || null,
           // The version this page loaded: saving over someone else's newer change is refused until confirmed.
           meta: (r[3].data || [])[0] || null, version: ((r[3].data || [])[0] || { version: 0 }).version
         };
@@ -427,7 +483,8 @@
         api("lineup_slots?select=slot,player_id&week=eq." + week + base),
         api("player_injuries?season=eq." + season + "&week=eq." + week + "&select=player_id,status"),
         week > 1 ? api("rpc/test_lineup_scores", { method: "POST", body: JSON.stringify({ p_season: season, p_week: week - 1 }) }) : none,
-        api("season_settings?season=eq." + season + "&select=lineups")
+        api("rpc/lineup_rules", { method: "POST", body: JSON.stringify({ p_season: season }) }),
+        api("player_scores?season=eq." + season + "&week=eq." + week + "&select=player_id,points")
       ]).then(function (r) {
         var bad = r.filter(function (x) { return !x.ok; })[0];
         if (bad) throw new Error(bad.error);
@@ -436,8 +493,9 @@
         else (r[3].data || []).forEach(function (x) { if (x.slot >= 0 && x.slot < 9) draft[x.slot] = x.player_id; });
         var savedIds = {};
         draft.forEach(function (id, i) { if (id) savedIds[id] = i; });
-        var inj = {};
+        var inj = {}, pts = {};
         (r[4].data || []).forEach(function (x) { inj[x.player_id] = x.status; });
+        (r[7].data || []).forEach(function (x) { pts[x.player_id] = x.points; });
         var prev = ((r[5].data || []).filter(function (x) { return x.team_id === teamId; }))[0] || null;
         var by = tl && tl.saved_by ? (st.names && st.names[tl.saved_by]) || null : null;
         var done = function (name) {
@@ -447,9 +505,10 @@
               var p = x.nfl_players || {};
               return { id: x.player_id, name: p.name || x.player_id, pos: p.position, nfl: p.nfl_team, acquired: x.acquired || "" };
             }).sort(byPos),
-            draft: draft, saved: !!(tl && tl.status === "test"), savedAt: tl && tl.saved_at, savedBy: name, savedIds: savedIds, injuries: inj,
+            draft: draft, loaded: draft.slice(), base: draft.slice(), points: pts,
+            saved: !!(tl && tl.status === "test"), savedAt: tl && tl.saved_at, savedBy: name, savedIds: savedIds, injuries: inj,
             prev: prev && prev.has_test ? { week: week - 1, test: Number(prev.test_points || 0), official: Number(prev.official_points || 0) } : null,
-            allowPartial: !!(((r[6].data || [])[0] || {}).lineups || {}).allowPartial,
+            allowPartial: !(r[6].data && r[6].data.allow_partial === false),
             msg: st.lu && st.lu.keepMsg || null
           };
         };
@@ -508,8 +567,14 @@
     return Promise.all([loadLineup(st.teamId), act]).then(function () { render(rootEl); });
   }
 
+  var LEAVE = "Your lineup has unsaved changes. Leave without saving?";
+  /** True when My Team holds lineup changes that aren't saved (app.js asks before leaving). */
+  function dirty() { return !!(st.el && root.document && root.document.body.contains(st.el) && isDirty(st.lu)); }
+  if (root.addEventListener) root.addEventListener("beforeunload", function (e) { if (dirty()) { e.preventDefault(); e.returnValue = LEAVE; } });
+
   var bound = null;
   function start(rootEl) {
+    st.el = rootEl; st.lu = null;
     rootEl.innerHTML = '<section><h2>My Team</h2><p class="muted">Loading…</p></section>';
     var load = root.B5Account ? root.B5Account.load() : Promise.resolve(null);
     load.then(function (me) {
@@ -527,11 +592,24 @@
     bound = rootEl;
     rootEl.addEventListener("change", function (e) {
       var pick = e.target.closest("[data-mt='team']");
-      if (pick) { st.teamId = pick.value; st.lu = null; st.wk = null; show(rootEl); return; }
-      var sel = e.target.closest("select[data-slot]");
-      if (sel && st.lu) { st.lu.draft[Number(sel.dataset.slot)] = sel.value || null; st.lu.msg = null; render(rootEl); }
+      if (!pick) return;
+      if (isDirty(st.lu) && !root.confirm(LEAVE)) { pick.value = st.teamId; return; }
+      st.teamId = pick.value; st.lu = null; st.wk = null; show(rootEl);
     });
     rootEl.addEventListener("click", function (e) {
+      var row = e.target.closest("[data-pid]");
+      if (row && st.lu && st.lu.draft) {
+        var p = st.lu.roster.filter(function (x) { return x.id === row.dataset.pid; })[0];
+        if (!p) return;
+        var gi = luInfo(p), q = { id: p.id, name: p.name, pos: p.pos, locked: gi.locked };
+        var c = toggleCheck(st.lu.draft, q, L.lineupSlots || SLOTS9);
+        st.lu.msg = c.ok ? null : { err: c.reason };
+        if (c.ok) st.lu.draft = toggleDraft(st.lu.draft, q, st.lu.base, L.lineupSlots || SLOTS9);
+        var y = root.scrollY;
+        render(rootEl);
+        if (root.scrollTo) root.scrollTo(0, y);
+        return;
+      }
       var b = e.target.closest("[data-mt='save']");
       if (!b || !st.lu) return;
       b.disabled = true;
@@ -565,5 +643,6 @@
     });
   }
 
-  root.B5MyTeam = { start: start, activityText: activityText, lastChangedText: lastChangedText, isConflict: isConflict, lineupListHtml: lineupListHtml, statusText: statusText, loadRosters: loadRosters, rostersFromRows: rostersFromRows, lineupsOpen: lineupsOpen, recordFor: recordFor, leagueRoster: leagueRoster, pickWeek: pickWeek, draftFrom: draftFrom, kickoffFor: kickoffFor, missingSlots: missingSlots, lineupWarnings: lineupWarnings, savedText: savedText };
+  root.B5MyTeam = { start: start, activityText: activityText, lastChangedText: lastChangedText, isConflict: isConflict, lineupListHtml: lineupListHtml, statusText: statusText, loadRosters: loadRosters, rostersFromRows: rostersFromRows, lineupsOpen: lineupsOpen, recordFor: recordFor, leagueRoster: leagueRoster, pickWeek: pickWeek, draftFrom: draftFrom, kickoffFor: kickoffFor, missingSlots: missingSlots, lineupWarnings: lineupWarnings, savedText: savedText,
+    positionCounts: positionCounts, toggleCheck: toggleCheck, toggleDraft: toggleDraft, countsText: countsText, openText: openText, dirty: dirty, LEAVE: LEAVE };
 })(typeof globalThis !== "undefined" ? globalThis : this);

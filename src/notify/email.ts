@@ -48,6 +48,7 @@ export function waiverReason(status: string, result: string | null | undefined):
 interface Starter { slot: string; name: string; nfl?: string | null }
 const lineupLines = (d: Record<string, any>): string[] => [   // eslint-disable-line @typescript-eslint/no-explicit-any
   ...((d.starters || []) as Starter[]).map(s => `${s.slot} ${s.name}${s.nfl ? ` (${s.nfl})` : ""}`),
+  ...((d.empty || []).length ? [`⚠ ${(d.empty as string[]).length} empty slot${(d.empty as string[]).length > 1 ? "s" : ""} (${(d.empty as string[]).join(", ")}) — scores 0 points`] : []),
   ...((d.bench || []).length ? [`Bench: ${(d.bench as { name: string }[]).map(b => b.name).join(", ")}`] : []),
   ...((d.warnings || []) as { name: string; problem: string }[]).map(w => `⚠ ${w.name}: ${w.problem === "bye" ? "on bye" : w.problem.toUpperCase()}`)
 ];

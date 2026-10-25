@@ -283,6 +283,11 @@
     const r = window.B5Route.parse(location.hash, k => !!pages[k]);
     if (r.redirect && history.replaceState) history.replaceState(null, "", r.redirect);   // old matchup links -> #live/<week>/<team>
     const page = r.page;
+    // Unsaved lineup on My Team: ask first; staying puts the address back without reloading the page.
+    if (curPage === "myteam" && page !== "myteam" && window.B5MyTeam && window.B5MyTeam.dirty() && !confirm(window.B5MyTeam.LEAVE)) {
+      if (history.replaceState) history.replaceState(null, "", "#myteam");
+      return;
+    }
     curPage = page;
     clearInterval(timer);
     if (window.B5Live) window.B5Live.stop();   // leaves Realtime and its timers when you leave #live

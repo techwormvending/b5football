@@ -59,10 +59,6 @@ const affected = async (db: PGlite, who: Who, sql: string, params: unknown[] = [
 const denied = (db: PGlite, who: Who, sql: string, re: RegExp = /row-level security|permission denied|only the commissioner|locked|not on team|cannot play|must be pending/i) =>
   assert.rejects(as(db, who, (tx: Transaction) => tx.query(sql)), re);
 
-// These older lineup tests save partial lineups; the league setting is off by default (see "test lineups").
-const allowPartialLineups = () => db.exec(`insert into public.season_settings (season, team_count, buy_in, prizes, lineups) values (${S}, 12, 360, '{}', '{"allowPartial": true}')
-  on conflict (season) do update set lineups = excluded.lineups`);
-
 let db: PGlite;
 beforeEach(async () => { db = await freshDb(); await seed(db); });
 
@@ -324,7 +320,6 @@ describe("save_lineup (the My Team page's Save button)", () => {
       `select slot, player_id from public.save_lineup($1, $2, $3, $4::text[])`, [S, W, team, players])).then(r => r.rows);
   const lineup = (...p: (string | null)[]) => [...p, ...Array(9 - p.length).fill(null)];
   beforeEach(async () => {
-    await allowPartialLineups();
     await db.exec(`
       insert into public.nfl_players (id, name, position, nfl_team) values ('WR-DET', 'Amon-Ra St. Brown', 'WR', 'DET'), ('WR-KC', 'Rashee Rice', 'WR', 'KC');
       insert into public.roster_entries (season, team_id, player_id) values (${S}, '0001', 'WR-DET'), (${S}, '0001', 'WR-KC');`);
@@ -367,7 +362,6 @@ describe("commissioner who also manages a team (Mac Daddies, 0011)", () => {
   const MINE = "0011";
   const audit = () => db.query<{ action: string; actor: string | null }>(`select action, actor from public.audit_log where action like 'own_team:%' order by id`).then(r => r.rows);
   beforeEach(async () => {
-    await allowPartialLineups();
     await db.exec(`
       insert into public.teams (id, name, division) values ('${MINE}', 'Mac Daddies', 'Gold');
       insert into public.team_managers values ('${MINE}', '${COMMISH}');
@@ -823,7 +817,6 @@ describe("co-owners (up to 2 per team)", () => {
   const MIKE = "00000000-0000-0000-0000-0000000000a3";   // the commissioner's co-owner (Mac Daddies, 0011)
   const NEW = "00000000-0000-0000-0000-0000000000a4";
   beforeEach(async () => {
-    await allowPartialLineups();
     await db.exec(`
       update public.profiles set display_name = 'Alice' where id = '${ALICE}';
       update public.profiles set display_name = 'Adam' where id = '${COMMISH}';
@@ -1792,7 +1785,7 @@ describe("email notifications", () => {
   });
 
   test("free-tier cap: no more than 95 a day", async () => {
-    await db.exec(`insert into public.email_log (user_id, kind, status) select '${CAROL}', 'trades', 'sent' from generate_series(1, 95)`);
+    await db.exec(`insert into public.email_log (user_id, kind, status, at) select '${CAROL}', 'trades', 'sent', '${later(5)}' from generate_series(1, 95)`);   // same day as the claim, whatever the clock
     const c = await dm();
     await say(user(ALICE), c, "x");
     assert.deepEqual(await claim(6), []);
@@ -2211,21 +2204,48 @@ describe("test lineups (2026 test mode)", () => {
         (${S}, '0001', 'K-DET'), (${S}, '0001', 'DEF:DET'), (${S}, '0001', 'WR-KC'), (${S}, '0001', 'RB-KC'), (${S}, '0001', 'WR-BYE');`);
   });
 
-  test("a full lineup is required (league setting): the missing slots are named and nothing is saved", async () => {
-    await assert.rejects(save(user(ALICE), [...FULL.slice(0, 6), null, "K-DET", null]), /Fill every slot before saving: missing TE, DEF/);
-    await assert.rejects(save(user(ALICE), FULL.slice(0, 8)), /9 slots/);
-    assert.deepEqual(await stored(), []);
-    const r = await save(user(ALICE), FULL);
+  test("partial lineups are allowed by default (league setting): empty slots score 0", async () => {
+    const partial = [...FULL.slice(0, 6), null, "K-DET", null];
+    const r = await save(user(ALICE), partial);
     assert.equal(r.saved_by, "Mike");
-    assert.deepEqual(await stored(), [{ players: FULL, status: "test" }]);
-    // The setting can allow partial lineups
+    assert.deepEqual(await stored(), [{ players: partial, status: "test" }]);
+    assert.equal((await rowsT(db, anon, `select public.lineup_rules(${S}) as r`))[0]!.r.allow_partial, true);
+    await assert.rejects(save(user(ALICE), FULL.slice(0, 8)), /9 slots/, "still 9 slots, some may be empty");
+    // Empty slots score 0: QB-DET's 21.5 (seed) + WR-DET 10; the empty TE and DEF add nothing
+    await db.exec(`insert into public.player_scores (season, week, player_id, points, source) values (${S}, ${W}, 'WR-DET', 10, 'live')`);
+    const sc = (await rowsT(db, anon, `select test_points::float as t from public.test_lineup_scores(${S}, ${W}) where team_id = '0001'`))[0]!;
+    assert.equal(sc.t, 31.5);
+    // The confirmation email names the empty slots
+    const d = (await db.query<{ d: { empty: string[] } }>(`select private.test_lineup_payload(${S}, ${W}, '0001') as d`)).rows[0]!.d;
+    assert.deepEqual(d.empty, ["TE", "DEF"]);
+  });
+
+  test("the commissioner can turn partial lineups off (audited); a season setting overrides the league's", async () => {
+    await denied(db, user(ALICE), `update public.league_settings set allow_partial_lineups = false`, /.*/).catch(() => {});
+    assert.equal(await affected(db, user(ALICE), `update public.league_settings set allow_partial_lineups = false`), 0, "managers can't change it");
+    assert.equal(await affected(db, user(COMMISH), `update public.league_settings set allow_partial_lineups = false`), 1);
+    assert.equal((await rowsT(db, anon, `select count(*)::int as n from public.audit_log where action = 'settings:allow_partial_lineups'`).catch(() => [{ n: -1 }]))[0]!.n !== 0, true);
+    await assert.rejects(save(user(ALICE), [...FULL.slice(0, 6), null, "K-DET", null]), /Fill every slot before saving: missing TE, DEF/);
+    await assert.rejects(as(db, user(ALICE), tx => tx.query(`select public.save_lineup(${S}, ${W}, '0001', array['QB-DET',null,null,null,null,null,null,null,null])`)),
+      /Fill every slot before saving: missing RB, RB, WR, WR, WR, TE, K, DEF/, "2027's save_lineup follows the same setting");
     await db.exec(`update public.season_settings set lineups = '{"allowPartial": true}'`);
     await save(user(ALICE), [...FULL.slice(0, 8), null]);
   });
 
-  test("save_lineup (2027, site lineups official) has the same full-lineup rule", async () => {
-    await assert.rejects(as(db, user(ALICE), tx => tx.query(`select public.save_lineup(${S}, ${W}, '0001', array['QB-DET',null,null,null,null,null,null,null,null])`)),
-      /Fill every slot before saving: missing RB, RB, WR, WR, WR, TE, K, DEF/);
+  test("with empty slots allowed, locks still hold: bench an unstarted starter; fill a slot only with an unstarted player", async () => {
+    await db.exec(`insert into public.lineup_slots (season, week, team_id, slot, player_id) values (${S}, ${W}, '0001', 3, 'WR-KC')`);
+    const withKC = [...FULL.slice(0, 3), "WR-KC", ...FULL.slice(4)];
+    await save(user(ALICE), withKC);
+    // An unstarted starter (TE-DET) goes to the bench, leaving the slot empty
+    await save(user(ALICE), [...withKC.slice(0, 6), null, ...withKC.slice(7)]);
+    // A started starter can't be emptied out
+    await assert.rejects(save(user(ALICE), [...FULL.slice(0, 3), null, ...FULL.slice(4, 6), null, ...FULL.slice(7)]), /Rashee Rice is locked in the WR slot/);
+    // An empty slot can't be filled with a player whose game has started; leaving it empty is fine
+    await assert.rejects(save(user(ALICE), [FULL[0]!, "RB-KC", ...withKC.slice(2, 6), null, ...withKC.slice(7)]), /Isiah Pacheco can't move into the lineup/);
+    // Every TE has kicked off (none unstarted): the slot stays empty and the save still works
+    await db.exec(`update public.nfl_players set nfl_team = 'KC' where id = 'TE-DET'`);
+    await assert.rejects(save(user(ALICE), withKC), /Sam LaPorta can't move into the lineup/);
+    await save(user(ALICE), [...withKC.slice(0, 6), null, ...withKC.slice(7)]);
   });
 
   test("roster, position and duplicate rules", async () => {

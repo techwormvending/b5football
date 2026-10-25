@@ -123,3 +123,32 @@ test("test lineups: missing slots are named, bye/OUT starters warned, 'Saved Sat
     ["Puka is on bye", "Kittle is listed OUT", "IR Guy is listed IR"]);
   assert.equal(X.savedText("2026-10-25T01:14:00Z", "Mike"), "Saved Sat 9:14 PM by Mike");
 });
+
+test("checkbox lineup: position limits, disabled when full, locks frozen both ways, partial saves", () => {
+  type P = { id: string; name: string; pos: string; locked: boolean };
+  const X = M as unknown as {
+    positionCounts(d: (string | null)[]): Record<string, number>; toggleCheck(d: (string | null)[], p: P): { ok: boolean; reason?: string };
+    toggleDraft(d: (string | null)[], p: P, base: (string | null)[]): (string | null)[]; countsText(d: (string | null)[]): string; openText(d: (string | null)[]): string };
+  const P = (id: string, pos: string, locked = false): P => ({ id, name: id, pos, locked });
+  const full = ["qb", "rb1", "rb2", "wr1", "wr2", "wr3", "te", "k", "def"];
+  // Position limits: RB is full, so a third RB is refused with the reason; the draft doesn't change
+  assert.equal(X.positionCounts(full).RB, 2);
+  assert.deepEqual(plain(X.toggleCheck(full, P("rb3", "RB"))), { ok: false, reason: "Uncheck another RB first." });
+  assert.deepEqual(plain(X.toggleDraft(full, P("rb3", "RB"), full)), full);
+  // Unchecking frees the slot (a partial lineup is fine), then the other RB takes it
+  const less = plain(X.toggleDraft(full, P("rb1", "RB"), full));
+  assert.deepEqual(less, ["qb", null, "rb2", "wr1", "wr2", "wr3", "te", "k", "def"]);
+  assert.equal(X.openText(less), "1 open slot: RB — scores 0 points");
+  assert.equal(X.countsText(less), "QB 1/1 · RB 1/2 · WR 3/3 · TE 1/1 · K 1/1 · DEF 1/1");
+  assert.deepEqual(plain(X.toggleDraft(less, P("rb3", "RB"), full)), ["qb", "rb3", "rb2", "wr1", "wr2", "wr3", "te", "k", "def"]);
+  // Two empty slots: both named; nothing else moves
+  const two = plain(X.toggleDraft(less, P("def", "DEF"), full));
+  assert.equal(X.openText(two), "2 open slots: RB, DEF — scores 0 points");
+  // Locks: a started starter can't be unchecked, a started bench player can't be checked (even with room)
+  assert.deepEqual(plain(X.toggleCheck(full, P("wr2", "WR", true))), { ok: false, reason: "wr2 is locked in your lineup: his game has started." });
+  assert.deepEqual(plain(X.toggleCheck(two, P("def2", "DEF", true))), { ok: false, reason: "def2 is locked on your bench: his game has started." });
+  assert.deepEqual(plain(X.toggleDraft(two, P("def2", "DEF", true), full)), two);
+  // A player re-checked goes back to his saved slot when it's open; locked starters never change slots
+  const out = plain(X.toggleDraft(full, P("wr1", "WR"), full)), back = plain(X.toggleDraft(out, P("wr1", "WR"), full));
+  assert.deepEqual(back, full);
+});
