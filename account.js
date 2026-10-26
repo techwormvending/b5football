@@ -38,7 +38,10 @@
         A.api(cfg, s, "user_roles?user_id=eq." + encodeURIComponent(s.user.id) + "&select=role", {}, f)
       ]).then(function (r) {
         var prof = (r[0].ok && r[0].data && r[0].data[0]) || null;
-        if (prof) prof.is_treasurer = ((r[2] && r[2].ok && r[2].data) || []).some(function (x) { return x.role === "treasurer"; }) && !prof.disabled;
+        if (prof) {
+          prof.roles = prof.disabled ? [] : ((r[2] && r[2].ok && r[2].data) || []).map(function (x) { return x.role; });
+          prof.is_treasurer = prof.roles.indexOf("treasurer") >= 0;
+        }
         me = {
           session: s,
           profile: prof,
@@ -47,6 +50,29 @@
         return me;
       });
     });
+  }
+
+  // ---- Roles: a person can hold any combination; rights are the union ------------------
+  var ROLES = ["admin", "commissioner", "treasurer"];
+  var ROLE_NAMES = { admin: "Admin", commissioner: "Commissioner", treasurer: "Treasurer" };
+  /** "Admin · Treasurer" (fixed order), "" when none. */
+  function rolesText(roles) {
+    return ROLES.filter(function (r) { return (roles || []).indexOf(r) >= 0; }).map(function (r) { return ROLE_NAMES[r]; }).join(" · ");
+  }
+  /** Role badges, one per role held. */
+  function roleBadges(roles) {
+    return ROLES.filter(function (r) { return (roles || []).indexOf(r) >= 0; }).map(function (r) { return '<span class="tag role-' + r + '">' + ROLE_NAMES[r] + "</span>"; }).join(" ");
+  }
+  /** The role set to save from an officer row: checkboxes for roles the viewer may change, the
+      current state for the rest (so a commissioner never touches someone's admin role). */
+  function nextRoles(current, checked, canChange) {
+    return ROLES.filter(function (r) { return canChange(r) ? checked.indexOf(r) >= 0 : current.indexOf(r) >= 0; });
+  }
+  /** "add Treasurer; remove Commissioner" for the confirmation. */
+  function roleChangeText(current, next) {
+    var add = ROLES.filter(function (r) { return next.indexOf(r) >= 0 && current.indexOf(r) < 0; }).map(function (r) { return ROLE_NAMES[r]; });
+    var rem = ROLES.filter(function (r) { return current.indexOf(r) >= 0 && next.indexOf(r) < 0; }).map(function (r) { return ROLE_NAMES[r]; });
+    return [add.length ? "add " + add.join(", ") : "", rem.length ? "remove " + rem.join(", ") : ""].filter(Boolean).join("; ");
   }
 
   function refreshNav() {
@@ -80,7 +106,8 @@
       '<div class="card acct-card">' +
       '<p><b>Email</b><br>' + esc(me.session.user.email) + "</p>" +
       '<p><b>Team</b><br>' + teams + "</p>" +
-      (p.is_commissioner ? '<p><span class="tag">Commissioner</span> <a href="#commish">Open the commissioner screen</a></p>' : "") +
+      ((p.roles || []).length ? '<p><b>Roles</b><br>' + roleBadges(p.roles) + " " + [["admin", "#admin", "Admin"], ["commissioner", "#commish", "Commish"], ["treasurer", "#treasury", "Treasury"]]
+        .filter(function (x) { return p.roles.indexOf(x[0]) >= 0; }).map(function (x) { return '<a href="' + x[1] + '">' + x[2] + "</a>"; }).join(" · ") + "</p>" : "") +
       '<form class="acct-form" data-acct="name"><label>Display name<input name="display_name" maxlength="40" required value="' + esc(p.display_name) + '"></label>' +
       '<p class="muted small">Shown to the league as your team\'s manager.</p>' +
       '<button class="btn ghost" type="submit">Save name</button></form>' +
@@ -311,21 +338,26 @@
   function officersHtml() {
     var held = {};
     (cm.roles || []).forEach(function (r) { (held[r.user_id] = held[r.user_id] || []).push(r.role); });
-    var NAMES = { admin: "Administrator", commissioner: "Commissioner", treasurer: "Treasurer" };
-    var badge = function (r) { return '<span class="tag role-' + r + '">' + (NAMES[r] || r) + "</span>"; };
-    var can = function (r) { return r === "admin" ? isAdm() : isCom(); };   // commissioners manage commissioner and treasurer
-    var rows = Object.keys(held).map(function (u) {
-      return "<li><b>" + esc(accountName(u)) + "</b>" + (u === me.session.user.id ? ' <span class="muted small">(you)</span>' : "") + " " + held[u].sort().map(badge).join(" ") +
-        held[u].filter(can).map(function (r) { return ' <button class="linkish" type="button" data-cm="revoke-role" data-user="' + esc(u) + '" data-role="' + r + '">revoke ' + (NAMES[r] || r).toLowerCase() + "</button>"; }).join("") + "</li>";
-    }).join("");
-    var grantable = ["commissioner", "treasurer", "admin"].filter(can);
-    var form = grantable.length && (cm.accounts || []).length ? '<form class="po-inline" data-cm="grant-role"><label>Account <select name="user" required><option value="">Pick an account</option>' +
-      cm.accounts.map(function (a) { return '<option value="' + esc(a.id) + '">' + esc(a.label) + "</option>"; }).join("") + "</select></label>" +
-      '<label>Role <select name="role">' + grantable.map(function (r) { return '<option value="' + r + '">' + NAMES[r] + "</option>"; }).join("") + "</select></label>" +
-      '<button class="btn ghost" type="submit">Grant</button></form>' : "";
-    return '<div class="card"><h3>League officers</h3><ul class="checks">' + (rows || "<li>No officers?</li>") + "</ul>" + form +
-      '<p class="muted small">Commissioners run the league (trades, scores, awards, settings, moderation); administrators keep the site running (health, jobs, email, accounts, modes, audit log); treasurers keep the books (fees, payouts, the Empire pot, payment preferences) on the <a href="#treasury">Treasury</a> page. ' +
-      "Commissioners grant and revoke the commissioner and treasurer roles, administrators the administrator role; there's always at least one administrator and one commissioner, treasurers are optional. Every change is in the audit log and emailed to the person.</p></div>";
+    var can = function (r) { return r === "admin" ? isAdm() : isCom(); };   // admins: admin; commissioners: commissioner and treasurer
+    var people = (cm.accounts || []).slice().sort(function (x, y) {
+      var a1 = (held[x.id] || []).length ? 0 : 1, b1 = (held[y.id] || []).length ? 0 : 1;
+      return a1 - b1 || String(x.name).localeCompare(String(y.name));
+    });
+    if (!people.length) Object.keys(held).forEach(function (u) { people.push({ id: u, name: accountName(u), label: accountName(u) }); });
+    var row = function (pp) {
+      var cur = held[pp.id] || [];
+      var boxes = ROLES.map(function (r) {
+        var on = cur.indexOf(r) >= 0, ok = can(r);
+        return '<label class="acct-check ro-box' + (ok ? "" : " muted") + '" title="' + esc(ok ? "" : r === "admin" ? "Only an administrator can change this" : "Only a commissioner can change this") + '">' +
+          '<input type="checkbox" name="role" value="' + r + '"' + (on ? " checked" : "") + (ok ? "" : " disabled") + "> " + ROLE_NAMES[r] + "</label>";
+      }).join("");
+      return '<li><form class="ro-row" data-cm="set-roles" data-user="' + esc(pp.id) + '"><div class="ro-who"><b>' + esc(pp.name || accountName(pp.id)) + "</b>" + (pp.id === me.session.user.id ? ' <span class="muted small">(you)</span>' : "") +
+        (cur.length ? ': <span class="ro-text">' + esc(rolesText(cur)) + "</span>" : ' <span class="muted small">no role</span>') + "</div>" +
+        '<div class="ro-boxes">' + boxes + '<button class="btn ghost" type="submit">Save</button></div></form></li>';
+    };
+    return '<div class="card"><h3>League officers</h3><ul class="checks ro-list">' + people.map(row).join("") + "</ul>" +
+      '<p class="muted small">A person can hold any mix of roles; their rights add up. Commissioners run the league (trades, scores, awards, settings, moderation); administrators keep the site running (health, jobs, email, accounts, modes, audit log); treasurers keep the books (fees, payouts, the Empire pot, payment preferences) on the <a href="#treasury">Treasury</a> page. ' +
+      "Administrators change the administrator role, commissioners the commissioner and treasurer roles. There's always at least one administrator and one commissioner; treasurers are optional. Save applies a person's changes together: each one goes in the audit log and they get one email.</p></div>";
   }
   // Actions on a commissioner's own team waiting for another commissioner.
   function requestsHtml() {
@@ -483,7 +515,7 @@
     var accts = '<div class="card"><h3>Accounts</h3><div class="table-wrap"><table class="cm-table"><thead><tr><th>Account</th><th>Team</th><th>Roles</th><th>Last sign-in</th><th></th></tr></thead><tbody>' +
       (cm.adminAccounts || []).map(function (a) {
         return "<tr" + (a.disabled ? ' class="muted"' : "") + "><td>" + esc(a.display_name || "(no name)") + '<br><span class="muted small">' + esc(a.email || "") + "</span></td><td>" + (a.teams || []).map(tlink).join(", ") +
-          "</td><td>" + (a.roles || []).map(function (r) { return '<span class="tag">' + (r === "admin" ? "Admin" : "Commish") + "</span>"; }).join(" ") + (a.disabled ? ' <span class="tag cm-bad">Disabled</span>' : "") +
+          "</td><td>" + roleBadges(a.roles) + (a.disabled ? ' <span class="tag cm-bad">Disabled</span>' : "") +
           '</td><td class="small">' + esc(a.last_sign_in_at ? et(a.last_sign_in_at) : "never") + '</td><td class="cm-actions">' +
           (a.email ? '<button class="btn ghost" type="button" data-cm="send" data-email="' + esc(a.email) + '">Send link</button>' : "") +
           '<button class="btn ghost" type="button" data-cm="sign-out" data-user="' + esc(a.user_id) + '">Sign out everywhere</button>' +
@@ -643,13 +675,18 @@
         }));
         return;
       }
-      var gf = e.target.closest("[data-cm='grant-role']");
-      if (gf) {
+      var rf = e.target.closest("[data-cm='set-roles']");
+      if (rf) {
         e.preventDefault();
-        var gd = new FormData(gf);
-        if (!window.confirm("Grant " + (gd.get("role") === "admin" ? "administrator" : "commissioner") + " to " + accountName(gd.get("user")) + "?")) return;
-        act(rpcCall("grant_role", { p_user: gd.get("user"), p_role: gd.get("role") }).then(function (r) { return said(r, r.ok ? r.data + ": " + accountName(gd.get("user")) + " (they get an email)." : null); })
-          .then(function (r) { return load().then(function () { refreshNav(); return r; }); }));
+        var uid = rf.dataset.user, cur = (cm.roles || []).filter(function (x) { return x.user_id === uid; }).map(function (x) { return x.role; });
+        var checked = [].slice.call(rf.querySelectorAll("input[name=role]:checked")).map(function (x) { return x.value; });
+        var next = nextRoles(cur, checked, function (r) { return r === "admin" ? isAdm() : isCom(); });
+        var change = roleChangeText(cur, next);
+        if (!change) { cm.msg = { ok: "No changes for " + accountName(uid) + "." }; render(root); return; }
+        if (!window.confirm(accountName(uid) + ": " + change + "?")) return;
+        act(rpcCall("set_roles", { p_user: uid, p_roles: next }).then(function (r) {
+          return said(r, r.ok ? accountName(uid) + ": " + (rolesText(r.data.roles) || "no role") + " (" + change + "; they get one email)." : null);
+        }).then(function (r) { return load().then(function () { refreshNav(); return r; }); }));
         return;
       }
       var af = e.target.closest("[data-cm='assign']");
@@ -728,10 +765,6 @@
         var imgs = a.image && /^https:\/\//.test(a.image) ? [a.image] : [];
         act(A.api(cfg, me.session, "rpc/board_new_thread", { method: "POST", body: JSON.stringify({ p_title: a.title, p_body: text || a.title, p_images: imgs, p_source_key: b.dataset.key }) }, f)
           .then(function (r) { return r.ok ? { msgOk: "Posted to the board." } : r; }));
-      } else if (kind === "revoke-role") {
-        if (!window.confirm("Revoke " + (b.dataset.role === "admin" ? "administrator" : "commissioner") + " from " + accountName(b.dataset.user) + "?")) return;
-        act(rpcCall("revoke_role", { p_user: b.dataset.user, p_role: b.dataset.role }).then(function (r) { return said(r, r.ok ? r.data + " (they get an email)." : null); })
-          .then(function (r) { return load().then(function () { refreshNav(); return r; }); }));
       } else if (kind === "decide-request") {
         var approve = b.dataset.approve === "1", note = window.prompt((approve ? "Approve" : "Reject") + " this request? Note (optional):", "");
         if (note == null) return;
@@ -814,6 +847,7 @@
     unsubscribe: unsubscribe,
     presence: presence,
     refreshNav: refreshNav,
+    rolesText: rolesText, roleBadges: roleBadges, nextRoles: nextRoles, roleChangeText: roleChangeText,
     managerNames: managerNames,
     load: load
   };

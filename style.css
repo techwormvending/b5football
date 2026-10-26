@@ -728,3 +728,12 @@ a.mention.team-link { display: inline; }
 .pn-legend { margin: 6px 0 0; }
 .pn-legend .pn-dot { margin-left: 6px; margin-right: 3px; }
 .pn-byedone { margin: 0 0 4px; }
+
+/* League officers: one row per person, a checkbox per role */
+.ro-list li { padding: 6px 0; }
+.ro-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
+.ro-who { min-width: 0; overflow-wrap: anywhere; }
+.ro-boxes { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.ro-box { margin: 0; white-space: nowrap; }
+.ro-box.muted input { cursor: not-allowed; }
+.tag.role-treasurer { border-color: #6cb8ff; color: #6cb8ff; }

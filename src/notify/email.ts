@@ -135,6 +135,15 @@ export function content(item: NotifyItem): Body {
             ...(fees.length ? ["League fees still due:", ...fees.map(t => `${t.team}: ${money(t.fee_unpaid)}`)] : []),
             ...(pend.length ? [`Waiting for a commissioner to confirm: ${pend.map(t => t.team).join(", ")}`] : [])], button: "Open the Treasury" };
       }
+      if (d.type === "roles") {   // several role changes saved at once: one email
+        const N: Record<string, string> = { admin: "Administrator", commissioner: "Commissioner", treasurer: "Treasurer" };
+        const TOOLS: Record<string, string> = { admin: "Admin", commissioner: "Commish", treasurer: "Treasury" };
+        const list = (xs: string[]) => names(xs.map(x => N[x] || x));
+        const add: string[] = d.added || [], rem: string[] = d.removed || [], now: string[] = d.roles || [];
+        return { subject: "Your B5 roles changed", heading: "Your B5 roles changed",
+          lines: [...(add.length ? [`${d.by} gave you: ${list(add)}.`] : []), ...(rem.length ? [`${d.by} removed: ${list(rem)}.`] : []),
+            now.length ? `Your roles now: ${now.map(x => N[x] || x).join(" · ")}. Your tools: ${now.map(x => TOOLS[x] || x).join(", ")} in the menu.` : "You have no officer role now."], button: "Open B5" };
+      }
       const role = d.role === "admin" ? "administrator" : d.role === "treasurer" ? "treasurer" : "commissioner";
       const where = d.role === "admin" ? "Your tools are on the Admin page." : d.role === "treasurer" ? "Your tools are on the Treasury page." : "Your tools are on the Commish page.";
       return d.action === "grant"

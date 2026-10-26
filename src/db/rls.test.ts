@@ -2471,3 +2471,86 @@ describe("treasurer (league money)", () => {
     assert.deepEqual(w.teams.map((t: { team: string; owed: number }) => [t.team, Number(t.owed)]), [["NSFW", 35], ["Stealers", 0]]);
   });
 });
+
+describe("several roles per person (set_roles)", () => {
+  const ADMIN = "00000000-0000-0000-0000-0000000000ad";   // administrator only, no team
+  const COM2 = "00000000-0000-0000-0000-0000000000c2";    // commissioner only, no team
+  beforeEach(async () => {
+    await db.exec(`
+      insert into auth.users (id, email, raw_user_meta_data) values ('${ADMIN}', 'admin@example.com', '{"display_name":"Ada"}'), ('${COM2}', 'com2@example.com', '{"display_name":"Cy"}');
+      update public.profiles set is_admin = true where id = '${ADMIN}';
+      update public.profiles set is_commissioner = true where id = '${COM2}';
+      insert into public.season_settings (season, team_count, buy_in, prizes) values (${S}, 12, 360, '{}') on conflict (season) do nothing;
+      delete from public.notify_queue; delete from public.audit_log where action like 'roles:%';`);
+  });
+  const roles = (u: string) => db.query<{ role: string }>(`select role from public.user_roles where user_id = '${u}' order by role`).then(r => r.rows.map(x => x.role));
+  const setRoles = (who: Who, u: string, rs: string[]) => as(db, who, tx => tx.query<{ r: { added: string[]; removed: string[]; roles: string[] } }>(
+    `select public.set_roles($1::uuid, $2::text[]) as r`, [u, rs])).then(x => x.rows[0]!.r);
+
+  test("one call sets several roles: one audit entry per change, one summary email", async () => {
+    // The league account (COMMISH) is admin + commissioner: it may grant all three
+    const r = await setRoles(user(COMMISH), BOB, ["admin", "treasurer"]);
+    assert.deepEqual(r, { added: ["admin", "treasurer"], removed: [], roles: ["admin", "treasurer"] });
+    assert.deepEqual(await roles(BOB), ["admin", "treasurer"]);
+    const audit = await rowsT(db, service, `select action, details ->> 'role' as role from public.audit_log where action like 'roles:%' order by id`);
+    assert.deepEqual(audit.map(x => [x.action, x.role]), [["roles:grant", "admin"], ["roles:grant", "treasurer"]]);
+    const mail = await rowsT(db, service, `select payload from public.notify_queue where user_id = '${BOB}'`);
+    assert.equal(mail.length, 1, "one email for the whole change");
+    assert.deepEqual(mail[0]!.payload, { type: "roles", added: ["admin", "treasurer"], removed: [], by: "Commish", roles: ["admin", "treasurer"] });
+    assert.deepEqual(await setRoles(user(COMMISH), BOB, ["treasurer", "admin"]), { added: [], removed: [], roles: ["admin", "treasurer"] }, "no change, no email");
+    assert.equal((await rowsT(db, service, `select * from public.notify_queue where user_id = '${BOB}'`)).length, 1);
+  });
+
+  test("Admin + Treasurer uses both toolsets; neither role blocks the other; commissioner tools stay out of reach", async () => {
+    await setRoles(user(COMMISH), BOB, ["admin", "treasurer"]);
+    // Admin tools
+    assert.ok((await rowsT(db, user(BOB), `select public.admin_health() as h`))[0]!.h);
+    assert.ok((await rowsT(db, user(BOB), `select * from public.audit_log`)).length > 0, "reads the audit log");
+    // Treasurer tools
+    const p = await as(db, user(BOB), tx => tx.query<{ status: string }>(`insert into public.payout_payments (season, team_id, amount, paid_at) values (${S}, '0001', 35, '2026-10-25') returning status`));
+    assert.equal(p.rows[0]!.status, "confirmed");
+    await as(db, user(ALICE), tx => tx.query(`insert into public.payment_prefs (venmo) values ('@alice')`));
+    assert.equal((await rowsT(db, user(BOB), `select * from public.payment_prefs`)).length, 1, "admin + treasurer sees prefs through the treasurer role");
+    assert.deepEqual(await rowsT(db, user(ADMIN), `select * from public.payment_prefs`), [], "an admin alone doesn't");
+    // Not a commissioner: no awards, standings or commissioner grants
+    assert.equal(await affected(db, user(BOB), `update public.standings set wins = 9`), 0);
+    await assert.rejects(setRoles(user(BOB), ALICE, ["treasurer"]), /Only a commissioner can change the treasurer role/);
+    // ...but as an admin he may grant admin
+    assert.deepEqual((await setRoles(user(BOB), ALICE, ["admin"])).roles, ["admin"]);
+  });
+
+  test("removing one role leaves the others intact", async () => {
+    await setRoles(user(COMMISH), BOB, ["admin", "commissioner", "treasurer"]);
+    const r = await setRoles(user(COMMISH), BOB, ["admin", "commissioner"]);
+    assert.deepEqual([r.added, r.removed], [[], ["treasurer"]]);
+    assert.deepEqual(await roles(BOB), ["admin", "commissioner"]);
+    assert.equal((await rowsT(db, user(BOB), `select public.admin_health() as h`)).length, 1, "still an admin");
+    assert.equal(await affected(db, user(BOB), `update public.standings set wins = 7 where team_id = '0001'`), 1, "still a commissioner");
+    await assert.rejects(as(db, user(BOB), tx => tx.query(`insert into public.payment_prefs (user_id, venmo) values ('${ALICE}', '@x')`)), /row-level security/, "no longer treasurer");
+  });
+
+  test("never the last administrator or commissioner; a refused call changes nothing", async () => {
+    // Ada is the only other admin; Cy the only other commissioner. Take COMMISH down to treasurer: allowed (others remain)
+    await setRoles(user(COMMISH), COMMISH, ["treasurer"]);
+    assert.deepEqual(await roles(COMMISH), ["treasurer"]);
+    // Now Ada is the last admin, Cy the last commissioner
+    await assert.rejects(setRoles(user(ADMIN), ADMIN, []), /at least one administrator/);
+    await assert.rejects(setRoles(user(COM2), COM2, ["treasurer"]), /at least one commissioner/);
+    assert.deepEqual(await roles(COM2), ["commissioner"], "the treasurer grant in the refused call didn't happen either");
+    assert.equal((await rowsT(db, service, `select * from public.notify_queue where user_id = '${COM2}'`)).length, 0);
+  });
+
+  test("grant rights per role: admins -> admin; commissioners -> commissioner and treasurer; checked before anything changes", async () => {
+    await assert.rejects(setRoles(user(ADMIN), BOB, ["treasurer"]), /Only a commissioner can change the treasurer role/);
+    await assert.rejects(setRoles(user(ADMIN), BOB, ["commissioner"]), /Only a commissioner/);
+    assert.deepEqual((await setRoles(user(ADMIN), BOB, ["admin"])).roles, ["admin"]);
+    await assert.rejects(setRoles(user(COM2), BOB, []), /Only an administrator can change the administrator role/, "a commissioner can't remove admin");
+    await assert.rejects(setRoles(user(COM2), BOB, ["treasurer"]), /Only an administrator/, "adding treasurer while dropping admin: refused as a whole");
+    assert.deepEqual(await roles(BOB), ["admin"], "nothing changed (the treasurer part wasn't applied)");
+    // A commissioner changes only his roles, passing the admin role through unchanged
+    assert.deepEqual((await setRoles(user(COM2), BOB, ["admin", "treasurer"])).roles, ["admin", "treasurer"]);
+    await assert.rejects(setRoles(user(ALICE), BOB, ["admin"]), /Only/);
+    await denied(db, anon, `select public.set_roles('${BOB}', array['admin'])`, /permission denied/);
+    await assert.rejects(setRoles(user(COMMISH), BOB, ["owner"]), /Unknown role/);
+  });
+});
