@@ -247,6 +247,7 @@
     account() { return `<div id="acctRoot"></div>`; },
     commish() { return `<div id="acctRoot"></div>`; },
     admin() { return `<div id="acctRoot"></div>`; },
+    treasury() { return `<div id="trRoot"></div>`; },
     live() { return `<div id="lvRoot"></div>`; },
     board() { return `<div id="bdRoot"></div>`; },
     chat() { return `<div id="chRoot"></div>`; },
@@ -371,6 +372,7 @@
     if ((page === "payouts" || page === "commish-payouts") && window.B5Payouts) window.B5Payouts.start(page === "payouts" ? "public" : "admin", document.getElementById("poRoot"));
     if (page === "myteam" && window.B5MyTeam) window.B5MyTeam.start(document.getElementById("mtRoot"));
     if ((page === "account" || page === "commish" || page === "admin") && window.B5Account) window.B5Account.start(page, document.getElementById("acctRoot"));
+    if (page === "treasury" && window.B5Treasury) window.B5Treasury.start(document.getElementById("trRoot"));
     if (page === "unsubscribe" && window.B5Account) window.B5Account.unsubscribe(document.getElementById("acctRoot"), r.token);
     window.scrollTo(0, 0);
   }

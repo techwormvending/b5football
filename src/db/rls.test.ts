@@ -64,7 +64,7 @@ beforeEach(async () => { db = await freshDb(); await seed(db); });
 
 describe("every table is protected", () => {
   // Service-only tables: RLS on, deliberately no policies and no grants to anon/authenticated.
-  const SERVICE_ONLY = new Set(["heartbeats", "live_nonces", "live_games", "board_bot_keys", "notify_queue"]);
+  const SERVICE_ONLY = new Set(["heartbeats", "live_nonces", "live_games", "board_bot_keys", "notify_queue", "treasury_notices"]);
   test("RLS is enabled on every public table, and every table but the service-only ones has policies", async () => {
     const t = (await db.query<{ relname: string; rls: boolean; policies: number }>(`
       select c.relname, c.relrowsecurity as rls,
@@ -2351,5 +2351,123 @@ describe("player schedule pop-up: points allowed", () => {
       ["ARI", "QB", 1, 20], ["ARI", "WR", 1, 10],           // DET's QB and WR against ARI in week 1
       ["DET", "DEF", 1, 4], ["DET", "WR", 1, 7],            // ARI's defense and WR against DET
       ["KC", "QB", 1, 30], ["LV", "QB", 1, 12]]);
+  });
+});
+
+describe("treasurer (league money)", () => {
+  // Bob (owns Stealers, 0002) becomes treasurer; the commissioner (no team in the seed) confirms.
+  const grant = (who: Who, user: string, role = "treasurer") => as(db, who, tx => tx.query(`select public.grant_role($1::uuid, $2) as r`, [user, role]));
+  const payout = (who: Who, team: string, amount = 35) => as(db, who, tx => tx.query<{ id: number; status: string }>(
+    `insert into public.payout_payments (season, team_id, amount, paid_at, method, note) values (${S}, $1, $2, '2026-10-25', 'Venmo', 'week 7 high') returning id, status`, [team, amount])).then(r => r.rows[0]!);
+  const fee = (who: Who, team: string, amount = 360) => as(db, who, tx => tx.query<{ id: number; status: string }>(
+    `insert into public.fee_payments (season, team_id, amount, paid_at, method) values (${S}, $1, $2, '2026-09-01', 'cash') returning id, status`, [team, amount])).then(r => r.rows[0]!);
+  beforeEach(async () => {
+    await db.exec(`insert into public.season_settings (season, team_count, buy_in, prizes) values (${S}, 12, 360, '{}') on conflict (season) do nothing;
+      delete from public.notify_queue`);
+  });
+
+  test("only commissioners grant or revoke treasurer; it's optional (the last one can go); audited and emailed", async () => {
+    await assert.rejects(grant(user(ALICE), BOB), /Only a commissioner can grant the treasurer role/);
+    await grant(user(COMMISH), BOB);
+    assert.deepEqual((await rowsT(db, user(ALICE), `select role from public.user_roles where user_id = '${BOB}'`)).map(x => x.role), ["treasurer"]);
+    assert.ok((await rowsT(db, service, `select 1 from public.audit_log where action = 'roles:grant' and details ->> 'role' = 'treasurer'`)).length);
+    const q = await rowsT(db, service, `select kind, payload from public.notify_queue where user_id = '${BOB}'`);
+    assert.deepEqual(q.map(x => [x.kind, x.payload.role, x.payload.action]), [["account", "treasurer", "grant"]]);
+    assert.equal((await rowsT(db, user(COMMISH), `select public.revoke_role('${BOB}', 'treasurer') as r`))[0]!.r, "Revoked", "the only treasurer can be removed");
+  });
+
+  test("the treasurer keeps the ledger (fees, payouts, Empire pot) but can't decide awards or change settings", async () => {
+    await grant(user(COMMISH), BOB);
+    assert.equal((await payout(user(BOB), "0001")).status, "confirmed");
+    assert.equal((await fee(user(BOB), "0001")).status, "confirmed");
+    assert.deepEqual(await rowsT(db, user(BOB), `select paid, paid_at::text from public.team_fees where season = ${S} and team_id = '0001'`), [{ paid: true, paid_at: "2026-09-01" }],
+      "the fee row follows the payments");
+    await as(db, user(BOB), tx => tx.query(`insert into public.empire_ledger (season, kind, amount, note) values (${S}, 'carry_in', 240, 'from 2025')`));
+    await denied(db, user(BOB), `insert into public.awards (season, kind, week, label, team_id, amount, status, source) values (${S}, 'manual', null, 'Survivor', '0001', 240, 'final', 'manual')`);
+    assert.equal(await affected(db, user(BOB), `update public.awards set amount = 0`), 0);
+    assert.equal(await affected(db, user(BOB), `update public.season_settings set buy_in = 1`), 0);
+    assert.equal(await affected(db, user(BOB), `update public.standings set wins = 99`), 0);
+    const b = await rowsT(db, user(BOB), `select team_id, fee_paid::float as f, paid_out::float as p from public.treasury_balances(${S})`);
+    assert.deepEqual(b.filter(x => x.team_id === "0001").map(x => [x.f, x.p]), [[360, 35]], "the treasurer sees every team");
+    assert.equal(b.length, 2);
+    assert.ok((await rowsT(db, service, `select 1 from public.audit_log where actor = '${BOB}' and action = 'payouts:payout_payments:insert'`)).length, "audited");
+  });
+
+  test("commissioners read the ledger, and write it only while there's no treasurer", async () => {
+    assert.equal((await payout(user(COMMISH), "0001")).status, "confirmed", "no treasurer: the commissioner keeps the books");
+    await grant(user(COMMISH), BOB);
+    await denied(db, user(COMMISH), `insert into public.payout_payments (season, team_id, amount, paid_at) values (${S}, '0001', 5, '2026-10-25')`);
+    await denied(db, user(COMMISH), `insert into public.fee_payments (season, team_id, amount, paid_at) values (${S}, '0001', 5, '2026-10-25')`);
+    assert.equal(await affected(db, user(COMMISH), `update public.payout_payments set amount = 1`), 0);
+    assert.equal(await affected(db, user(COMMISH), `delete from public.payout_payments`), 0);
+    assert.equal((await rowsT(db, user(COMMISH), `select * from public.payout_payments`)).length, 1, "still reads it");
+    assert.equal((await rowsT(db, user(COMMISH), `select * from public.treasury_balances(${S})`)).length, 2);
+    // Managers see only their own team; anon nothing
+    assert.deepEqual((await rowsT(db, user(ALICE), `select team_id from public.treasury_balances(${S})`)).map(x => x.team_id), ["0001"]);
+    await denied(db, anon, `select * from public.fee_payments`, /permission denied/);
+    await rows(db, user(COMMISH), `select public.revoke_role('${BOB}', 'treasurer')`);
+    assert.equal((await payout(user(COMMISH), "0001", 5)).status, "confirmed", "treasurer gone: fallback again");
+  });
+
+  test("payment preferences: the owner and treasurers only (not admins, not commissioners)", async () => {
+    await as(db, user(ALICE), tx => tx.query(`insert into public.payment_prefs (venmo, mailing_address, in_person) values ('@alice-b5', '1 Main St, Bridgeville PA', false)`));
+    assert.deepEqual((await rowsT(db, user(ALICE), `select venmo from public.payment_prefs`)).map(x => x.venmo), ["@alice-b5"]);
+    assert.deepEqual(await rowsT(db, user(BOB), `select * from public.payment_prefs`), [], "another owner sees nothing");
+    assert.deepEqual(await rowsT(db, user(COMMISH), `select * from public.payment_prefs`), [], "admin + commissioner sees nothing");
+    await denied(db, anon, `select * from public.payment_prefs`, /permission denied/);
+    await denied(db, user(ALICE), `insert into public.payment_prefs (user_id, venmo) values ('${BOB}', '@forged')`);
+    assert.equal(await affected(db, user(COMMISH), `update public.payment_prefs set venmo = '@x'`), 0);
+    await grant(user(COMMISH), BOB);
+    assert.deepEqual((await rowsT(db, user(BOB), `select user_id, venmo from public.payment_prefs`)).map(x => x.venmo), ["@alice-b5"], "the treasurer sees everyone's");
+    assert.equal(await affected(db, user(BOB), `update public.payment_prefs set in_person = true where user_id = '${ALICE}'`), 1);
+    const a = await rowsT(db, service, `select details from public.audit_log where action = 'treasury:payment_prefs:update'`);
+    assert.deepEqual(a.map(x => x.details), [{ user: ALICE }], "audited without the contents");
+    await denied(db, user(ALICE), `insert into public.payment_prefs (venmo) values ('has space')`, /check constraint|violates/);
+  });
+
+  test("own-team payments need a commissioner's confirmation; pending ones don't count", async () => {
+    await grant(user(COMMISH), BOB);
+    const p = await payout(user(BOB), "0002", 70);
+    assert.equal(p.status, "pending", "Bob paying his own team");
+    assert.equal((await rowsT(db, user(BOB), `select paid_out::float as p, pending from public.treasury_balances(${S}) where team_id = '0002'`))[0]!.p, 0);
+    await assert.rejects(as(db, user(BOB), tx => tx.query(`update public.payout_payments set amount = 700 where id = ${p.id}`)), /your own team's payment/);
+    await assert.rejects(as(db, user(BOB), tx => tx.query(`select public.confirm_payment('payout_payments', ${p.id}, true)`)), /Only a commissioner/);
+    assert.equal(await affected(db, user(BOB), `delete from public.payout_payments where id = ${p.id}`), 1, "he can withdraw his own pending entry");
+    const p2 = await payout(user(BOB), "0002", 70);
+    assert.equal((await rowsT(db, user(COMMISH), `select public.confirm_payment('payout_payments', ${p2.id}, true) as r`))[0]!.r, "Confirmed");
+    assert.equal((await rowsT(db, user(BOB), `select paid_out::float as p from public.treasury_balances(${S}) where team_id = '0002'`))[0]!.p, 70);
+    await assert.rejects(as(db, user(BOB), tx => tx.query(`delete from public.payout_payments where id = ${p2.id}`)), /your own team's payment/, "a confirmed own-team entry stays");
+    // Fees too, and a rejection removes the entry
+    const f = await fee(user(BOB), "0002");
+    assert.equal(f.status, "pending");
+    await rows(db, user(COMMISH), `select public.confirm_payment('fee_payments', ${f.id}, false)`);
+    assert.deepEqual(await rowsT(db, user(BOB), `select * from public.fee_payments where team_id = '0002'`), []);
+    assert.deepEqual((await rowsT(db, service, `select action from public.audit_log where action like 'coi:payment_%' order by id`)).map(x => x.action), ["coi:payment_confirmed", "coi:payment_rejected"]);
+    // Nobody else could confirm (the only commissioner co-owns Stealers): recorded, flagged in the audit log
+    await db.exec(`insert into public.team_managers values ('0002', '${COMMISH}')`).catch(() => {});
+    if ((await rowsT(db, service, `select 1 from public.team_managers where user_id = '${COMMISH}' and team_id = '0002'`)).length) {
+      assert.equal((await payout(user(BOB), "0002", 10)).status, "confirmed");
+      assert.ok((await rowsT(db, service, `select 1 from public.audit_log where action = 'coi:own_team_unreviewed'`)).length);
+    }
+  });
+
+  test("emails: an award becoming final tells the treasurer whom to pay (once); Monday's who's-owed summary", async () => {
+    await grant(user(COMMISH), BOB);
+    await db.exec(`delete from public.notify_queue`);
+    await as(db, service, tx => tx.query(`insert into public.awards (season, kind, week, label, team_id, amount, status, source) values (${S}, 'weekly_high', 8, 'Week 8 high score', '0001', 35, 'projected', 'auto')`));
+    assert.deepEqual(await rowsT(db, service, `select * from public.notify_queue`), [], "projected: nothing yet");
+    await as(db, service, tx => tx.query(`update public.awards set status = 'final' where week = 8`));
+    const q = await rowsT(db, service, `select user_id, kind, payload from public.notify_queue`);
+    assert.deepEqual(q.map(x => [x.user_id, x.kind, x.payload.type, x.payload.team, Number(x.payload.amount), x.payload.label]), [[BOB, "account", "pay", "NSFW", 35, "Week 8 high score"]]);
+    // The nightly job replaces auto awards: the same final award doesn't notify again
+    await as(db, service, tx => tx.query(`select public.replace_auto_payouts(${S}, '[{"kind":"weekly_high","week":8,"place":null,"label":"Week 8 high score","team_id":"0001","amount":35,"status":"final","note":null}]'::jsonb, '[]'::jsonb, '[]'::jsonb)`));
+    assert.equal((await rowsT(db, service, `select * from public.notify_queue`)).length, 1);
+    // Monday 9 AM ET: who's owed (NSFW is owed $35; fees unpaid), once a week
+    const tick = (at: string) => db.query<{ r: string }>(`select private.treasury_weekly_tick('${at}'::timestamptz) as r`).then(x => x.rows[0]!.r);
+    assert.match(await tick("2026-10-26T12:00:00Z"), /not Monday 9 AM/, "8 AM EDT");
+    assert.equal(await tick("2026-10-26T13:05:00Z"), "sent");
+    assert.equal(await tick("2026-10-26T14:05:00Z"), "already sent");
+    const w = (await rowsT(db, service, `select payload from public.notify_queue where payload ->> 'type' = 'owed'`))[0]!.payload;
+    assert.deepEqual(w.teams.map((t: { team: string; owed: number }) => [t.team, Number(t.owed)]), [["NSFW", 35], ["Stealers", 0]]);
   });
 });

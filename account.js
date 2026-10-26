@@ -34,11 +34,14 @@
       if (!s) { me = null; return null; }
       return Promise.all([
         A.api(cfg, s, "profiles?id=eq." + encodeURIComponent(s.user.id) + "&select=display_name,is_commissioner,is_admin,disabled", {}, f),
-        A.api(cfg, s, "team_managers?user_id=eq." + encodeURIComponent(s.user.id) + "&select=team_id", {}, f)
+        A.api(cfg, s, "team_managers?user_id=eq." + encodeURIComponent(s.user.id) + "&select=team_id", {}, f),
+        A.api(cfg, s, "user_roles?user_id=eq." + encodeURIComponent(s.user.id) + "&select=role", {}, f)
       ]).then(function (r) {
+        var prof = (r[0].ok && r[0].data && r[0].data[0]) || null;
+        if (prof) prof.is_treasurer = ((r[2] && r[2].ok && r[2].data) || []).some(function (x) { return x.role === "treasurer"; }) && !prof.disabled;
         me = {
           session: s,
-          profile: (r[0].ok && r[0].data && r[0].data[0]) || null,
+          profile: prof,
           teams: ((r[1].ok && r[1].data) || []).map(function (t) { return { team_id: t.team_id, name: window.B5Team.name(t.team_id) }; })
         };
         return me;
@@ -51,6 +54,8 @@
     if (acct) acct.textContent = me ? "Account" : "Sign in";
     if (com) com.hidden = !(me && me.profile && me.profile.is_commissioner);
     if (adm) adm.hidden = !(me && me.profile && me.profile.is_admin);
+    var tr = document.getElementById("navTreasury");   // treasurers keep the books; commissioners read them
+    if (tr) tr.hidden = !(me && me.profile && (me.profile.is_treasurer || me.profile.is_commissioner));
   }
 
   // ---- #account ------------------------------------------------------------
@@ -79,7 +84,7 @@
       '<form class="acct-form" data-acct="name"><label>Display name<input name="display_name" maxlength="40" required value="' + esc(p.display_name) + '"></label>' +
       '<p class="muted small">Shown to the league as your team\'s manager.</p>' +
       '<button class="btn ghost" type="submit">Save name</button></form>' +
-      '<button class="btn ghost" type="button" data-acct="signout">Sign out</button></div>' + contactForm(p) + notifyForm() + "</section>";
+      '<button class="btn ghost" type="button" data-acct="signout">Sign out</button></div>' + contactForm(p) + payForm() + notifyForm() + "</section>";
   }
 
   // Owner contact info (owner_contacts: your row only; members see the fields you mark "League members"
@@ -90,9 +95,11 @@
     if (!me || !(me.teams.length || (me.profile && me.profile.is_commissioner))) return Promise.resolve();
     return Promise.all([
       A.api(cfg, me.session, "owner_contacts?user_id=eq." + encodeURIComponent(me.session.user.id) + "&select=*", {}, f),
-      A.api(cfg, me.session, "notify_settings?user_id=eq." + encodeURIComponent(me.session.user.id) + "&select=*", {}, f)
+      A.api(cfg, me.session, "notify_settings?user_id=eq." + encodeURIComponent(me.session.user.id) + "&select=*", {}, f),
+      A.api(cfg, me.session, "payment_prefs?user_id=eq." + encodeURIComponent(me.session.user.id) + "&select=*", {}, f)
     ]).then(function (r) {
       contact = (r[0].ok && r[0].data && r[0].data[0]) || {};
+      payPrefs = (r[2].ok && r[2].data && r[2].data[0]) || {};
       notify = Object.assign({}, NOTIFY_DEFAULTS, (r[1].ok && r[1].data && r[1].data[0]) || {});
     });
   }
@@ -132,6 +139,20 @@
       }).join("") + "</div>" +
       '<button class="btn ghost" type="submit">Save email settings</button>' +
       '<p class="muted small">Every email says which setting sent it and has a "Turn off these emails" link that works without signing in.</p></form>';
+  }
+  // How you'd like winnings paid (payment_prefs: you and the treasurer only).
+  var payPrefs = null;
+  function payForm() {
+    if (!payPrefs) return "";
+    var x = payPrefs;
+    return '<form class="card acct-form contact-form" data-acct="pay"><h3>Payment preferences</h3>' +
+      '<p class="muted small">How you\'d like winnings paid. <b>Private:</b> only you and the league treasurer can see this (not other owners, not administrators or commissioners).</p>' +
+      '<label>Venmo<input name="venmo" maxlength="40" autocomplete="off" placeholder="@your-name" value="' + esc(x.venmo || "") + '"></label>' +
+      '<label>PayPal (email or username)<input name="paypal" maxlength="120" autocomplete="off" value="' + esc(x.paypal || "") + '"></label>' +
+      '<label>Mailing address (for a check)<textarea name="mailing_address" rows="3" maxlength="300" autocomplete="street-address">' + esc(x.mailing_address || "") + "</textarea></label>" +
+      '<label class="acct-check"><input type="checkbox" name="in_person"' + (x.in_person ? " checked" : "") + "> In person is fine</label>" +
+      '<label>Note<input name="note" maxlength="200" value="' + esc(x.note || "") + '"></label>' +
+      '<button class="btn ghost" type="submit">Save payment preferences</button></form>';
   }
   function contactForm() {
     if (!contact) return "";
@@ -178,6 +199,15 @@
         }, f).then(function (r) {
           if (r.ok && r.data && r.data[0]) notify = Object.assign({}, NOTIFY_DEFAULTS, r.data[0]);
           renderAccount(root, r.ok ? { ok: "Email settings saved." } : { err: r.error || "Couldn't save." });
+        });
+      } else if (form.dataset.acct === "pay") {
+        var val = function (k) { return String(fd.get(k) || "").trim() || null; };
+        A.api(cfg, me.session, "payment_prefs?on_conflict=user_id", {
+          method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+          body: JSON.stringify({ user_id: me.session.user.id, venmo: val("venmo"), paypal: val("paypal"), mailing_address: val("mailing_address"), in_person: !!form.in_person.checked, note: val("note") })
+        }, f).then(function (r) {
+          if (r.ok && r.data && r.data[0]) payPrefs = r.data[0];
+          renderAccount(root, r.ok ? { ok: "Payment preferences saved." } : { err: /check constraint/.test(String(r.error)) ? "Handles can't contain spaces or < > \" characters." : r.error || "Couldn't save." });
         });
       } else if (form.dataset.acct === "contact") {
         var web = String(fd.get("website") || "").trim();
@@ -281,20 +311,21 @@
   function officersHtml() {
     var held = {};
     (cm.roles || []).forEach(function (r) { (held[r.user_id] = held[r.user_id] || []).push(r.role); });
-    var badge = function (r) { return '<span class="tag role-' + r + '">' + (r === "admin" ? "Administrator" : "Commissioner") + "</span>"; };
-    var can = function (r) { return r === "admin" ? isAdm() : isCom(); };
+    var NAMES = { admin: "Administrator", commissioner: "Commissioner", treasurer: "Treasurer" };
+    var badge = function (r) { return '<span class="tag role-' + r + '">' + (NAMES[r] || r) + "</span>"; };
+    var can = function (r) { return r === "admin" ? isAdm() : isCom(); };   // commissioners manage commissioner and treasurer
     var rows = Object.keys(held).map(function (u) {
       return "<li><b>" + esc(accountName(u)) + "</b>" + (u === me.session.user.id ? ' <span class="muted small">(you)</span>' : "") + " " + held[u].sort().map(badge).join(" ") +
-        held[u].filter(can).map(function (r) { return ' <button class="linkish" type="button" data-cm="revoke-role" data-user="' + esc(u) + '" data-role="' + r + '">revoke ' + (r === "admin" ? "administrator" : "commissioner") + "</button>"; }).join("") + "</li>";
+        held[u].filter(can).map(function (r) { return ' <button class="linkish" type="button" data-cm="revoke-role" data-user="' + esc(u) + '" data-role="' + r + '">revoke ' + (NAMES[r] || r).toLowerCase() + "</button>"; }).join("") + "</li>";
     }).join("");
-    var grantable = ["commissioner", "admin"].filter(can);
+    var grantable = ["commissioner", "treasurer", "admin"].filter(can);
     var form = grantable.length && (cm.accounts || []).length ? '<form class="po-inline" data-cm="grant-role"><label>Account <select name="user" required><option value="">Pick an account</option>' +
       cm.accounts.map(function (a) { return '<option value="' + esc(a.id) + '">' + esc(a.label) + "</option>"; }).join("") + "</select></label>" +
-      '<label>Role <select name="role">' + grantable.map(function (r) { return '<option value="' + r + '">' + (r === "admin" ? "Administrator" : "Commissioner") + "</option>"; }).join("") + "</select></label>" +
+      '<label>Role <select name="role">' + grantable.map(function (r) { return '<option value="' + r + '">' + NAMES[r] + "</option>"; }).join("") + "</select></label>" +
       '<button class="btn ghost" type="submit">Grant</button></form>' : "";
     return '<div class="card"><h3>League officers</h3><ul class="checks">' + (rows || "<li>No officers?</li>") + "</ul>" + form +
-      '<p class="muted small">Commissioners run the league (trades, scores, money, settings, moderation); administrators keep the site running (health, jobs, email, accounts, modes, audit log). ' +
-      "Commissioners grant and revoke the commissioner role, administrators the administrator role; there's always at least one of each. Every change is in the audit log and emailed to the person.</p></div>";
+      '<p class="muted small">Commissioners run the league (trades, scores, awards, settings, moderation); administrators keep the site running (health, jobs, email, accounts, modes, audit log); treasurers keep the books (fees, payouts, the Empire pot, payment preferences) on the <a href="#treasury">Treasury</a> page. ' +
+      "Commissioners grant and revoke the commissioner and treasurer roles, administrators the administrator role; there's always at least one administrator and one commissioner, treasurers are optional. Every change is in the audit log and emailed to the person.</p></div>";
   }
   // Actions on a commissioner's own team waiting for another commissioner.
   function requestsHtml() {

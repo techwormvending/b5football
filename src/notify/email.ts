@@ -29,6 +29,7 @@ const who = (p: Person | null | undefined) => !p ? "A league member" : p.team ? 
 const names = (xs: string[]) => xs.length <= 1 ? xs.join("") : xs.slice(0, -1).join(", ") + " and " + xs[xs.length - 1];
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 const et = (iso: string) => new Date(iso).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" }) + " ET";
+const money = (x: unknown) => "$" + Number(x || 0).toFixed(2).replace(/\.00$/, "");
 const pts = (x: unknown) => x == null ? "–" : Number(x).toFixed(1);
 
 /** A waiver claim's result in plain words. */
@@ -124,9 +125,20 @@ export function content(item: NotifyItem): Body {
     }
     case "account": {
       if (d.type === "test") return { subject: "B5 test email", heading: "Your B5 email works", lines: ["This is the test email an administrator asked for. Nothing else to do."], button: "Open B5" };
-      const role = d.role === "admin" ? "administrator" : "commissioner";
+      if (d.type === "pay") return { subject: `Pay ${d.team} ${money(d.amount)} — ${d.label}`, heading: `Pay ${d.team} ${money(d.amount)}`,
+        lines: [`${d.label} is final: ${d.team} has ${money(d.amount)} coming.`, "Record the payment on the Treasury page once it's sent."], button: "Open the Treasury" };
+      if (d.type === "owed") {
+        const teams: { team: string; owed: number; fee_unpaid: number; pending: number }[] = d.teams || [];
+        const owed = teams.filter(t => Number(t.owed) > 0), fees = teams.filter(t => Number(t.fee_unpaid) > 0), pend = teams.filter(t => Number(t.pending) > 0);
+        return { subject: `Who's owed: ${plural(owed.length, "team")}, ${money(owed.reduce((x, t) => x + Number(t.owed), 0))}`, heading: "This week's money summary",
+          lines: [...(owed.length ? ["Winnings owed:", ...owed.map(t => `${t.team}: ${money(t.owed)}`)] : ["No winnings owed."]),
+            ...(fees.length ? ["League fees still due:", ...fees.map(t => `${t.team}: ${money(t.fee_unpaid)}`)] : []),
+            ...(pend.length ? [`Waiting for a commissioner to confirm: ${pend.map(t => t.team).join(", ")}`] : [])], button: "Open the Treasury" };
+      }
+      const role = d.role === "admin" ? "administrator" : d.role === "treasurer" ? "treasurer" : "commissioner";
+      const where = d.role === "admin" ? "Your tools are on the Admin page." : d.role === "treasurer" ? "Your tools are on the Treasury page." : "Your tools are on the Commish page.";
       return d.action === "grant"
-        ? { subject: `You're now a B5 ${role}`, heading: `You're now a B5 ${role}`, lines: [`${d.by} gave you the ${role} role.`, d.role === "admin" ? "Your tools are on the Admin page." : "Your tools are on the Commish page."], button: "Open B5" }
+        ? { subject: `You're now a B5 ${role}`, heading: `You're now a B5 ${role}`, lines: [`${d.by} gave you the ${role} role.`, where], button: "Open B5" }
         : { subject: `Your B5 ${role} role was removed`, heading: `Your B5 ${role} role was removed`, lines: [`${d.by} removed your ${role} role.`], button: "Open B5" };
     }
     case "scoring": {
@@ -147,7 +159,9 @@ export function content(item: NotifyItem): Body {
 export function renderEmail(item: NotifyItem, o: RenderOpts): Rendered {
   const b = content(item);
   const site = o.site.replace(/\/+$/, "");
-  const link = site + "/" + String(item.data?.link || "#home").replace(/^\/?/, "");
+  // Treasurer notices travel as account notices (always sent) but open the Treasury page.
+  const target = item.kind === "account" && (item.data?.type === "pay" || item.data?.type === "owed") ? "#treasury" : item.data?.link || "#home";
+  const link = site + "/" + String(target).replace(/^\/?/, "");
   const off = `${site}/#unsubscribe/${item.token}`, settings = `${site}/#account/email`;
   const replyNote = "Replying to this email isn't supported: use the button above to answer on B5.";
   const notice = item.kind === "account";   // role changes and test emails: always sent, no unsubscribe

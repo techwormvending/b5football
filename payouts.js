@@ -1,8 +1,11 @@
 /* Payouts (#payouts, public) and the commissioner's payout tools (#commish-payouts).
-   Replaces the payout spreadsheet. A LEDGER ONLY: no money moves through the site, and no
-   addresses or payment handles are stored. Rules and auto awards: src/league/payouts.ts
+   Replaces the payout spreadsheet. A LEDGER ONLY: no money moves through the site, and this
+   page never shows addresses or payment handles (those live only in payment_prefs, for the owner
+   and the treasurer, on the Treasury page). Rules and auto awards: src/league/payouts.ts
    (computed nightly and during live games); this page only reads and displays them, and
-   lets the commissioner record fees, payments, manual awards and overrides (all audited).
+   lets the commissioner enter manual awards, overrides and guillotine decisions (all audited).
+   Fees and payouts are recorded on the Treasury page (treasury.js) by the treasurer (or the
+   commissioners while there is none); payment preferences live there too, never here.
    All data is escaped before it goes into HTML. */
 (function (root) {
   "use strict";
@@ -84,7 +87,7 @@
     ];
     if (session()) {
       reqs.push(get("team_fees" + q + "&select=team_id,amount_due,paid,paid_at,note&order=team_id"));
-      reqs.push(get("payout_payments" + q + "&select=id,team_id,amount,paid_at,note&order=paid_at.desc,id.desc"));
+      reqs.push(get("payout_payments" + q + "&status=eq.confirmed&select=id,team_id,amount,paid_at,note&order=paid_at.desc,id.desc"));
       reqs.push(A.api(cfg, session(), "rpc/payout_league_totals", { method: "POST", body: JSON.stringify({ p_season: season }) }, f));
       if (admin) reqs.push(get("payout_flags" + q + "&select=flags,computed_at"));
     }
@@ -228,33 +231,12 @@
       teamOptions(s.empire_defending_team) + '</select></label><button class="btn ghost" type="submit">Save</button></form>' +
       '<p class="muted small">Until the history import, enter last season\'s champion here. Balance: ' + money(empireState(s, d.awards).balance) + ".</p></div>";
 
-    var feeRows = TL().ids().map(function (id) {
-      var fee = d.fees.filter(function (x) { return x.team_id === id; })[0] || {};
-      return '<tr><td>' + tlink(id) + '</td><td><form class="po-inline" data-po="fee" data-team="' + esc(id) + '">' +
-        '<input name="amount_due" type="number" step="0.01" min="0" value="' + esc(fee.amount_due != null ? fee.amount_due : s.buy_in) + '" aria-label="Fee due">' +
-        '<label class="acct-check"><input type="checkbox" name="paid"' + (fee.paid ? " checked" : "") + "> Paid</label>" +
-        '<input name="paid_at" type="date" value="' + esc(fee.paid_at || "") + '" aria-label="Paid on">' +
-        '<button class="btn ghost" type="submit">Save</button></form></td></tr>';
-    }).join("");
-    var fees = '<div class="card"><h3>League fees</h3><div class="table-wrap"><table class="po-table"><tbody>' + feeRows + "</tbody></table></div></div>";
-
     var bal = balances(d.awards, d.payments, d.fees);
     var balHtml = '<div class="card"><h3>Balances</h3><div class="table-wrap"><table class="po-table"><thead><tr><th>Team</th><th>Fee</th><th class="num">Won</th><th class="num hide-sm">Projected</th><th class="num">Paid out</th><th class="num">Owed</th></tr></thead><tbody>' +
       bal.map(function (b) {
         return "<tr><td>" + tlink(b.team_id) + "</td><td>" + (b.fee_paid == null ? '<span class="muted">–</span>' : b.fee_paid ? "Paid" : '<b class="po-owe">Unpaid</b>') + '</td><td class="num">' + money(b.won) +
           '</td><td class="num hide-sm muted">' + (b.projected ? money(b.projected) : "–") + '</td><td class="num">' + money(b.paid_out) + '</td><td class="num"><b>' + money(b.owed) + "</b></td></tr>";
       }).join("") + '</tbody></table></div><button class="btn ghost" type="button" data-po="csv">Download CSV</button></div>';
-
-    var pay = '<div class="card"><h3>Record a payout</h3><form class="acct-form" data-po="payment">' +
-      '<label>Team<select name="team" required><option value="">Pick a team</option>' + teamOptions() + "</select></label>" +
-      '<label>Amount<input name="amount" type="number" step="0.01" min="0.01" required></label>' +
-      '<label>Paid on<input name="paid_at" type="date" required value="' + esc(new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" })) + '"></label>' +
-      '<label>Note<input name="note" maxlength="120" placeholder="e.g. weeks 1-5 high scores"></label>' +
-      '<button class="btn" type="submit">Record payout</button><p class="muted small">Ledger only. Don\'t enter payment handles or addresses.</p></form>' +
-      (d.payments.length ? '<ul class="po-list">' + d.payments.map(function (p) {
-        return "<li><b>" + esc(p.paid_at) + "</b><span>" + tlink(p.team_id) + (p.note ? ' <span class="muted small">' + esc(p.note) + "</span>" : "") + "</span><span>" + money(p.amount) +
-          '</span><button class="linkish" type="button" data-po="del-payment" data-id="' + esc(p.id) + '">delete</button></li>';
-      }).join("") + "</ul>" : "") + "</div>";
 
     var manualOpts = (s.prizes.manual || []).map(function (x) { return '<option value="' + esc(x.label) + '" data-amount="' + esc(x.amount) + '">' + esc(x.label) + " (" + money(x.amount) + ")</option>"; }).join("");
     var manualList = d.awards.filter(function (a) { return a.source === "manual"; });
@@ -289,7 +271,8 @@
       '<button class="btn" type="submit">Eliminate</button></form><p class="muted small">For ties or corrections. Later weeks are recomputed on the next refresh.</p></div>';
 
     return '<section class="po"><h2>Payout tools</h2><p><a href="#commish">← Commissioner</a> · <a href="#payouts">Public payouts page</a></p>' + m +
-      '<div class="po-cols"><div>' + flagsHtml + balHtml + fees + "</div><div>" + pay + manual + over + gOver + empire + "</div></div></section>";
+      '<div class="po-cols"><div>' + flagsHtml + balHtml + '<div class="card"><h3>Fees and payouts</h3><p>League fees paid, winnings paid out, the Empire pot ledger and payment preferences are on the <a href="#treasury">Treasury</a> page.</p></div>' +
+      "</div><div>" + manual + over + gOver + empire + "</div></div></section>";
   }
 
   function exportCsv() {
@@ -320,14 +303,7 @@
         var c = Math.round(Number(total) * 100), base = Math.floor(c / ids.length), extra = c - base * ids.length;
         return ids.slice().sort().map(function (t, i) { return { team_id: t, amount: (base + (i < extra ? 1 : 0)) / 100 }; });
       };
-      if (kind === "fee") {
-        api("team_fees?on_conflict=season,team_id", "POST", [{ season: season, team_id: form.dataset.team, amount_due: Number(fd.get("amount_due") || 0),
-          paid: fd.get("paid") === "on", paid_at: fd.get("paid_at") || null, updated_at: new Date().toISOString() }], "resolution=merge-duplicates,return=minimal")
-          .then(function (r) { return redraw(r, "Fee saved for " + TL().name(form.dataset.team) + "."); });
-      } else if (kind === "payment") {
-        api("payout_payments", "POST", { season: season, team_id: fd.get("team"), amount: Number(fd.get("amount")), paid_at: fd.get("paid_at"), note: String(fd.get("note") || "").trim() || null })
-          .then(function (r) { return redraw(r, "Recorded " + money(fd.get("amount")) + " to " + TL().name(fd.get("team")) + "."); });
-      } else if (kind === "manual") {
+      if (kind === "manual") {
         var opt = form.querySelector("select[name=label] option:checked"), ids = multi();
         var total = fd.get("amount") ? Number(fd.get("amount")) : Number(opt && opt.dataset.amount || 0);
         api("awards", "POST", split(total, ids).map(function (x) {
@@ -359,7 +335,6 @@
       var b = e.target.closest("button[data-po]"); if (!b) return;
       var k = b.dataset.po;
       if (k === "csv") exportCsv();
-      else if (k === "del-payment" && root.confirm("Delete this payout record?")) api("payout_payments?id=eq." + Number(b.dataset.id), "DELETE").then(function (r) { return redraw(r, "Payout deleted."); });
       else if (k === "del-award" && root.confirm("Delete this award?")) api("awards?id=eq." + Number(b.dataset.id), "DELETE").then(function (r) { return redraw(r, "Award deleted."); });
       else if (k === "clear-override") {
         var form = b.closest("form"), parts = String(new FormData(form).get("group")).split("|");
