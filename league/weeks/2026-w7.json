@@ -1,10 +1,8 @@
 {
  "season": 2026,
  "week": 7,
- "status": "live",
- "missingGames": [
-  "DAL@PHI"
- ],
+ "status": "pending_review",
+ "missingGames": [],
  "diffLog": [
   {
    "at": "2026-10-23T14:14:20.502Z",
@@ -17,14 +15,20 @@
    "kind": "live_vs_final",
    "entries": [],
    "note": "no live numbers were recorded for CIN@BAL, CLE@TEN, DEN@ARI, GB@DET, IND@MIN, KC@SEA, LAR@LV, MIA@NYJ, NYG@HOU, PIT@NO, SF@ATL, TB@CAR"
+  },
+  {
+   "at": "2026-10-27T15:23:04.683Z",
+   "kind": "live_vs_final",
+   "entries": [],
+   "note": "no live numbers were recorded for DAL@PHI"
   }
  ],
- "updatedAt": "2026-10-26T16:06:53.695Z",
+ "updatedAt": "2026-10-27T15:23:04.683Z",
  "final": {
   "season": 2026,
   "week": 7,
   "source": "final",
-  "computedAt": "2026-10-26T16:06:53.695Z",
+  "computedAt": "2026-10-27T15:23:04.683Z",
   "delayed": false,
   "errors": [],
   "games": [
@@ -47,6 +51,16 @@
     "awayScore": 27,
     "status": "final",
     "gameDate": "2026-10-25"
+   },
+   {
+    "gameKey": "DAL@PHI",
+    "sourceGameId": "2026_07_DAL_PHI",
+    "home": "PHI",
+    "away": "DAL",
+    "homeScore": 21,
+    "awayScore": 38,
+    "status": "final",
+    "gameDate": "2026-10-26"
    },
    {
     "gameKey": "DEN@ARI",
@@ -689,6 +703,293 @@
       28,
       32
      ]
+    }
+   },
+   "nflverse:00-0036997": {
+    "key": "nflverse:00-0036997",
+    "name": "Javonte Williams",
+    "position": "RB",
+    "team": "DAL",
+    "gameKey": "DAL@PHI",
+    "points": 18,
+    "stats": {
+     "rushYds": 155,
+     "rushTdLengths": [
+      2
+     ]
+    }
+   },
+   "nflverse:00-0033077": {
+    "key": "nflverse:00-0033077",
+    "name": "Dak Prescott",
+    "position": "QB",
+    "team": "DAL",
+    "gameKey": "DAL@PHI",
+    "points": 25,
+    "stats": {
+     "passYds": 212,
+     "rushYds": 8,
+     "passTdLengths": [
+      9,
+      21,
+      16
+     ],
+     "twoPtRushes": 1
+    }
+   },
+   "nflverse:00-0039530": {
+    "key": "nflverse:00-0039530",
+    "name": "Brevyn Spann-Ford",
+    "position": "TE",
+    "team": "DAL",
+    "gameKey": "DAL@PHI",
+    "points": 3,
+    "stats": {
+     "recYds": 11,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0036358": {
+    "key": "nflverse:00-0036358",
+    "name": "CeeDee Lamb",
+    "position": "WR",
+    "team": "DAL",
+    "gameKey": "DAL@PHI",
+    "points": 16.5,
+    "stats": {
+     "recYds": 74,
+     "receptions": 5,
+     "recTdLengths": [
+      9,
+      16
+     ]
+    }
+   },
+   "nflverse:00-0038400": {
+    "key": "nflverse:00-0038400",
+    "name": "Tanner McKee",
+    "position": "QB",
+    "team": "PHI",
+    "gameKey": "DAL@PHI",
+    "points": 10,
+    "stats": {
+     "passYds": 211,
+     "rushYds": 1,
+     "interceptionsThrown": 1,
+     "passTdLengths": [
+      4
+     ]
+    }
+   },
+   "nflverse:00-0034844": {
+    "key": "nflverse:00-0034844",
+    "name": "Saquon Barkley",
+    "position": "RB",
+    "team": "PHI",
+    "gameKey": "DAL@PHI",
+    "points": 11,
+    "stats": {
+     "rushYds": 62,
+     "recYds": 9,
+     "receptions": 2,
+     "rushTdLengths": [
+      8
+     ]
+    }
+   },
+   "nflverse:00-0040867": {
+    "key": "nflverse:00-0040867",
+    "name": "Makai Lemon",
+    "position": "WR",
+    "team": "PHI",
+    "gameKey": "DAL@PHI",
+    "points": 11.5,
+    "stats": {
+     "recYds": 67,
+     "receptions": 7,
+     "recTdLengths": [
+      4
+     ]
+    }
+   },
+   "nflverse:00-0037120": {
+    "key": "nflverse:00-0037120",
+    "name": "Tyler Goodson",
+    "position": "RB",
+    "team": "DAL",
+    "gameKey": "DAL@PHI",
+    "points": 2,
+    "stats": {
+     "rushYds": 38
+    }
+   },
+   "nflverse:00-0037247": {
+    "key": "nflverse:00-0037247",
+    "name": "George Pickens",
+    "position": "WR",
+    "team": "DAL",
+    "gameKey": "DAL@PHI",
+    "points": 10,
+    "stats": {
+     "recYds": 57,
+     "receptions": 4,
+     "recTdLengths": [
+      21
+     ]
+    }
+   },
+   "nflverse:00-0039410": {
+    "key": "nflverse:00-0039410",
+    "name": "Ryan Flournoy",
+    "position": "WR",
+    "team": "DAL",
+    "gameKey": "DAL@PHI",
+    "points": 4,
+    "stats": {
+     "recYds": 70,
+     "receptions": 4
+    }
+   },
+   "nflverse:00-0035662": {
+    "key": "nflverse:00-0035662",
+    "name": "Marquise Brown",
+    "position": "WR",
+    "team": "PHI",
+    "gameKey": "DAL@PHI",
+    "points": 2,
+    "stats": {
+     "recYds": 30,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0034351": {
+    "key": "nflverse:00-0034351",
+    "name": "Dallas Goedert",
+    "position": "TE",
+    "team": "PHI",
+    "gameKey": "DAL@PHI",
+    "points": 7,
+    "stats": {
+     "recYds": 48,
+     "receptions": 5
+    }
+   },
+   "nflverse:00-0037258": {
+    "key": "nflverse:00-0037258",
+    "name": "Dameon Pierce",
+    "position": "RB",
+    "team": "PHI",
+    "gameKey": "DAL@PHI",
+    "points": 8.5,
+    "stats": {
+     "rushYds": 47,
+     "recYds": 1,
+     "receptions": 1,
+     "rushTdLengths": [
+      5
+     ]
+    }
+   },
+   "nflverse:00-0040024": {
+    "key": "nflverse:00-0040024",
+    "name": "Darius Cooper",
+    "position": "WR",
+    "team": "PHI",
+    "gameKey": "DAL@PHI",
+    "points": 0.5,
+    "stats": {
+     "recYds": 17,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0039062": {
+    "key": "nflverse:00-0039062",
+    "name": "Jonathan Mingo",
+    "position": "WR",
+    "team": "DAL",
+    "gameKey": "DAL@PHI",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0036980": {
+    "key": "nflverse:00-0036980",
+    "name": "Elijah Moore",
+    "position": "WR",
+    "team": "PHI",
+    "gameKey": "DAL@PHI",
+    "points": 1,
+    "stats": {
+     "recYds": 16,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0038041": {
+    "key": "nflverse:00-0038041",
+    "name": "Jake Ferguson",
+    "position": "TE",
+    "team": "DAL",
+    "gameKey": "DAL@PHI",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0038738": {
+    "key": "nflverse:00-0038738",
+    "name": "Hunter Luepke",
+    "position": "RB",
+    "team": "DAL",
+    "gameKey": "DAL@PHI",
+    "points": 0,
+    "stats": {
+     "rushYds": 3
+    }
+   },
+   "nflverse:00-0036567": {
+    "key": "nflverse:00-0036567",
+    "name": "Elijah Mitchell",
+    "position": "RB",
+    "team": "PHI",
+    "gameKey": "DAL@PHI",
+    "points": 3.5,
+    "stats": {
+     "rushYds": 11,
+     "recYds": 23,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0041483": {
+    "key": "nflverse:00-0041483",
+    "name": "Eli Stowers",
+    "position": "TE",
+    "team": "PHI",
+    "gameKey": "DAL@PHI",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0037692": {
+    "key": "nflverse:00-0037692",
+    "name": "Brandon Aubrey",
+    "position": "K",
+    "team": "DAL",
+    "gameKey": "DAL@PHI",
+    "points": 14.5,
+    "stats": {
+     "fgMadeLengths": [
+      55,
+      27,
+      24
+     ],
+     "extraPoints": 3
+    }
+   },
+   "nflverse:00-0033787": {
+    "key": "nflverse:00-0033787",
+    "name": "Jake Elliott",
+    "position": "K",
+    "team": "PHI",
+    "gameKey": "DAL@PHI",
+    "points": 3,
+    "stats": {
+     "extraPoints": 3
     }
    },
    "nflverse:00-0039732": {
@@ -3828,6 +4129,30 @@
      "sacks": 1,
      "interceptions": 1,
      "fumbleRecoveries": 1
+    }
+   },
+   "PHI": {
+    "team": "PHI",
+    "gameKey": "DAL@PHI",
+    "points": 0,
+    "stats": {
+     "opponentPoints": 38,
+     "offensiveTdsAllowed": 4,
+     "passYdsAllowed": 212,
+     "rushYdsAllowed": 204
+    }
+   },
+   "DAL": {
+    "team": "DAL",
+    "gameKey": "DAL@PHI",
+    "points": 4,
+    "stats": {
+     "opponentPoints": 21,
+     "offensiveTdsAllowed": 3,
+     "passYdsAllowed": 200,
+     "rushYdsAllowed": 121,
+     "sacks": 2,
+     "interceptions": 1
     }
    },
    "ARI": {
