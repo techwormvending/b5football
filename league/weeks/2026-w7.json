@@ -1,7 +1,7 @@
 {
  "season": 2026,
  "week": 7,
- "status": "pending_review",
+ "status": "final",
  "missingGames": [],
  "diffLog": [
   {
@@ -23,12 +23,12 @@
    "note": "no live numbers were recorded for DAL@PHI"
   }
  ],
- "updatedAt": "2026-10-27T15:23:04.683Z",
+ "updatedAt": "2026-10-28T16:00:01.662Z",
  "final": {
   "season": 2026,
   "week": 7,
   "source": "final",
-  "computedAt": "2026-10-27T15:23:04.683Z",
+  "computedAt": "2026-10-28T16:00:01.662Z",
   "delayed": false,
   "errors": [],
   "games": [
@@ -4438,5 +4438,7 @@
   "unmatched": [],
   "warnings": []
  },
- "autoFinalizeAt": "2026-10-28T03:00:00.000Z"
+ "autoFinalizeAt": "2026-10-28T03:00:00.000Z",
+ "finalizedAt": "2026-10-28T16:00:01.662Z",
+ "finalizedBy": "auto"
 }
