@@ -26,6 +26,8 @@ import { gameFromEspn, type EspnPlay, type EspnSummary } from "../ingest/espn.ts
 import { crosswalkFromRows, toCanonical, type UnmatchedPlayer } from "../ingest/crosswalk.ts";
 import { scoreWeek } from "../league/scores.ts";
 import { sbBase, sbHeaders, type SbConfig } from "../league/supabaseRest.ts";
+import { rowsFromScoreboard, upsertGameInfo } from "../league/gameInfoSync.ts";
+import type { EspnEvent } from "../league/gameInfo.ts";
 import type { GameData } from "../ingest/types.ts";
 import { refreshPayouts } from "../league/payoutsSync.ts";
 import { syncMflPools } from "../league/mflPools.ts";
@@ -209,6 +211,9 @@ export async function runLive(deps: LiveDeps): Promise<LiveResult> {
     ];
     // Game clock first: the scoring-play trigger on player_scores stamps each play with it.
     await upsert("nfl_games", "season,week,game_key", scoreboardGames(sb.events ?? [], season, week, at));
+    // Records and betting lines for the pool's game cards, from the same scoreboard (never stops scoring).
+    try { await upsertGameInfo(deps.sb, (u, i) => deps.fetch(u, i), rowsFromScoreboard((sb.events ?? []) as EspnEvent[], season, week, at)); }
+    catch (err) { deps.log?.("game info: " + (err as Error).message); }
     await upsert("player_scores", "season,week,player_id", rows);
     res.players = rows.length;
     await upsert("score_weeks", "season,week", [{ season, week, status: "live", live_delayed: res.delayed, updated_at: at }]);

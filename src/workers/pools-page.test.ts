@@ -53,3 +53,42 @@ test("test picks are scored on the page from final results (never stored or paid
     { game_key: "E@F", home: "F", away: "E", status: "scheduled", home_score: null, away_score: null }];
   assert.equal(T([{ game_key: "A@B", pick: "B", points: 3 }, { game_key: "C@D", pick: "C", points: 2 }, { game_key: "E@F", pick: "E", points: 1 }], games), 3);
 });
+
+test("game cards: records with ties, missing odds, dome vs outdoor weather, international venue, alerts, live score", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const G = P as any;
+  // Records
+  assert.equal(G.recordText("5-2"), "(5-2)");
+  assert.equal(G.recordText("4-2-1"), "(4-2-1)");
+  assert.equal(G.recordText(null), "");
+  // Lines: posted, partial, missing
+  const line = { spread: "KC -3.5", over_under: 47.5, odds_provider: "DraftKings", odds_at: "2026-10-29T15:00:00Z" };
+  assert.equal(G.lineText(line), "KC -3.5 · O/U 47.5");
+  assert.equal(G.lineText({ spread: "Pick'em", over_under: null }), "Pick'em");
+  assert.equal(G.lineText({ spread: null, over_under: null }), "Line not posted");
+  assert.equal(G.lineText(undefined), "Line not posted");
+  assert.equal(G.lineSource(line), "DraftKings via ESPN, as of Thu 11:00 AM ET");
+  // Kickoff in ET, international label
+  const g = { game_key: "ATL@CIN", away: "ATL", home: "CIN", kickoff: "2026-11-01T14:30:00Z", status: "scheduled" };
+  assert.equal(G.kickoffText(g, { intl: "Madrid" }), "Sun, 11/1, 9:30 AM ET · Madrid");
+  assert.equal(G.kickoffText(g, {}), "Sun, 11/1, 9:30 AM ET");
+  // Stadiums and weather
+  assert.equal(G.venueText({ roof: "dome", surface: "turf" }), "Dome · turf");
+  assert.equal(G.venueText({ roof: "retractable", surface: "grass" }), "Retractable roof · grass");
+  assert.equal(G.weatherText({ roof: "dome", weather: { temp_f: 70 } }), "Indoors", "domes never show a forecast");
+  const snow = { temp_f: 23, condition: "Heavy snow", icon: "❄️", wind_mph: 17, precip_pct: 70, heavy: true, source: "Open-Meteo" };
+  assert.equal(G.weatherText({ roof: "outdoor", weather: snow }), "❄️ 23°F Heavy snow, wind 17 mph, 70% precip");
+  assert.equal(G.weatherText({ roof: "retractable", weather: { temp_f: 60, icon: "⛅", condition: "Partly cloudy", wind_mph: 5, precip_pct: 10 } }), "⛅ 60°F Partly cloudy, wind 5 mph, 10% precip (roof may close)");
+  assert.equal(G.weatherText({ roof: "outdoor", weather: null }), "Forecast not posted yet");
+  assert.deepEqual(JSON.parse(JSON.stringify(G.weatherAlerts(snow))), ["wind 17 mph", "heavy snow", "23°F"]);
+  assert.deepEqual(JSON.parse(JSON.stringify(G.weatherAlerts({ temp_f: 26, wind_mph: 14, heavy: false }))), [], "under every threshold");
+  const outdoorCard = String(G.gameMetaHtml(g, { roof: "outdoor", surface: "grass", venue_name: "Paycor Stadium", weather: snow, weather_at: "2026-10-29T15:00:00Z" }, Date.parse("2026-10-30T00:00:00Z")));
+  assert.match(outdoorCard, /pl-wx alert" title="Forecast as of Thu 11:00 AM ET \(Open-Meteo\)">⚠ ❄️ 23°F Heavy snow/);
+  const domeCard = String(G.gameMetaHtml(g, { roof: "dome", surface: "turf", weather: snow }, Date.parse("2026-10-30T00:00:00Z")));
+  assert.match(domeCard, /Dome · turf<\/span> · <span class="pl-wx" title="">Indoors<\/span>/);
+  // Started games show the score (and keep the stadium and weather)
+  const live = { ...g, status: "in_progress", away_score: 17, home_score: 14, status_detail: "3rd 4:12" };
+  assert.equal(G.scoreText(live), "ATL 17 – CIN 14 · 3rd 4:12");
+  assert.equal(G.scoreText({ ...live, status: "final" }), "Final: ATL 17 – CIN 14");
+  assert.match(String(G.gameMetaHtml(live, { roof: "retractable", intl: "Madrid" }, Date.parse("2026-11-01T16:00:00Z"))), /^<div class="pl-gmeta small"><b class="pl-score">ATL 17 – CIN 14 · 3rd 4:12<\/b> · <span title="">Retractable roof<\/span>/);
+});

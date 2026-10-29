@@ -203,6 +203,17 @@ a.game:hover { border-color: var(--gold); }
 .pl-conf { list-style: none; padding: 0; margin: 8px 0 0; }
 .pl-conf li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--card-line); }
 .pl-conf li.locked { opacity: .75; }
+.pl-conf li.pl-gcard { display: block; }
+.pl-gline { display: flex; align-items: center; gap: 6px 8px; flex-wrap: wrap; }
+.pl-rec { font-weight: 400; font-size: .8em; opacity: .85; }
+.pl-team.on .pl-rec { opacity: 1; }
+.pl-teamtxt { font-weight: 600; min-width: 64px; }
+.pl-line { font-size: 12px; color: var(--chalk-dim); white-space: nowrap; }
+.pl-gline .pl-move { margin-left: auto; }
+.pl-gmeta { margin: 4px 0 0; color: var(--chalk-dim); line-height: 1.4; }
+.pl-gmeta .pl-score { color: var(--gold); }
+.pl-wx.alert { color: #ff6e6e; font-weight: 600; }
+.pl-sources { margin-top: 8px; }
 .pl-pts { flex: none; width: 30px; text-align: center; font: 700 18px var(--head); color: var(--gold); }
 .pl-move { margin-left: auto; display: flex; gap: 2px; }
 .pl-move .linkish { font-size: 18px; padding: 6px 10px; text-decoration: none; }

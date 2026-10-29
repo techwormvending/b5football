@@ -10,6 +10,7 @@
 
 import { runLive, type LiveDeps } from "./liveRun.ts";
 import { runLineupImport } from "../league/lineupImport.ts";
+import { runGameInfo } from "../league/gameInfoSync.ts";
 import { runPoolImport } from "../league/poolImport.ts";
 import { syncMflLive } from "./mflLive.ts";
 import { sbBase, sbHeaders, type SbConfig } from "../league/supabaseRest.ts";
@@ -50,6 +51,13 @@ export async function handle(req: Request, env: EdgeEnv, fetchImpl: typeof fetch
     catch (err) { return json({ status: "failed", message: (err as Error).message, lineups }, 500); }
   }
   // TEMPORARY 2026: MFL's starters before kickoff (pg_cron "b5-mfl-lineups"), plus the live comparison.
+  // Game details for the pool's cards: records, lines, stadiums, forecasts (pg_cron b5-game-info, every 3 hours in season).
+  if (body.job === "game_info") {
+    const season = Number(body.season);
+    if (!season) return json({ error: "season required" }, 400);
+    try { return json(await runGameInfo(sb, season, { fetchImpl, now: now() })); }
+    catch (err) { return json({ status: "failed", message: (err as Error).message }, 500); }
+  }
   if (body.job === "mfl_lineups") {
     const season = Number(body.season), week = Number(body.week);
     if (!season || !week) return json({ error: "season and week required" }, 400);

@@ -29,6 +29,73 @@
     return g.home_score > g.away_score ? g.home : g.away_score > g.home_score ? g.away : null;
   }
   var started = function (g, now) { return !!(g && g.kickoff && Date.parse(g.kickoff) <= now); };
+
+  // ---- Game cards: records, line, kickoff, stadium, forecast (public.nfl_game_info; info only) ----
+  var ET = function (iso, o) { return new Date(iso).toLocaleString("en-US", Object.assign({ timeZone: "America/New_York" }, o)); };
+  /** "(5-2)", "(4-2-1)", or "" when unknown. */
+  function recordText(rec) { return rec && /^\d+-\d+(-\d+)?$/.test(rec) ? "(" + rec + ")" : ""; }
+  /** "KC -3.5 · O/U 47.5", or "Line not posted". */
+  function lineText(info) {
+    if (!info || (!info.spread && info.over_under == null)) return "Line not posted";
+    return [info.spread, info.over_under != null ? "O/U " + Number(info.over_under) : null].filter(Boolean).join(" · ");
+  }
+  /** "DraftKings via ESPN, as of Thu 11:00 AM ET". */
+  function lineSource(info) {
+    return info && info.odds_at ? (info.odds_provider ? info.odds_provider + " via ESPN" : "ESPN") + ", as of " + ET(info.odds_at, { weekday: "short", hour: "numeric", minute: "2-digit" }) + " ET" : "";
+  }
+  /** "Sun 11/1, 1:00 PM ET · London". */
+  function kickoffText(g, info) {
+    if (!g || !g.kickoff) return "Kickoff TBD";
+    return ET(g.kickoff, { weekday: "short", month: "numeric", day: "numeric" }) + ", " + ET(g.kickoff, { hour: "numeric", minute: "2-digit" }) + " ET" + (info && info.intl ? " · " + info.intl : "");
+  }
+  /** "Dome · turf", "Retractable roof · grass", "Outdoor · grass". */
+  function venueText(info) {
+    if (!info || !info.roof) return "";
+    return { dome: "Dome", retractable: "Retractable roof", outdoor: "Outdoor" }[info.roof] + (info.surface ? " · " + info.surface : "");
+  }
+  /** What makes the weather matter: wind 15+ mph, heavy rain/snow, 25°F or colder. */
+  function weatherAlerts(w) {
+    if (!w) return [];
+    var out = [];
+    if (w.wind_mph != null && w.wind_mph >= 15) out.push("wind " + w.wind_mph + " mph");
+    if (w.heavy) out.push(String(w.condition || "heavy rain/snow").toLowerCase());
+    if (w.temp_f != null && w.temp_f <= 25) out.push(w.temp_f + "°F");
+    return out;
+  }
+  /** The forecast line: "Indoors" for domes; else icon, temperature, wind, chance of precip. */
+  function weatherText(info) {
+    if (!info) return "";
+    if (info.roof === "dome") return "Indoors";
+    var w = info.weather;
+    if (!w) return "Forecast not posted yet";
+    return [(w.icon || "") + (w.temp_f != null ? " " + w.temp_f + "°F" : "") + (w.condition ? " " + w.condition : ""), w.wind_mph != null ? "wind " + w.wind_mph + " mph" : null,
+      w.precip_pct != null ? w.precip_pct + "% precip" : null].filter(Boolean).join(", ").trim() + (info.roof === "retractable" ? " (roof may close)" : "");
+  }
+  /** Started games: "KC 17 – BUF 14 · 3rd 4:12" (away first), "Final: ..." once over. */
+  function scoreText(g) {
+    if (!g || g.home_score == null || g.away_score == null) return "";
+    var line = g.away + " " + g.away_score + " – " + g.home + " " + g.home_score;
+    return g.status === "final" ? "Final: " + line : line + (g.status_detail ? " · " + g.status_detail : "");
+  }
+  /** One card's second row (kickoff · stadium · weather, or the score once started) with the weather flagged when it matters. */
+  function gameMetaHtml(g, info, now) {
+    var w = info && info.roof !== "dome" ? info.weather : null, alerts = weatherAlerts(w);
+    var bits = [started(g, now) && scoreText(g) ? '<b class="pl-score">' + esc(scoreText(g)) + "</b>" : esc(kickoffText(g, info))];
+    if (venueText(info)) bits.push('<span title="' + esc(info.venue_name || "") + '">' + esc(venueText(info)) + "</span>");
+    if (info) bits.push('<span class="pl-wx' + (alerts.length ? " alert" : "") + '" title="' + esc(w && info.weather_at ? "Forecast as of " + ET(info.weather_at, { weekday: "short", hour: "numeric", minute: "2-digit" }) + " ET (" + (w.source || "") + ")" : "") + '">' +
+      (alerts.length ? "⚠ " : "") + esc(weatherText(info)) + "</span>");
+    return '<div class="pl-gmeta small">' + bits.join(" · ") + "</div>";
+  }
+  function teamLabel(t, rec) { return esc(t) + (rec ? ' <span class="pl-rec">' + esc(recordText(rec)) + "</span>" : ""); }
+  /** Footnote: where lines and forecasts come from and when. */
+  function sourcesHtml(infos) {
+    var line = infos.filter(function (i) { return i.odds_at; }).sort(function (a, b) { return Date.parse(b.odds_at) - Date.parse(a.odds_at); })[0];
+    var wx = infos.filter(function (i) { return i.weather_at; }).sort(function (a, b) { return Date.parse(b.weather_at) - Date.parse(a.weather_at); })[0];
+    var srcs = {}; infos.forEach(function (i) { if (i.weather && i.weather.source) i.weather.source.split(", ").forEach(function (x) { srcs[x] = 1; }); });
+    return '<p class="muted small pl-sources">' + (line ? "Lines: " + esc(lineSource(line)) + ". " : "Lines not posted yet. ") + "Info only: picks are straight up. " +
+      (wx ? "Forecast as of " + esc(ET(wx.weather_at, { weekday: "short", hour: "numeric", minute: "2-digit" })) + " ET (" + esc(Object.keys(srcs).join(", ")) + "). " : "") +
+      "⚠ = wind 15+ mph, heavy rain or snow, or 25°F and colder.</p>";
+  }
   /** Teams a Survivor entry can still pick (never reused). */
   function availableTeams(picks, teamId) {
     var used = {};
@@ -73,7 +140,7 @@
     var q = "?season=eq." + season;
     var reqs = [
       api("season_settings" + q + "&select=pools"),
-      api("nfl_games" + q + "&select=week,game_key,home,away,kickoff,home_score,away_score,status&order=kickoff&limit=1000"),
+      api("nfl_games" + q + "&select=week,game_key,home,away,kickoff,home_score,away_score,status,status_detail&order=kickoff&limit=1000"),
       api("survivor_status" + q + "&select=team_id,alive,eliminated_week,reason,winner,picks_used"),
       api("confidence_scores" + q + "&select=week,team_id,points,correct,decided,games&limit=1000"),
       api("awards" + q + "&kind=in.(survivor,pickem)&select=kind,place,team_id,amount,status,source")
@@ -92,6 +159,10 @@
         var lastPlayed = games.filter(function (g) { return g.status === "final"; }).reduce(function (m, g) { return Math.max(m, g.week); }, 1);
         st.week = cur || lastPlayed;
       }
+      // Records, lines, stadiums and forecasts for the week shown (written by server jobs)
+      return api("nfl_game_info" + q + "&week=eq." + st.week + "&select=*").then(function (r) {
+        st.data.info = {}; ok(r).forEach(function (x) { st.data.info[x.game_key] = x; });
+      });
     });
   }
   // season_settings.pools.mode: "test" (2026: Confidence test picks; MFL official) | "official" (site picks are real)
@@ -183,6 +254,15 @@
     for (var w = c.start_week; w <= c.end_week; w++) out += '<a class="wk' + (w === st.week ? " active" : "") + '" href="#confidence/' + w + '" aria-label="Week ' + w + '">' + w + "</a>";
     return '<div class="weeks" aria-label="Week">' + out + "</div>";
   }
+  function gamesListHtml(games, now) {
+    var d = st.data;
+    if (!games.length) return "";
+    return '<div class="card"><h3>Week ' + esc(st.week) + ' games</h3><ul class="pl-conf pl-glist">' + games.map(function (g) {
+      var info = (d.info || {})[g.game_key];
+      return '<li class="pl-gcard' + (started(g, now) ? " locked" : "") + '"><div class="pl-gline"><span class="pl-teamtxt">' + teamLabel(g.away, info && info.away_record) + '</span><span class="muted small">@</span>' +
+        '<span class="pl-teamtxt">' + teamLabel(g.home, info && info.home_record) + '</span><span class="pl-line" title="' + esc(lineSource(info)) + '">' + esc(lineText(info)) + "</span></div>" + gameMetaHtml(g, info, now) + "</li>";
+    }).join("") + "</ul>" + sourcesHtml(games.map(function (g) { return (d.info || {})[g.game_key]; }).filter(Boolean)) + "</div>";
+  }
   function confidenceHtml() {
     var d = st.data, now = Date.now(), w = st.week;
     var games = d.games.filter(function (g) { return g.week === w; }).sort(function (a, b) { return Date.parse(a.kickoff || 0) - Date.parse(b.kickoff || 0); });
@@ -204,11 +284,16 @@
         '<p class="muted small">Tap a team to pick it. ▲▼ move a game up or down (more or fewer points). Saved as you go; started games stay locked in place.</p>' +
         '<ol class="pl-conf">' + st.rows.list.map(function (r, i) {
           var lock = r.locked && !free;
-          var b = function (t) { return '<button type="button" class="pl-team' + (r.pick === t ? " on" : "") + '" data-pl="cpick" data-i="' + i + '" data-nfl="' + esc(t) + '"' + (lock ? " disabled" : "") + ">" + esc(t) + "</button>"; };
-          return '<li class="' + (lock ? "locked" : "") + '"><b class="pl-pts">' + esc(r.points) + "</b>" + b(r.game.away) + '<span class="muted small">@</span>' + b(r.game.home) +
-            '<span class="pl-move">' + (lock ? "🔒" : '<button type="button" class="linkish" data-pl="up" data-i="' + i + '" aria-label="More points">▲</button><button type="button" class="linkish" data-pl="down" data-i="' + i + '" aria-label="Fewer points">▼</button>') + "</span></li>";
-        }).join("") + "</ol>" + msgHtml() + "</div>";
+          var info = (d.info || {})[r.game.game_key];
+          var b = function (t, rec) { return '<button type="button" class="pl-team' + (r.pick === t ? " on" : "") + '" data-pl="cpick" data-i="' + i + '" data-nfl="' + esc(t) + '"' + (lock ? " disabled" : "") + ">" + teamLabel(t, rec) + "</button>"; };
+          return '<li class="pl-gcard' + (lock ? " locked" : "") + '"><div class="pl-gline"><b class="pl-pts">' + esc(r.points) + "</b>" + b(r.game.away, info && info.away_record) + '<span class="muted small">@</span>' + b(r.game.home, info && info.home_record) +
+            '<span class="pl-line" title="' + esc(lineSource(info)) + '">' + esc(lineText(info)) + "</span>" +
+            '<span class="pl-move">' + (lock ? "🔒" : '<button type="button" class="linkish" data-pl="up" data-i="' + i + '" aria-label="More points">▲</button><button type="button" class="linkish" data-pl="down" data-i="' + i + '" aria-label="Fewer points">▼</button>') + "</span></div>" +
+            gameMetaHtml(r.game, info, now) + "</li>";
+        }).join("") + "</ol>" + sourcesHtml(games.map(function (g) { return (d.info || {})[g.game_key]; }).filter(Boolean)) + msgHtml() + "</div>";
     }
+    // No pick list (signed out, or an official MFL week): the same game cards, read-only.
+    if (!editor || officialWeek) editor += gamesListHtml(games, now);
 
     // Results grid (members see picks once each game kicks off; everyone sees weekly totals)
     var weekScores = {}; d.scores.filter(function (x) { return x.week === w; }).forEach(function (x) { weekScores[x.team_id] = x; });
@@ -293,5 +378,6 @@
     });
   }
 
-  root.B5Pools = { start: start, testScore: testScore, weekChipsHtml: function (cfgC, week) { st.data = st.data || { pools: { confidence: cfgC } }; st.week = week; return weekChips(); }, result: result, availableTeams: availableTeams, confidenceRows: confidenceRows, moveRow: moveRow };
+  root.B5Pools = { start: start, testScore: testScore, weekChipsHtml: function (cfgC, week) { st.data = st.data || { pools: { confidence: cfgC } }; st.week = week; return weekChips(); }, result: result, availableTeams: availableTeams, confidenceRows: confidenceRows, moveRow: moveRow,
+    recordText: recordText, lineText: lineText, lineSource: lineSource, kickoffText: kickoffText, venueText: venueText, weatherText: weatherText, weatherAlerts: weatherAlerts, scoreText: scoreText, gameMetaHtml: gameMetaHtml };
 })(typeof globalThis !== "undefined" ? globalThis : this);

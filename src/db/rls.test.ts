@@ -81,7 +81,7 @@ describe("every table is protected", () => {
 
 test("no default grants leak: anon only ever has SELECT, and only on public-data tables", async () => {
   const PUBLIC = new Set(["teams", "nfl_players", "nfl_games", "roster_entries", "score_weeks", "player_scores", "matchups", "standings", "announcements",
-    "season_settings", "team_scores", "awards", "guillotine", "survivor_status", "confidence_scores", "score_events", "player_injuries", "league_settings", "draft_picks", "lineup_slots", "test_lineups"]);
+    "season_settings", "team_scores", "awards", "guillotine", "survivor_status", "confidence_scores", "score_events", "player_injuries", "league_settings", "draft_picks", "lineup_slots", "test_lineups", "nfl_game_info"]);
   const g = (await db.query<{ table_name: string; privilege_type: string }>(`
     select table_name, privilege_type from information_schema.role_table_grants
     where table_schema = 'public' and grantee = 'anon'`)).rows;
@@ -2552,5 +2552,21 @@ describe("several roles per person (set_roles)", () => {
     await assert.rejects(setRoles(user(ALICE), BOB, ["admin"]), /Only/);
     await denied(db, anon, `select public.set_roles('${BOB}', array['admin'])`, /permission denied/);
     await assert.rejects(setRoles(user(COMMISH), BOB, ["owner"]), /Unknown role/);
+  });
+});
+
+describe("game details for the pool's cards (nfl_game_info)", () => {
+  test("public read; only server jobs write; the 3-hourly tick only calls in season", async () => {
+    await as(db, service, tx => tx.query(`insert into public.nfl_game_info (season, week, game_key, away_record, home_record, spread, over_under, roof) values (${S}, ${W}, 'DET@ARI', '4-2', '2-5', 'DET -3.5', 47.5, 'retractable')`));
+    assert.deepEqual((await rowsT(db, anon, `select spread, roof from public.nfl_game_info`)).map(x => [x.spread, x.roof]), [["DET -3.5", "retractable"]]);
+    await denied(db, anon, `insert into public.nfl_game_info (season, week, game_key) values (${S}, 1, 'A@B')`, /permission denied/);
+    await denied(db, user(COMMISH), `update public.nfl_game_info set spread = 'X'`, /permission denied/);
+    await db.exec(`delete from net.calls`);
+    const tick = (at: string) => db.query<{ r: string }>(`select private.game_info_tick('${at}'::timestamptz) as r`).then(x => x.rows[0]!.r);
+    assert.equal(await tick("2027-04-01T12:00:00Z"), "not in season");
+    assert.equal(await tick(new Date().toISOString()), `requested ${S}`, "the seed's games are this week");
+    const calls = (await db.query<{ body: { job: string; season: number } }>(`select body from net.calls`)).rows;
+    assert.deepEqual(calls.map(c => [c.body.job, c.body.season]), [["game_info", S]]);
+    await denied(db, user(COMMISH), `select private.game_info_tick()`, /permission denied/);
   });
 });
