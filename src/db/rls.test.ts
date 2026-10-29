@@ -81,7 +81,7 @@ describe("every table is protected", () => {
 
 test("no default grants leak: anon only ever has SELECT, and only on public-data tables", async () => {
   const PUBLIC = new Set(["teams", "nfl_players", "nfl_games", "roster_entries", "score_weeks", "player_scores", "matchups", "standings", "announcements",
-    "season_settings", "team_scores", "awards", "guillotine", "survivor_status", "confidence_scores", "score_events", "player_injuries", "league_settings", "draft_picks", "lineup_slots", "test_lineups", "nfl_game_info"]);
+    "season_settings", "team_scores", "awards", "guillotine", "survivor_status", "confidence_scores", "score_events", "player_injuries", "league_settings", "draft_picks", "lineup_slots", "test_lineups", "nfl_game_info", "league_defaults"]);
   const g = (await db.query<{ table_name: string; privilege_type: string }>(`
     select table_name, privilege_type from information_schema.role_table_grants
     where table_schema = 'public' and grantee = 'anon'`)).rows;
@@ -2568,5 +2568,76 @@ describe("game details for the pool's cards (nfl_game_info)", () => {
     const calls = (await db.query<{ body: { job: string; season: number } }>(`select body from net.calls`)).rows;
     assert.deepEqual(calls.map(c => [c.body.job, c.body.season]), [["game_info", S]]);
     await denied(db, user(COMMISH), `select private.game_info_tick()`, /permission denied/);
+  });
+});
+
+describe("league default settings (from an admin's own settings)", () => {
+  const NEWBIE = "00000000-0000-0000-0000-0000000000e1";
+  const settings = (u: string) => db.query<Record<string, unknown>>(`select * from public.notify_settings where user_id = '${u}'`).then(r => r.rows[0]);
+  // The admin (COMMISH) sets his own preferences on the Account page, paused included.
+  const mine = () => as(db, user(COMMISH), tx => tx.query(`insert into public.notify_settings (paused, dm, mentions, scoring, league_lineups, league_lineups_opponent, lineup)
+    values (true, true, true, true, 'digest', true, true) on conflict (user_id) do update set paused = true, mentions = true, scoring = true, league_lineups = 'digest', league_lineups_opponent = true, lineup = true`));
+  beforeEach(async () => { await db.exec(`insert into public.owner_contacts (user_id, email, phone) values ('${COMMISH}', 'admin@example.com', '4125550123') on conflict do nothing`).catch(() => {}); });
+
+  test("saving copies notification choices only: never pause, contact info, names, payment prefs, roles or role notices; admins only; audited", async () => {
+    await mine();
+    await as(db, user(COMMISH), tx => tx.query(`insert into public.payment_prefs (venmo) values ('@admin')`));
+    const r = (await rowsT(db, user(COMMISH), `select public.admin_save_defaults('{"liveShowOfficial": true, "email": "x@y.z", "phone": "1"}'::jsonb) as r`))[0]!.r;
+    assert.deepEqual(Object.keys(r.notify).sort(), ["announcements", "dm", "league_lineups", "league_lineups_opponent", "league_moves", "league_trades", "league_waivers",
+      "lineup", "lineup_saved", "mentions", "scoring", "trades", "waivers"], "only the notification choices");
+    assert.equal(r.notify.mentions, true); assert.equal(r.notify.league_lineups, "digest"); assert.equal(r.notify.lineup, true);
+    assert.equal("paused" in r.notify, false, "Pause all email is never copied");
+    assert.deepEqual(r.display, { liveShowOfficial: true }, "display: only known keys");
+    const stored = JSON.stringify((await rowsT(db, anon, `select notify, display from public.league_defaults`))[0]);
+    for (const personal of ["admin@example.com", "4125550123", "@admin", "Commish", "commissioner", "admin\"", "treasurer", "account", COMMISH]) {
+      assert.equal(stored.includes(personal), false, `the template never holds ${personal}`);
+    }
+    await assert.rejects(as(db, user(ALICE), tx => tx.query(`select public.admin_save_defaults()`)), /Only an administrator/);
+    await denied(db, anon, `select public.admin_save_defaults()`, /permission denied/);
+    await denied(db, user(COMMISH), `update public.league_defaults set notify = '{}'`, /permission denied/);
+    assert.equal((await rowsT(db, service, `select 1 from public.audit_log where action = 'defaults:save'`)).length, 1);
+  });
+
+  test("a new account starts with the league defaults (not customized; not paused)", async () => {
+    await mine();
+    await rows(db, user(COMMISH), `select public.admin_save_defaults()`);
+    await db.exec(`insert into auth.users (id, email, raw_user_meta_data) values ('${NEWBIE}', 'new@example.com', '{}')`);
+    const s = (await settings(NEWBIE))!;
+    assert.deepEqual([s.mentions, s.scoring, s.league_lineups, s.league_lineups_opponent, s.lineup, s.paused, s.customized], [true, true, "digest", true, true, false, false]);
+  });
+
+  test("apply to users who haven't customized: preview count first; customized users untouched; pause kept; audited", async () => {
+    // Alice chose her own settings; Bob never did (no row); a third has an uncustomized row from earlier defaults.
+    await as(db, user(ALICE), tx => tx.query(`insert into public.notify_settings (mentions, scoring) values (false, false)`));
+    await db.exec(`insert into auth.users (id, email) values ('${NEWBIE}', 'new@example.com')`);   // no defaults saved yet: no row
+    await mine();
+    await rows(db, user(COMMISH), `select public.admin_save_defaults()`);
+    const preview = (await rowsT(db, user(COMMISH), `select public.admin_apply_defaults(true) as r`))[0]!.r;
+    assert.deepEqual(preview, { users: 2, applied: false }, "Bob and the new account; not Alice or the admin (both customized)");
+    assert.equal(await settings(BOB), undefined, "a preview changes nothing");
+    assert.deepEqual((await rowsT(db, user(COMMISH), `select public.admin_apply_defaults(false) as r`))[0]!.r, { users: 2, applied: true });
+    assert.deepEqual([(await settings(BOB))!.mentions, (await settings(BOB))!.league_lineups, (await settings(BOB))!.customized], [true, "digest", false]);
+    assert.deepEqual([(await settings(ALICE))!.mentions, (await settings(ALICE))!.scoring, (await settings(ALICE))!.customized], [false, false, true], "Alice's own choices stay");
+    assert.equal((await settings(COMMISH))!.paused, true, "the admin's pause stays his");
+    assert.ok((await rowsT(db, service, `select 1 from public.audit_log where action = 'defaults:apply' and (details ->> 'users')::int = 2`)).length);
+    // Bob now changes a setting himself: from then on he's customized
+    await as(db, user(BOB), tx => tx.query(`update public.notify_settings set scoring = false`));
+    assert.equal((await settings(BOB))!.customized, true);
+    assert.equal(((await rowsT(db, user(COMMISH), `select public.admin_apply_defaults(true) as r`))[0]!.r).users, 1, "only the new account is left");
+    await assert.rejects(as(db, user(ALICE), tx => tx.query(`select public.admin_apply_defaults(false)`)), /Only an administrator/);
+  });
+
+  test("Reset to league defaults: your own row, back to the template, pause kept; unsubscribing counts as a choice", async () => {
+    await mine();
+    await rows(db, user(COMMISH), `select public.admin_save_defaults()`);
+    await as(db, user(ALICE), tx => tx.query(`insert into public.notify_settings (paused, mentions, scoring) values (true, false, false)`));
+    await as(db, user(ALICE), tx => tx.query(`select public.reset_my_notify_settings()`));
+    const a = (await settings(ALICE))!;
+    assert.deepEqual([a.mentions, a.scoring, a.paused, a.customized], [true, true, true, false]);
+    await denied(db, anon, `select public.reset_my_notify_settings()`, /permission denied/);
+    // An unsubscribe link is the person's own choice
+    const tok = (await db.query<{ t: string }>(`select '${ALICE}.scoring.' || private.notify_sig('${ALICE}', 'scoring') as t`)).rows[0]!.t;
+    await as(db, anon, tx => tx.query(`select public.notify_unsubscribe($1)`, [tok]));
+    assert.deepEqual([(await settings(ALICE))!.scoring, (await settings(ALICE))!.customized], [false, true]);
   });
 });

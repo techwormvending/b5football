@@ -167,7 +167,10 @@
   // st.sel = the selected matchup's team (either side). st.d = the week (cards); st.dd = the
   // selected matchup's detail ({key, roster, scores, events}).
   var st = { me: null, week: null, sel: null, d: null, dd: null, open: {}, el: null, tick: null, poll: null, loading: false, err: null, showOfficial: false };
-  try { st.showOfficial = root.localStorage.getItem("b5-live-official") === "1"; } catch (e) { /* storage blocked */ }
+  // Your own choice (this browser) wins; otherwise the league default (league_defaults.display.liveShowOfficial).
+  var ownOfficial = null;
+  try { ownOfficial = root.localStorage.getItem("b5-live-official"); } catch (e) { /* storage blocked */ }
+  st.showOfficial = ownOfficial === "1";
   var session = function () { return st.me && st.me.session; };
   var api = function (path, init) { return A.api(cfg, session(), path, init || {}, f); };
   var ok = function (x) { return x && x.ok ? x.data || [] : []; };
@@ -452,6 +455,12 @@
     var who = root.B5Account ? root.B5Account.load().catch(function () { return null; }) : Promise.resolve(null);
     who.then(function (me) {
       st.me = me;
+      if (ownOfficial == null) {
+        api("league_defaults?select=display").then(function (x) {
+          var dflt = x && x.ok && x.data && x.data[0] && x.data[0].display ? x.data[0].display.liveShowOfficial : null;
+          if (typeof dflt === "boolean" && dflt !== st.showOfficial && ownOfficial == null) { st.showOfficial = dflt; if (st.d) { compose(st.d); render(); } }
+        }, function () {});
+      }
       return r && r.week ? Number(r.week) : pickWeek();
     }).then(function (w) {
       if (st.el !== el) return;
@@ -478,7 +487,7 @@
     rootEl.addEventListener("change", function (e) {
       var t = e.target.closest("[data-lv-official]");
       if (!t || !st.d) return;
-      st.showOfficial = !!t.checked;
+      st.showOfficial = !!t.checked; ownOfficial = st.showOfficial ? "1" : "0";
       try { root.localStorage.setItem("b5-live-official", st.showOfficial ? "1" : "0"); } catch (err) { /* storage blocked */ }
       compose(st.d); st.dd = null; render();
       loadDetail(st.d, selected()).then(function (dd) { st.dd = dd; render(); });

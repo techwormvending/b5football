@@ -164,7 +164,7 @@
       '<div class="nf-groups' + (notify.paused ? " paused" : "") + '">' + NOTIFY_GROUPS.map(function (g) {
         return '<h4 class="nf-h">' + esc(g[0]) + '</h4><ul class="nf-list">' + g[1].map(box).join("") + (g[0] === "Lineups" ? others : "") + "</ul>";
       }).join("") + "</div>" +
-      '<button class="btn ghost" type="submit">Save email settings</button>' +
+      '<button class="btn ghost" type="submit">Save email settings</button> <button class="btn ghost" type="button" data-acct="reset-notify">Reset to league defaults</button>' +
       '<p class="muted small">Every email says which setting sent it and has a "Turn off these emails" link that works without signing in.</p></form>';
   }
   // How you'd like winnings paid (payment_prefs: you and the treasurer only).
@@ -256,6 +256,14 @@
       form.querySelectorAll(".nf-groups input, .nf-groups select").forEach(function (x) { x.disabled = e.target.checked; });
     });
     root.addEventListener("click", function (e) {
+      var rn = e.target.closest("[data-acct='reset-notify']");
+      if (rn) {
+        if (!window.confirm("Reset your email settings to the league defaults? Pause all email stays as it is.")) return;
+        A.api(cfg, me.session, "rpc/reset_my_notify_settings", { method: "POST", body: "{}" }, f).then(function (r) {
+          return loadContact().then(function () { renderAccount(root, r.ok ? { ok: "Email settings reset to the league defaults." } : { err: r.error || "Couldn't reset." }); });
+        });
+        return;
+      }
       var b = e.target.closest("[data-acct='signout']");
       if (!b) return;
       A.signOut(cfg, opts()).then(function () { me = null; refreshNav(); renderAccount(root, { ok: "Signed out." }); });
@@ -295,6 +303,7 @@
       Q.accounts = rpc("admin_accounts");
       Q.health = rpc("admin_health");
       Q.flags = get("feature_flags?select=key,enabled,description,updated_at&order=key");
+      Q.defaults = get("league_defaults?select=notify,display,set_by,set_at");
       Q.seasons = get("season_settings?select=season,pools,waivers,trades,notify&order=season.desc&limit=3");
       Q.audit = get("audit_log?select=id,at,actor,actor_label,action,season,week,details&order=id.desc&limit=100");
       Q.invites = get("invites?select=email,team_id,invited_at,accepted_at&order=invited_at");
@@ -307,7 +316,7 @@
       var u = { day: 0, month: 0 }; cm.usage.forEach(function (x) { u.day += x.today; u.month += x.month; }); cm.emailCounts = u;
       cm.requests = ok("requests");
       cm.emailLog = ok("emailLog"); cm.health = R.health && R.health.ok ? R.health.data : null;
-      cm.flags = ok("flags"); cm.seasons = ok("seasons"); cm.audit = ok("audit");
+      cm.flags = ok("flags"); cm.seasons = ok("seasons"); cm.audit = ok("audit"); cm.defaults = ok("defaults")[0] || null;
       cm.week = window.B5TeamPage ? window.B5TeamPage.currentWeek(ok("games")) : null;
       cm.maxOwners = (ok("league")[0] || {}).max_owners_per_team || 2;
       cm.allowPartial = (ok("league")[0] || {}).allow_partial_lineups !== false;
@@ -477,6 +486,26 @@
       '<div class="card"><h3>Team managers</h3>' + mgrs + assign + "</div></section>";
   }
 
+  // League default settings (an administrator's own notification choices become everyone's starting point).
+  var DEFAULT_LABELS = [["dm", "Direct messages"], ["mentions", "@mentions"], ["trades", "My trades"], ["league_trades", "All league trades"], ["waivers", "My waiver results"],
+    ["league_waivers", "League-wide waiver results"], ["league_moves", "League adds/drops"], ["lineup_saved", "My lineup confirmation"], ["lineup", "Lineup reminders (bye/out)"],
+    ["scoring", "Daily scoring update"], ["announcements", "Commissioner announcements"]];
+  /** "On: Direct messages, ...; other teams' lineups: digest (my opponent only)". */
+  function defaultsSummary(d) {
+    if (!d || !d.notify) return "";
+    var n = d.notify, on = DEFAULT_LABELS.filter(function (x) { return n[x[0]] === true; }).map(function (x) { return x[1]; });
+    return "On: " + (on.join(", ") || "nothing") + "; other teams' lineups: " + (n.league_lineups || "off") + (n.league_lineups_opponent ? " (my opponent only)" : "") +
+      (d.display && d.display.liveShowOfficial != null ? "; Live shows official MFL lineups: " + (d.display.liveShowOfficial ? "yes" : "no") : "");
+  }
+  function defaultsHtml() {
+    var d = cm.defaults;
+    return '<div class="card"><h3>League defaults</h3>' +
+      (d ? '<p class="small">Set by ' + esc(accountName(d.set_by)) + ", " + esc(et(d.set_at)) + ".<br>" + esc(defaultsSummary(d)) + "</p>" : '<p class="muted">Not set yet: new accounts start with the built-in defaults.</p>') +
+      '<p><button class="btn" type="button" data-cm="save-defaults">Use my settings as league defaults</button> ' +
+      '<button class="btn ghost" type="button" data-cm="apply-defaults"' + (d ? "" : " disabled") + ">Apply defaults to users who haven't customized</button></p>" +
+      '<p class="muted small">Copies your email-notification choices (and this browser\'s Live page choice) as the starting point for everyone. Never copied: Pause all email, contact info, names, payment preferences, teams, roles, and role notices (those follow the role). New accounts get the defaults; applying them only changes people who never changed their own settings, after a preview count. Both are in the audit log.</p></div>';
+  }
+
   function renderAdmin(root) {
     if (!ready()) { root.innerHTML = '<section><h2>Admin</h2><div class="card"><p>Sign-in isn\'t set up yet.</p></div></section>'; return; }
     if (!me) { root.innerHTML = '<section><h2>Admin</h2><div class="card"><p><a href="#account">Sign in</a> first.</p></div></section>'; return; }
@@ -529,7 +558,7 @@
       return "<li><b>" + esc(a.action) + '</b> <span class="muted small">' + esc(et(a.at)) + " · " + esc(a.actor ? accountName(a.actor) : a.actor_label || "system") + "</span>" +
         '<br><span class="muted small">' + esc(JSON.stringify(a.details).slice(0, 220)) + "</span></li>";
     }).join("") + "</ul></details></div>";
-    root.innerHTML = "<section><h2>Admin</h2>" + m + health + emailLogHtml() + flags + accts + officersHtml() + lineupImportHtml(cm.lineupImports || []) + poolImportHtml(cm.poolImports || []) + liveCompareHtml(cm.live || []) + shadowHtml(cm.shadow || []) + audit + "</section>";
+    root.innerHTML = "<section><h2>Admin</h2>" + m + health + emailLogHtml() + flags + defaultsHtml() + accts + officersHtml() + lineupImportHtml(cm.lineupImports || []) + poolImportHtml(cm.poolImports || []) + liveCompareHtml(cm.live || []) + shadowHtml(cm.shadow || []) + audit + "</section>";
   }
 
   // Confidence Pool official import (2026 test mode): one row per week, newest first.
@@ -765,6 +794,19 @@
         var imgs = a.image && /^https:\/\//.test(a.image) ? [a.image] : [];
         act(A.api(cfg, me.session, "rpc/board_new_thread", { method: "POST", body: JSON.stringify({ p_title: a.title, p_body: text || a.title, p_images: imgs, p_source_key: b.dataset.key }) }, f)
           .then(function (r) { return r.ok ? { msgOk: "Posted to the board." } : r; }));
+      } else if (kind === "save-defaults") {
+        if (!window.confirm("Use your current email settings as the league defaults? (Never your pause, contact info, payment preferences or roles.)")) return;
+        var disp = {};
+        try { var lv = window.localStorage.getItem("b5-live-official"); if (lv != null) disp.liveShowOfficial = lv === "1"; } catch (err) { /* storage blocked */ }
+        act(rpcCall("admin_save_defaults", { p_display: disp }).then(function (r) { return said(r, r.ok ? "League defaults saved from your settings." : null); }));
+      } else if (kind === "apply-defaults") {
+        rpcCall("admin_apply_defaults", { p_preview: true }).then(function (r) {
+          if (!r.ok) { act(Promise.resolve(r)); return; }
+          var n = r.data.users;
+          if (!n) { cm.msg = { ok: "Everyone has customized their settings (or already has the defaults): nothing to apply." }; render(root); return; }
+          if (!window.confirm("Apply the league defaults to " + n + " account" + (n === 1 ? "" : "s") + " that never changed their own email settings? Nobody's own choices are touched.")) return;
+          act(rpcCall("admin_apply_defaults", { p_preview: false }).then(function (x) { return said(x, x.ok ? "League defaults applied to " + x.data.users + " account" + (x.data.users === 1 ? "" : "s") + "." : null); }));
+        });
       } else if (kind === "decide-request") {
         var approve = b.dataset.approve === "1", note = window.prompt((approve ? "Approve" : "Reject") + " this request? Note (optional):", "");
         if (note == null) return;
@@ -847,7 +889,7 @@
     unsubscribe: unsubscribe,
     presence: presence,
     refreshNav: refreshNav,
-    rolesText: rolesText, roleBadges: roleBadges, nextRoles: nextRoles, roleChangeText: roleChangeText,
+    rolesText: rolesText, roleBadges: roleBadges, defaultsSummary: defaultsSummary, nextRoles: nextRoles, roleChangeText: roleChangeText,
     managerNames: managerNames,
     load: load
   };

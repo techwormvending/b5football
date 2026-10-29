@@ -29,3 +29,9 @@ test("an officer row saves only the roles the viewer may change; the rest pass t
   assert.equal(Acc.roleChangeText(["admin", "treasurer"], ["admin", "commissioner"]), "add Commissioner; remove Treasurer");
   assert.equal(Acc.roleChangeText(["admin"], ["admin"]), "");
 });
+
+test("league defaults summary on the Admin page", () => {
+  const d = { notify: { dm: true, mentions: true, trades: true, scoring: false, league_lineups: "digest", league_lineups_opponent: true }, display: { liveShowOfficial: false } };
+  assert.equal(Acc.defaultsSummary(d), "On: Direct messages, @mentions, My trades; other teams' lineups: digest (my opponent only); Live shows official MFL lineups: no");
+  assert.equal(Acc.defaultsSummary(null), "");
+});
