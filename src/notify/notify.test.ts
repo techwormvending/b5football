@@ -150,6 +150,10 @@ test("account notices (role changes, test email): always sent, no unsubscribe li
   const multi = content(item("account", { type: "roles", added: ["admin", "treasurer"], removed: ["commissioner"], by: "Adam", roles: ["admin", "treasurer"] }));
   assert.equal(multi.subject, "Your B5 roles changed");
   assert.deepEqual(multi.lines, ["Adam gave you: Administrator and Treasurer.", "Adam removed: Commissioner.", "Your roles now: Administrator · Treasurer. Your tools: Admin, Treasury in the menu."]);
+  // An admin making themselves commissioner: every other commissioner hears about it
+  const sg = content(item("account", { type: "self_grant", who: "Ada" }));
+  assert.equal(sg.subject, "Ada made themselves a B5 commissioner");
+  assert.match(sg.lines[0]!, /used the administrator role/);
   // Treasurer notices
   assert.equal(content(item("account", { type: "role", role: "treasurer", action: "grant", by: "Adam" })).lines[1], "Your tools are on the Treasury page.");
   const pay = renderEmail(item("account", { type: "pay", team: "Mac Daddies", amount: 35, label: "Week 8 high score", link: "#account" }), O);

@@ -135,6 +135,8 @@ export function content(item: NotifyItem): Body {
             ...(fees.length ? ["League fees still due:", ...fees.map(t => `${t.team}: ${money(t.fee_unpaid)}`)] : []),
             ...(pend.length ? [`Waiting for a commissioner to confirm: ${pend.map(t => t.team).join(", ")}`] : [])], button: "Open the Treasury" };
       }
+      if (d.type === "self_grant") return { subject: `${d.who} made themselves a B5 commissioner`, heading: `${d.who} made themselves a commissioner`,
+        lines: [`${d.who} used the administrator role to give themselves the commissioner role. That's allowed, and it's in the audit log.`, "If you didn't expect this, check League officers on the Commish page."], button: "Open the Commish page" };
       if (d.type === "roles") {   // several role changes saved at once: one email
         const N: Record<string, string> = { admin: "Administrator", commissioner: "Commissioner", treasurer: "Treasurer" };
         const TOOLS: Record<string, string> = { admin: "Admin", commissioner: "Commish", treasurer: "Treasury" };

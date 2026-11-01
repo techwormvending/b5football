@@ -347,7 +347,7 @@
   function officersHtml() {
     var held = {};
     (cm.roles || []).forEach(function (r) { (held[r.user_id] = held[r.user_id] || []).push(r.role); });
-    var can = function (r) { return r === "admin" ? isAdm() : isCom(); };   // admins: admin; commissioners: commissioner and treasurer
+    var can = function (r) { return r === "admin" ? isAdm() : isCom() || isAdm(); };   // admin: administrators; commissioner and treasurer: commissioners or administrators
     var people = (cm.accounts || []).slice().sort(function (x, y) {
       var a1 = (held[x.id] || []).length ? 0 : 1, b1 = (held[y.id] || []).length ? 0 : 1;
       return a1 - b1 || String(x.name).localeCompare(String(y.name));
@@ -357,7 +357,7 @@
       var cur = held[pp.id] || [];
       var boxes = ROLES.map(function (r) {
         var on = cur.indexOf(r) >= 0, ok = can(r);
-        return '<label class="acct-check ro-box' + (ok ? "" : " muted") + '" title="' + esc(ok ? "" : r === "admin" ? "Only an administrator can change this" : "Only a commissioner can change this") + '">' +
+        return '<label class="acct-check ro-box' + (ok ? "" : " muted") + '" title="' + esc(ok ? "" : r === "admin" ? "Only an administrator can change this" : "Only a commissioner or an administrator can change this") + '">' +
           '<input type="checkbox" name="role" value="' + r + '"' + (on ? " checked" : "") + (ok ? "" : " disabled") + "> " + ROLE_NAMES[r] + "</label>";
       }).join("");
       return '<li><form class="ro-row" data-cm="set-roles" data-user="' + esc(pp.id) + '"><div class="ro-who"><b>' + esc(pp.name || accountName(pp.id)) + "</b>" + (pp.id === me.session.user.id ? ' <span class="muted small">(you)</span>' : "") +
@@ -366,7 +366,7 @@
     };
     return '<div class="card"><h3>League officers</h3><ul class="checks ro-list">' + people.map(row).join("") + "</ul>" +
       '<p class="muted small">A person can hold any mix of roles; their rights add up. Commissioners run the league (trades, scores, awards, settings, moderation); administrators keep the site running (health, jobs, email, accounts, modes, audit log); treasurers keep the books (fees, payouts, the Empire pot, payment preferences) on the <a href="#treasury">Treasury</a> page. ' +
-      "Administrators change the administrator role, commissioners the commissioner and treasurer roles. There's always at least one administrator and one commissioner; treasurers are optional. Save applies a person's changes together: each one goes in the audit log and they get one email.</p></div>";
+      "Administrators change every role; commissioners change the commissioner and treasurer roles (an administrator giving themselves the commissioner role is flagged to the other commissioners). There's always at least one administrator and one commissioner; treasurers are optional. Save applies a person's changes together: each one goes in the audit log and they get one email.</p></div>";
   }
   // Actions on a commissioner's own team waiting for another commissioner.
   function requestsHtml() {
@@ -709,7 +709,9 @@
         e.preventDefault();
         var uid = rf.dataset.user, cur = (cm.roles || []).filter(function (x) { return x.user_id === uid; }).map(function (x) { return x.role; });
         var checked = [].slice.call(rf.querySelectorAll("input[name=role]:checked")).map(function (x) { return x.value; });
-        var next = nextRoles(cur, checked, function (r) { return r === "admin" ? isAdm() : isCom(); });
+        var next = nextRoles(cur, checked, function (r) { return r === "admin" ? isAdm() : isCom() || isAdm(); });
+        if (uid === me.session.user.id && next.indexOf("commissioner") >= 0 && cur.indexOf("commissioner") < 0 &&
+            !window.confirm("You're giving yourself the commissioner role. That's allowed, but it's flagged in the audit log and every other commissioner gets an email. Continue?")) return;
         var change = roleChangeText(cur, next);
         if (!change) { cm.msg = { ok: "No changes for " + accountName(uid) + "." }; render(root); return; }
         if (!window.confirm(accountName(uid) + ": " + change + "?")) return;
