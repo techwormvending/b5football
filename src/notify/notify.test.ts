@@ -161,5 +161,5 @@ test("account notices (role changes, test email): always sent, no unsubscribe li
   assert.match(pay.html, /href="https:\/\/b5football\.win\/#treasury"/, "opens the Treasury page");
   const owed = content(item("account", { type: "owed", teams: [{ team: "NSFW", owed: 70, fee_unpaid: 0, pending: 0 }, { team: "Stealers", owed: 0, fee_unpaid: 360, pending: 1 }] }));
   assert.equal(owed.subject, "Who's owed: 1 team, $70");
-  assert.deepEqual(owed.lines, ["Winnings owed:", "NSFW: $70", "League fees still due:", "Stealers: $360", "Waiting for a commissioner to confirm: Stealers"]);
+  assert.deepEqual(owed.lines, ["Winnings owed:", "NSFW: $70", "League fees still due:", "Stealers: $360"]);
 });

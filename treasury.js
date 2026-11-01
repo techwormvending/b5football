@@ -2,8 +2,8 @@
    Treasurers record league fees paid (fee_payments), winnings paid out (payout_payments), the Empire
    pot ledger (empire_ledger), see balances owed (public.treasury_balances), export everything as CSV
    and see owners' payment preferences (payment_prefs: the owner and treasurers only).
-   Commissioners read it; they keep the books only while no treasurer exists, and they confirm or
-   reject a bookkeeper's entry for his own team (public.confirm_payment). Awards are decided
+   Commissioners read it; they keep the books only while no treasurer exists. Every entry saves at
+   once, the bookkeeper's own team included (audited, tagged "own team"). Awards are decided
    elsewhere (automatic, or the commissioner's payout tools); this page never changes them.
    Every rule is enforced by the database; the page mirrors it. All data is escaped. */
 (function (root) {
@@ -22,12 +22,8 @@
   var EMPIRE_KINDS = { carry_in: "Carried in", contribution: "Season contribution", payout: "Paid to a repeat champion", rollover: "Rolled over", adjustment: "Adjustment" };
 
   // ---- Pure helpers (tested in src/workers/treasury-page.test.ts) --------------------
-  /** Whether this viewer may confirm a pending entry: a commissioner who didn't record it and doesn't own that team. */
-  function canConfirm(entry, viewer) {
-    return !!(viewer && viewer.commissioner && entry.status === "pending" && entry.created_by !== viewer.id && (viewer.teams || []).indexOf(entry.team_id) < 0);
-  }
-  /** The Empire pot: confirmed entries summed (payouts and rollovers are negative amounts). */
-  function empireBalance(rows) { return (rows || []).filter(function (r) { return r.status !== "pending"; }).reduce(function (s, r) { return s + Math.round(Number(r.amount) * 100); }, 0) / 100; }
+  /** The Empire pot: every entry summed (payouts and rollovers are negative amounts). */
+  function empireBalance(rows) { return (rows || []).reduce(function (s, r) { return s + Math.round(Number(r.amount) * 100); }, 0) / 100; }
   /** Who keeps the books, in words, for the page header. */
   function roleText(info) {
     if (!info) return "";
@@ -37,14 +33,14 @@
   }
   /** The whole ledger as CSV rows. */
   function ledgerRows(d, name) {
-    var rows = [["Balances", season], ["Team", "Fee due", "Fee paid", "Won (final)", "Projected", "Paid out", "Owed", "Pending entries"]];
-    d.balances.forEach(function (b) { rows.push([name(b.team_id), b.fee_due, b.fee_paid, b.won, b.projected, b.paid_out, b.owed, b.pending]); });
-    rows.push([]); rows.push(["League fees paid", "Team", "Amount", "Paid on", "Method", "Status", "Note"]);
-    d.fees.forEach(function (x) { rows.push(["", name(x.team_id), x.amount, x.paid_at, x.method, x.status, x.note]); });
-    rows.push([]); rows.push(["Winnings paid out", "Team", "Amount", "Paid on", "Method", "Status", "Note"]);
-    d.payouts.forEach(function (x) { rows.push(["", name(x.team_id), x.amount, x.paid_at, x.method, x.status, x.note]); });
-    rows.push([]); rows.push(["Empire pot", "Season", "Kind", "Team", "Amount", "Date", "Status", "Note"]);
-    d.empire.forEach(function (x) { rows.push(["", x.season, EMPIRE_KINDS[x.kind] || x.kind, x.team_id ? name(x.team_id) : "", x.amount, x.entry_date, x.status, x.note]); });
+    var rows = [["Balances", season], ["Team", "Fee due", "Fee paid", "Won (final)", "Projected", "Paid out", "Owed"]];
+    d.balances.forEach(function (b) { rows.push([name(b.team_id), b.fee_due, b.fee_paid, b.won, b.projected, b.paid_out, b.owed]); });
+    rows.push([]); rows.push(["League fees paid", "Team", "Amount", "Paid on", "Method", "Note"]);
+    d.fees.forEach(function (x) { rows.push(["", name(x.team_id), x.amount, x.paid_at, x.method, x.note]); });
+    rows.push([]); rows.push(["Winnings paid out", "Team", "Amount", "Paid on", "Method", "Note"]);
+    d.payouts.forEach(function (x) { rows.push(["", name(x.team_id), x.amount, x.paid_at, x.method, x.note]); });
+    rows.push([]); rows.push(["Empire pot", "Season", "Kind", "Team", "Amount", "Date", "Note"]);
+    d.empire.forEach(function (x) { rows.push(["", x.season, EMPIRE_KINDS[x.kind] || x.kind, x.team_id ? name(x.team_id) : "", x.amount, x.entry_date, x.note]); });
     return rows;
   }
   function csv(rows) {
@@ -79,43 +75,23 @@
   // ---- Render ------------------------------------------------------------------------
   var teamSelect = function (name) { return '<select name="' + name + '" required><option value="">Pick a team</option>' + TL().ids().map(function (id) { return TL().option(id); }).join("") + "</select>"; };
   var methodSelect = '<select name="method"><option value="">Method</option>' + METHODS.map(function (m) { return "<option>" + esc(m) + "</option>"; }).join("") + "</select>";
-  function viewer() {
-    var p = st.me.profile || {};
-    return { id: st.me.session.user.id, commissioner: !!p.is_commissioner, teams: (st.me.teams || []).map(function (t) { return t.team_id; }) };
-  }
-  function who(uid) { var p = st.d.people[uid]; return p ? (p.name || TL().name(p.team)) : "an officer"; }
   function entryList(rows, table, books) {
     if (!rows.length) return '<p class="muted small">None yet.</p>';
-    var v = viewer();
     return '<ul class="po-list tr-ledger">' + rows.map(function (x) {
-      var own = v.teams.indexOf(x.team_id) >= 0;
-      var actions = x.status === "pending"
-        ? (canConfirm(x, v) ? '<button class="btn" type="button" data-tr="confirm" data-table="' + table + '" data-id="' + x.id + '">Confirm</button> <button class="btn ghost" type="button" data-tr="reject" data-table="' + table + '" data-id="' + x.id + '">Reject</button>'
-          : x.created_by === v.id ? '<button class="linkish" type="button" data-tr="delete" data-table="' + table + '" data-id="' + x.id + '">withdraw</button>' : "")
-        : books && !own ? '<button class="linkish" type="button" data-tr="delete" data-table="' + table + '" data-id="' + x.id + '">delete</button>' : "";
+      var actions = books ? '<button class="linkish" type="button" data-tr="delete" data-table="' + table + '" data-id="' + x.id + '">delete</button>' : "";
       return "<li><b>" + esc(x.paid_at || x.entry_date) + "</b><span>" + tlink(x.team_id) + (x.kind ? " " + esc(EMPIRE_KINDS[x.kind] || x.kind) : "") +
         (x.method ? ' <span class="muted small">' + esc(x.method) + "</span>" : "") + (x.note ? ' <span class="muted small">' + esc(x.note) + "</span>" : "") +
-        (x.status === "pending" ? ' <span class="tag cm-bad">Waiting for a commissioner</span>' : "") + "</span><span>" + money(x.amount) + "</span>" + (actions ? "<span>" + actions + "</span>" : "") + "</li>";
+        "</span><span>" + money(x.amount) + "</span>" + (actions ? "<span>" + actions + "</span>" : "") + "</li>";
     }).join("") + "</ul>";
   }
   function render() {
     var el = st.el, d = st.d, info = d.info || {}, books = !!info.keeps_books;
     var m = st.msg ? '<p class="acct-msg ' + (st.msg.err ? "err" : "ok") + '" role="status">' + esc(st.msg.err || st.msg.ok) + "</p>" : "";
     st.msg = null;
-    var pending = d.fees.filter(function (x) { return x.status === "pending"; }).map(function (x) { return Object.assign({ _t: "fee_payments", _l: "Fee" }, x); })
-      .concat(d.payouts.filter(function (x) { return x.status === "pending"; }).map(function (x) { return Object.assign({ _t: "payout_payments", _l: "Payout" }, x); }))
-      .concat(d.empire.filter(function (x) { return x.status === "pending"; }).map(function (x) { return Object.assign({ _t: "empire_ledger", _l: "Empire pot" }, x); }));
-    var pendHtml = pending.length ? '<div class="card"><h3>Waiting for a commissioner</h3><p class="muted small">A bookkeeper\'s entry for his own team counts only once a commissioner who doesn\'t own that team confirms it.</p>' +
-      '<ul class="po-list">' + pending.map(function (x) {
-        var v = viewer();
-        return "<li><b>" + esc(x._l) + "</b><span>" + tlink(x.team_id) + ' <span class="muted small">recorded by ' + esc(who(x.created_by)) + "</span></span><span>" + money(x.amount) + "</span><span>" +
-          (canConfirm(x, v) ? '<button class="btn" type="button" data-tr="confirm" data-table="' + x._t + '" data-id="' + x.id + '">Confirm</button> <button class="btn ghost" type="button" data-tr="reject" data-table="' + x._t + '" data-id="' + x.id + '">Reject</button>'
-            : '<span class="muted small">' + (v.commissioner ? "another commissioner confirms this one" : "a commissioner confirms it") + "</span>") + "</span></li>";
-      }).join("") + "</ul></div>" : "";
     var bal = '<div class="card"><h3>Balances</h3><div class="table-wrap"><table class="po-table"><thead><tr><th>Team</th><th class="num">Fee due</th><th class="num">Fee paid</th><th class="num">Won</th><th class="num hide-sm">Projected</th><th class="num">Paid out</th><th class="num">Owed</th></tr></thead><tbody>' +
       d.balances.map(function (b) {
         var unpaid = Number(b.fee_paid) < Number(b.fee_due);
-        return "<tr><td>" + tlink(b.team_id) + (b.pending ? ' <span class="tag cm-bad" title="Entries waiting for a commissioner">' + esc(b.pending) + " pending</span>" : "") + '</td><td class="num">' + money(b.fee_due) +
+        return "<tr><td>" + tlink(b.team_id) + '</td><td class="num">' + money(b.fee_due) +
           '</td><td class="num">' + (unpaid ? '<b class="po-owe">' + money(b.fee_paid) + "</b>" : money(b.fee_paid)) + '</td><td class="num">' + money(b.won) + '</td><td class="num hide-sm muted">' + (Number(b.projected) ? money(b.projected) : "–") +
           '</td><td class="num">' + money(b.paid_out) + '</td><td class="num"><b>' + money(b.owed) + "</b></td></tr>";
       }).join("") + '</tbody></table></div><button class="btn ghost" type="button" data-tr="csv">Download the ledger (CSV)</button>' +
@@ -139,11 +115,11 @@
         return "<tr><td>" + esc(p.name || "Owner") + (p.team ? " · " + tlink(p.team) : "") + (x.note ? '<br><span class="muted small">' + esc(x.note) + "</span>" : "") + "</td><td>" + esc(x.venmo || "") + "</td><td>" + esc(x.paypal || "") +
           '</td><td class="tr-addr">' + esc(x.mailing_address || "") + "</td><td>" + (x.in_person ? "Yes" : "") + "</td></tr>";
       }).join("") + "</tbody></table></div>" : '<p class="muted">No owner has entered payment preferences yet.</p>') + "</div>" : "";
-    el.innerHTML = '<section class="po tr"><h2>Treasury</h2><p>' + esc(roleText(info)) + ' <a href="#payouts">Payouts page</a>' + (st.me.profile && st.me.profile.is_commissioner ? ' · <a href="#commish-payouts">Commissioner payout tools</a>' : "") + "</p>" + m + pendHtml +
+    el.innerHTML = '<section class="po tr"><h2>Treasury</h2><p>' + esc(roleText(info)) + ' <a href="#payouts">Payouts page</a>' + (st.me.profile && st.me.profile.is_commissioner ? ' · <a href="#commish-payouts">Commissioner payout tools</a>' : "") + "</p>" + m +
       '<div class="po-cols"><div>' + bal + '<div class="card"><h3>Empire pot: ' + money(eb) + "</h3>" + entryList(d.empire, "empire_ledger", books) + empForm + "</div>" + prefs + "</div><div>" +
       '<div class="card"><h3>Winnings paid out</h3>' + payForm + entryList(d.payouts, "payout_payments", books) + "</div>" +
       '<div class="card"><h3>League fees paid</h3>' + feeForm + entryList(d.fees, "fee_payments", books) + "</div></div></div>" +
-      '<p class="muted small">A ledger only: no money moves through the site. Every entry is in the audit log; an entry for your own team waits for a commissioner.</p></section>';
+      '<p class="muted small">A ledger only: no money moves through the site. Every entry is in the audit log (who, when, amount); entries for your own team are tagged "own team".</p></section>';
   }
 
   function start(el) {
@@ -187,13 +163,11 @@
         var a = root.document.createElement("a");
         a.href = URL.createObjectURL(blob); a.download = "b5-ledger-" + season + ".csv";
         root.document.body.appendChild(a); a.click(); a.remove();
-      } else if (k === "confirm" || k === "reject") {
-        after(rpc("confirm_payment", { p_table: b.dataset.table, p_id: Number(b.dataset.id), p_approve: k === "confirm" }), k === "confirm" ? "Confirmed." : "Rejected and removed.");
       } else if (k === "delete" && root.confirm("Delete this entry? It stays in the audit log.")) {
         after(api(b.dataset.table + "?id=eq." + Number(b.dataset.id), { method: "DELETE", headers: { Prefer: "return=minimal" } }), "Entry deleted.");
       }
     });
   }
 
-  root.B5Treasury = { start: start, canConfirm: canConfirm, empireBalance: empireBalance, roleText: roleText, ledgerRows: ledgerRows, csv: csv };
+  root.B5Treasury = { start: start, empireBalance: empireBalance, roleText: roleText, ledgerRows: ledgerRows, csv: csv };
 })(typeof globalThis !== "undefined" ? globalThis : this);

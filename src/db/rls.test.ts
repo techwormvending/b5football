@@ -2425,30 +2425,30 @@ describe("treasurer (league money)", () => {
     await denied(db, user(ALICE), `insert into public.payment_prefs (venmo) values ('has space')`, /check constraint|violates/);
   });
 
-  test("own-team payments need a commissioner's confirmation; pending ones don't count", async () => {
+  test("own-team payments save immediately (no confirmation) and are audited, tagged \"own team\"", async () => {
     await grant(user(COMMISH), BOB);
     const p = await payout(user(BOB), "0002", 70);
-    assert.equal(p.status, "pending", "Bob paying his own team");
-    assert.equal((await rowsT(db, user(BOB), `select paid_out::float as p, pending from public.treasury_balances(${S}) where team_id = '0002'`))[0]!.p, 0);
-    await assert.rejects(as(db, user(BOB), tx => tx.query(`update public.payout_payments set amount = 700 where id = ${p.id}`)), /your own team's payment/);
-    await assert.rejects(as(db, user(BOB), tx => tx.query(`select public.confirm_payment('payout_payments', ${p.id}, true)`)), /Only a commissioner/);
-    assert.equal(await affected(db, user(BOB), `delete from public.payout_payments where id = ${p.id}`), 1, "he can withdraw his own pending entry");
-    const p2 = await payout(user(BOB), "0002", 70);
-    assert.equal((await rowsT(db, user(COMMISH), `select public.confirm_payment('payout_payments', ${p2.id}, true) as r`))[0]!.r, "Confirmed");
-    assert.equal((await rowsT(db, user(BOB), `select paid_out::float as p from public.treasury_balances(${S}) where team_id = '0002'`))[0]!.p, 70);
-    await assert.rejects(as(db, user(BOB), tx => tx.query(`delete from public.payout_payments where id = ${p2.id}`)), /your own team's payment/, "a confirmed own-team entry stays");
-    // Fees too, and a rejection removes the entry
+    assert.equal(p.status, "confirmed", "Bob paying his own team: saved at once");
+    assert.equal((await rowsT(db, user(BOB), `select paid_out::float as p from public.treasury_balances(${S}) where team_id = '0002'`))[0]!.p, 70, "it counts right away");
     const f = await fee(user(BOB), "0002");
-    assert.equal(f.status, "pending");
-    await rows(db, user(COMMISH), `select public.confirm_payment('fee_payments', ${f.id}, false)`);
-    assert.deepEqual(await rowsT(db, user(BOB), `select * from public.fee_payments where team_id = '0002'`), []);
-    assert.deepEqual((await rowsT(db, service, `select action from public.audit_log where action like 'coi:payment_%' order by id`)).map(x => x.action), ["coi:payment_confirmed", "coi:payment_rejected"]);
-    // Nobody else could confirm (the only commissioner co-owns Stealers): recorded, flagged in the audit log
-    await db.exec(`insert into public.team_managers values ('0002', '${COMMISH}')`).catch(() => {});
-    if ((await rowsT(db, service, `select 1 from public.team_managers where user_id = '${COMMISH}' and team_id = '0002'`)).length) {
-      assert.equal((await payout(user(BOB), "0002", 10)).status, "confirmed");
-      assert.ok((await rowsT(db, service, `select 1 from public.audit_log where action = 'coi:own_team_unreviewed'`)).length);
-    }
+    assert.equal(f.status, "confirmed");
+    // Audit: who, when, amount; own-team entries tagged, others not
+    await payout(user(BOB), "0001", 35);
+    const log = await rowsT(db, service, `select actor, action, at, details from public.audit_log where action like '%payouts:%' order by id`);
+    assert.deepEqual(log.map(x => [x.actor, x.action, x.details.tag ?? null, Number(x.details.new.amount)]), [
+      [BOB, "own_team:payouts:payout_payments:insert", "own team", 70],
+      [BOB, "own_team:payouts:fee_payments:insert", "own team", 360],
+      [BOB, "payouts:payout_payments:insert", null, 35]]);
+    assert.ok(log.every(x => x.at), "when");
+    // His own team's entries can be corrected or removed too (still audited and tagged)
+    assert.equal(await affected(db, user(BOB), `update public.payout_payments set amount = 75 where id = ${p.id}`), 1);
+    assert.equal(await affected(db, user(BOB), `delete from public.fee_payments where id = ${f.id}`), 1);
+    assert.deepEqual((await rowsT(db, service, `select action from public.audit_log where details ->> 'tag' = 'own team' order by id`)).map(x => x.action),
+      ["own_team:payouts:payout_payments:insert", "own_team:payouts:fee_payments:insert", "own_team:payouts:payout_payments:update", "own_team:payouts:fee_payments:delete"]);
+    // Who recorded an entry can't be rewritten; there's no pending state any more
+    await assert.rejects(as(db, user(BOB), tx => tx.query(`update public.payout_payments set created_by = '${ALICE}' where id = ${p.id}`)), /can't be changed/);
+    await assert.rejects(as(db, service, tx => tx.query(`update public.payout_payments set status = 'pending'`)), /check constraint/);
+    await denied(db, user(COMMISH), `select public.confirm_payment('payout_payments', 1, true)`, /does not exist/);
   });
 
   test("emails: an award becoming final tells the treasurer whom to pay (once); Monday's who's-owed summary", async () => {

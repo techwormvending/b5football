@@ -129,11 +129,10 @@ export function content(item: NotifyItem): Body {
         lines: [`${d.label} is final: ${d.team} has ${money(d.amount)} coming.`, "Record the payment on the Treasury page once it's sent."], button: "Open the Treasury" };
       if (d.type === "owed") {
         const teams: { team: string; owed: number; fee_unpaid: number; pending: number }[] = d.teams || [];
-        const owed = teams.filter(t => Number(t.owed) > 0), fees = teams.filter(t => Number(t.fee_unpaid) > 0), pend = teams.filter(t => Number(t.pending) > 0);
+        const owed = teams.filter(t => Number(t.owed) > 0), fees = teams.filter(t => Number(t.fee_unpaid) > 0);
         return { subject: `Who's owed: ${plural(owed.length, "team")}, ${money(owed.reduce((x, t) => x + Number(t.owed), 0))}`, heading: "This week's money summary",
           lines: [...(owed.length ? ["Winnings owed:", ...owed.map(t => `${t.team}: ${money(t.owed)}`)] : ["No winnings owed."]),
-            ...(fees.length ? ["League fees still due:", ...fees.map(t => `${t.team}: ${money(t.fee_unpaid)}`)] : []),
-            ...(pend.length ? [`Waiting for a commissioner to confirm: ${pend.map(t => t.team).join(", ")}`] : [])], button: "Open the Treasury" };
+            ...(fees.length ? ["League fees still due:", ...fees.map(t => `${t.team}: ${money(t.fee_unpaid)}`)] : [])], button: "Open the Treasury" };
       }
       if (d.type === "self_grant") return { subject: `${d.who} made themselves a B5 commissioner`, heading: `${d.who} made themselves a commissioner`,
         lines: [`${d.who} used the administrator role to give themselves the commissioner role. That's allowed, and it's in the audit log.`, "If you didn't expect this, check League officers on the Commish page."], button: "Open the Commish page" };
