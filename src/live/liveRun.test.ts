@@ -133,6 +133,10 @@ describe("runLive", () => {
     // Game clock is written before the scores (the scoring-play trigger stamps plays with it).
     const order = w.writes.map(x => x.path.split("?")[0]);
     assert.ok(order.indexOf("nfl_games") >= 0 && order.indexOf("nfl_games") < order.indexOf("player_scores"));
+    // The Realtime signal (score_weeks) goes out LAST, after the totals pages re-read (2026-11-01 lag bug).
+    const last = order.lastIndexOf("score_weeks");
+    assert.ok(last > order.lastIndexOf("player_scores") && last > order.lastIndexOf("matchups") && last > order.lastIndexOf("team_scores") && last > order.lastIndexOf("lineup_slots"),
+      "score_weeks after player_scores, lineups, matchups and team_scores: " + order.join(" > "));
     const g = (w.writes.find(x => x.path.startsWith("nfl_games"))!.body as { game_key: string; period: number; clock: string; status_detail: string }[])[0]!;
     assert.deepEqual([g.game_key, g.period, g.clock, g.status_detail], ["DET@ARI", 3, "4:12", "3rd 4:12"]);
     // MFL live comparison: our 9.5 vs MFL's 9.5 for 0011; 0005's only starter isn't mapped, so it differs.
@@ -246,19 +250,27 @@ describe("game situation from ESPN's scoreboard (recorded payloads, trimmed)", (
       { possession: "KC", red_zone: false, down_distance: "2nd & 6 at KC 46" });
   });
   test("red zone: ESPN's flag, or the ball inside the opponent's 20", () => {
-    assert.deepEqual(gameSituation(comp(live, { downDistanceText: "1st & 10 at LV 14", possessionText: "LV 14", isRedZone: true, possession: "12" })),
+    assert.deepEqual(gameSituation(comp(live, { down: 1, downDistanceText: "1st & 10 at LV 14", possessionText: "LV 14", isRedZone: true, possession: "12" })),
       { possession: "KC", red_zone: true, down_distance: "1st & 10 at LV 14" });
-    assert.equal(gameSituation(comp(live, { downDistanceText: "3rd & 2 at LV 18", possessionText: "LV 18", possession: "12" })).red_zone, true, "flag missing: ball position decides");
-    assert.equal(gameSituation(comp(live, { downDistanceText: "3rd & 2 at KC 18", possessionText: "KC 18", possession: "12" })).red_zone, false, "own 18 isn't the red zone");
+    assert.equal(gameSituation(comp(live, { down: 1, downDistanceText: "3rd & 2 at LV 18", possessionText: "LV 18", possession: "12" })).red_zone, true, "flag missing: ball position decides");
+    assert.equal(gameSituation(comp(live, { down: 1, downDistanceText: "3rd & 2 at KC 18", possessionText: "KC 18", possession: "12" })).red_zone, false, "own 18 isn't the red zone");
   });
   test("change of possession: the other team has the ball now", () => {
-    const a = gameSituation(comp(live, { downDistanceText: "1st & 10 at LV 14", possessionText: "LV 14", isRedZone: true, possession: "12" }));
-    const b = gameSituation(comp(live, { downDistanceText: "1st & 10 at LV 20", possessionText: "LV 20", isRedZone: false, possession: "13" }));
+    const a = gameSituation(comp(live, { down: 1, downDistanceText: "1st & 10 at LV 14", possessionText: "LV 14", isRedZone: true, possession: "12" }));
+    const b = gameSituation(comp(live, { down: 1, downDistanceText: "1st & 10 at LV 20", possessionText: "LV 20", isRedZone: false, possession: "13" }));
     assert.equal(a.possession, "KC");
     assert.deepEqual(b, { possession: "LV", red_zone: false, down_distance: "1st & 10 at LV 20" });
   });
+  test("red zone needs a real snap: ESPN's flag during the PAT/kickoff after a score (no down) isn't a red-zone drive", () => {
+    // Recorded 2026-11-01 (TEN @ CIN, BAL @ BUF right after scores): isRedZone true, down -1, no text, ball at the 65
+    assert.deepEqual(gameSituation(comp(live, { possession: "12", isRedZone: true, down: -1, distance: 0, yardLine: 65 })),
+      { possession: "KC", red_zone: false, down_distance: null });
+    // A real red-zone snap always carries its down & distance (IND @ JAX "2nd & Goal at JAX 4")
+    assert.deepEqual(gameSituation(comp(live, { possession: "12", isRedZone: true, down: 2, distance: 4, yardLine: 4, downDistanceText: "2nd & Goal at LV 4", possessionText: "LV 4" })),
+      { possession: "KC", red_zone: true, down_distance: "2nd & Goal at LV 4" });
+  });
   test("halftime, end of a quarter, no possession, final: nobody has the ball", () => {
-    const sit = { downDistanceText: "1st & 10 at LV 14", possessionText: "LV 14", isRedZone: true, possession: "12" };
+    const sit = { down: 1, downDistanceText: "1st & 10 at LV 14", possessionText: "LV 14", isRedZone: true, possession: "12" };
     const none = { possession: null, red_zone: false, down_distance: null };
     assert.deepEqual(gameSituation(comp({ type: { state: "in", name: "STATUS_HALFTIME", shortDetail: "Halftime" } }, sit)), none);
     assert.deepEqual(gameSituation(comp({ type: { state: "in", name: "STATUS_END_PERIOD", shortDetail: "End of 1st" } }, sit)), none);
@@ -269,7 +281,7 @@ describe("game situation from ESPN's scoreboard (recorded payloads, trimmed)", (
   test("nfl_games rows carry it (ESPN's WSH becomes WAS)", () => {
     const ev = { date: "2026-10-18T17:00Z", competitions: [{ status: { type: { state: "in" } },
       competitors: [{ homeAway: "home", score: "10", team: { id: "25", abbreviation: "SF" } }, { homeAway: "away", score: "7", team: { id: "28", abbreviation: "WSH" } }],
-      situation: { possession: "28", possessionText: "SF 9", downDistanceText: "1st & Goal at SF 9", isRedZone: true } }] };
+      situation: { possession: "28", possessionText: "SF 9", down: 1, downDistanceText: "1st & Goal at SF 9", isRedZone: true } }] };
     const [g] = scoreboardGames([ev], 2026, 6, "T");
     assert.deepEqual([g!.possession, g!.red_zone, g!.down_distance], ["WAS", true, "1st & Goal at SF 9"]);
   });

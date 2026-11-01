@@ -113,6 +113,12 @@
   }
   /** One team's lineup for the detail page: 9 slots (empty / hidden / player), the bench and the
       total (starters only; the bench never counts). Players: {id, name, pos, nfl_team, points, lines}. */
+  /** THE team total (cards, the matchup header and the consistency check all use it): the starters'
+      live points, from one map of player scores. Bench never counts; a starter with no score yet is 0. */
+  function teamTotal(slots, scores) {
+    var t = (slots || []).reduce(function (sum, s) { var sc = s.player_id && scores ? scores[s.player_id] : null; return sum + (sc ? Number(sc.points) || 0 : 0); }, 0);
+    return Math.round(t * 100) / 100;
+  }
   function lineupView(slots, roster, scores, games, now, injuries) {
     var inj = function (id, status) { return (injuries && injuries[id]) || (status ? { status: status } : null); };
     var bySlot = {}, starterIds = {}, hidden = 0, hiddenBye = 0;
@@ -128,16 +134,16 @@
       if (!s.player_id) { if (s.bye) byes++; return { slot: i, pos: pos, hidden: true, bye: !!s.bye, injury: s.injury || null }; }
       var p = withScore({ id: s.player_id, name: s.name, pos: pos, nfl_team: s.nfl_team, injury: s.injury });
       if (p.game.state === "bye") byes++;
-      total += p.points;
       return { slot: i, pos: pos, player: p };
     });
+    total = teamTotal(slots, scores);
     // Bench: rostered players who aren't starters. While some starters are still hidden, a
     // player whose game hasn't started (or who is on bye, for a hidden bye slot) could be one of
     // them, so he isn't listed until that can't be the case.
     var bench = roster.filter(function (r) { return !starterIds[r.id]; }).map(function (r) { var p = withScore(r); p.bench = true; return p; })
       .filter(function (p) { return !(hidden && p.game.state === "pre") && !(hiddenBye && p.game.state === "bye"); });
     var benchTotal = bench.reduce(function (t, p) { return t + p.points; }, 0);
-    return { starters: starters, bench: bench, hidden: hidden + hiddenBye, byes: byes, total: Math.round(total * 100) / 100, benchTotal: Math.round(benchTotal * 100) / 100 };
+    return { starters: starters, bench: bench, hidden: hidden + hiddenBye, byes: byes, total: total, benchTotal: Math.round(benchTotal * 100) / 100 };
   }
   /** Scoring plays for a matchup: events of either team's starters, newest first, with a big-play flag. */
   function feed(events, teams) {
@@ -211,9 +217,28 @@
     return d;
   }
   /** A team's score on the card: its test lineup's points (never stored), else the matchup's official total. */
+  /** A card's total: the same calculation and the same points as the matchup header (never the
+      stored matchups total, which can be a pass behind). Test lineups included. */
   function teamScore(d, m, team) {
-    if (d.src && d.src[team] === "test") return teamSlots(d, team).reduce(function (t, x) { return t + Number(x.points || 0); }, 0);
-    return Number((team === m.away_team ? m.away_score : m.home_score) || 0);
+    if (d.scores) return teamTotal(teamSlots(d, team), d.scores);
+    return Number((team === m.away_team ? m.away_score : m.home_score) || 0);   // only before the points have loaded
+  }
+  /** The detail's player scores: its breakdown lines, with the points from the week's one read. */
+  function detailScores(d, dt) {
+    var out = {};
+    Object.keys(dt.scores || {}).forEach(function (id) { out[id] = Object.assign({}, dt.scores[id]); });
+    Object.keys(d.scores || {}).forEach(function (id) { out[id] = Object.assign(out[id] || {}, { player_id: id, points: d.scores[id].points }); });
+    return out;
+  }
+  /** Card totals vs the matchup header for the selected matchup: [] when they agree (they must). */
+  function totalMismatches(d, dt, m, now) {
+    if (!m || !dt) return [];
+    var sc = detailScores(d, dt), out = [];
+    [m.away_team, m.home_team].forEach(function (t) {
+      var card = teamScore(d, m, t), head = lineupView(teamSlots(d, t), dt.roster.filter(function (r) { return r.team === t; }), sc, d.games, now || Date.now(), dt.injuries).total;
+      if (Math.abs(card - head) >= 0.005) out.push({ team: t, card: card, detail: head });
+    });
+    return out;
   }
   var srcTag = function (d, team) {
     if (!testSeason() || !d.src) return "";
@@ -234,7 +259,17 @@
       testSeason() ? api("rpc/test_lineup_slots", { method: "POST", body: JSON.stringify({ p_season: season, p_week: w }) }) : Promise.resolve({ ok: true, data: [] })
     ]).then(function (r) {
       if (!r[1].ok && !r[2].ok) throw new Error(r[2].error || "couldn't load the week");
-      return compose({ week: w, sw: ok(r[0])[0] || null, games: ok(r[1]), matchups: ok(r[2]), official: ok(r[3]), test: ok(r[4]) });
+      var d = compose({ week: w, sw: ok(r[0])[0] || null, games: ok(r[1]), matchups: ok(r[2]), official: ok(r[3]), test: ok(r[4]) });
+      // One read of every starter's live points (official and test lineups, all six matchups): the
+      // single source for every card and the matchup header.
+      var ids = {};
+      d.official.concat(d.test || []).forEach(function (s) { if (s.player_id) ids[s.player_id] = true; });
+      var list = Object.keys(ids);
+      if (!list.length) { d.scores = {}; return d; }
+      return api("player_scores" + q + "&player_id=in.(" + inList(list) + ")&select=player_id,points").then(function (x) {
+        d.scores = {}; ok(x).forEach(function (sc) { d.scores[sc.player_id] = sc; });
+        return d;
+      });
     });
   }
   /** The selected matchup's rosters, player scores (with breakdown lines) and scoring plays. */
@@ -353,7 +388,8 @@
     if (!m) return "";
     if (!dt || dt.key !== d.week + ":" + pairKey(m)) return '<div class="card muted">Loading the matchup…</div>';
     var a = m.away_team, h = m.home_team, now = Date.now();
-    var side = function (id) { return lineupView(teamSlots(d, id), dt.roster.filter(function (r) { return r.team === id; }), dt.scores, d.games, now, dt.injuries); };
+    var scores = detailScores(d, dt);
+    var side = function (id) { return lineupView(teamSlots(d, id), dt.roster.filter(function (r) { return r.team === id; }), scores, d.games, now, dt.injuries); };
     var va = side(a), vh = side(h);
     var pa = progress(teamSlots(d, a), d.games, now), ph = progress(teamSlots(d, h), d.games, now), cs = cardStatus(d.sw, pa, ph);
     var lead = cs.key === "upcoming" || va.total === vh.total ? null : va.total > vh.total ? "a" : "h";
@@ -409,6 +445,18 @@
     part("detail").innerHTML = detailHtml(d, selected(), st.dd);
     if (root.scrollTo && st.rendered) root.scrollTo(0, y);
     st.rendered = true;
+    checkTotals();
+  }
+  // Safety net: cards and the matchup header come from one calculation, so they can't differ; if
+  // they ever do (a stale detail, a partial load), say so in the console and re-read everything.
+  var lastResync = 0;
+  function checkTotals() {
+    var m = selected(), dt = st.dd;
+    if (!m || !dt || dt.key !== st.d.week + ":" + pairKey(m)) return;
+    var bad = totalMismatches(st.d, dt, m);
+    if (!bad.length) return;
+    if (root.console) root.console.warn("[live] card and matchup totals differ; re-syncing", bad);
+    if (Date.now() - lastResync > 20000) { lastResync = Date.now(); refresh(); }
   }
   function refresh() {
     if (st.loading) { st.again = true; return; }
@@ -503,7 +551,7 @@
   }
 
   root.B5Live = { start: start, stop: stop, gameState: gameState, playerGame: playerGame, progress: progress, progressText: progressText, cardStatus: cardStatus,
-    staleness: staleness, ago: ago, lineupView: lineupView, withTestLineups: withTestLineups, ballFor: ballFor, nflStripHtml: function (d) { return nflStrip(d); }, feed: feed, lineSum: lineSum,
+    staleness: staleness, ago: ago, lineupView: lineupView, withTestLineups: withTestLineups, teamTotal: teamTotal, teamScore: teamScore, totalMismatches: totalMismatches, detailScores: detailScores, ballFor: ballFor, nflStripHtml: function (d) { return nflStrip(d); }, feed: feed, lineSum: lineSum,
     weekChipsHtml: function (w) { st.week = w; return weekChips(); }, pickMatchup: pickMatchup,
     cardsHtml: function (d, team, mine) { st.d = d; st.sel = team || null; st.me = mine ? { teams: mine.map(function (t) { return { team_id: t }; }) } : null; return cardsHtml(d); } };
 })(typeof globalThis !== "undefined" ? globalThis : this);

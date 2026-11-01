@@ -75,8 +75,12 @@ export function gameSituation(c: SbCompetition | undefined): { possession: strin
   const m = /^([A-Z]{2,3})\s+(\d{1,2})$/.exec(sit.possessionText ?? "");
   let side: string | null = null;
   try { side = m ? canon(m[1]!) : null; } catch { side = null; }
-  const red = sit.isRedZone === true || (!!m && side !== null && side !== possession && Number(m[2]) <= 20);
-  return { possession, red_zone: red, down_distance: sit.downDistanceText || null };
+  // Only a real snap is a red-zone drive: after a score ESPN keeps isRedZone during the PAT and kickoff
+  // with no down (down -1, no down & distance; seen live 2026-11-01), so a red-zone row always has its
+  // down & distance and the moments between plays show possession only.
+  const snap = Number(sit.down) >= 1 && !!sit.downDistanceText;
+  const red = snap && (sit.isRedZone === true || (!!m && side !== null && side !== possession && Number(m[2]) <= 20));
+  return { possession, red_zone: red, down_distance: snap ? sit.downDistanceText! : null };
 }
 
 /** Live/final NFL scores and game clock from the scoreboard, as nfl_games rows (pools score from these; #live shows them). */
@@ -216,7 +220,6 @@ export async function runLive(deps: LiveDeps): Promise<LiveResult> {
     catch (err) { deps.log?.("game info: " + (err as Error).message); }
     await upsert("player_scores", "season,week,player_id", rows);
     res.players = rows.length;
-    await upsert("score_weeks", "season,week", [{ season, week, status: "live", live_delayed: res.delayed, updated_at: at }]);
     if (unmatched.length) {
       const seen = new Map(unmatched.map(u => [u.providerId, u]));
       await upsert("review_queue", "provider,provider_id", [...seen.values()].map(u => ({
@@ -252,6 +255,11 @@ export async function runLive(deps: LiveDeps): Promise<LiveResult> {
     }
     try { await refreshPayouts(deps.sb, season, (u, i) => deps.fetch(u, i), { liveWeek: week, now: now() }); }
     catch (err) { res.errors.push(`payouts: ${(err as Error).message}`); }   // scores are written; payouts catch up next pass
+
+    // LAST: score_weeks is the Realtime signal every open Live page refreshes on, so it goes out only
+    // once this pass's player scores, lineups, matchup and team totals are all written (2026-11-01:
+    // written right after player_scores, it made pages re-read matchup totals a pass behind).
+    await upsert("score_weeks", "season,week", [{ season, week, status: "live", live_delayed: res.delayed, updated_at: at }]);
 
     // Finished games whose numbers were just written won't be polled again.
     const captured = raw.filter(r => r.event.competitions?.[0]?.status?.type?.state === "post").map(r => ({ event_id: r.event.id, season, week, captured_at: at }));

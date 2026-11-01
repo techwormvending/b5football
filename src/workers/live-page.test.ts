@@ -227,3 +227,31 @@ test("possession and red zone: blue for the team with the ball, red + RZ in the 
   assert.match(String(V.nflStripHtml({ games: [g("LV")] })), /lv-g-team lv-ball"><span><span class="lv-fb" aria-label="Has the ball">🏈<\/span> LV<\/span>/);
   assert.doesNotMatch(String(V.nflStripHtml({ games: [g(null)] })), /lv-ball|lv-rz/);
 });
+
+test("cards and the matchup header use ONE total from ONE set of live points; a non-selected matchup's card updates in place", () => {
+  const now = Date.parse("2026-11-01T20:00:00Z");
+  const games = [{ game_key: "CLE@PIT", home: "PIT", away: "CLE", kickoff: "2026-11-01T18:00:00Z", status: "in_progress" }];
+  const slot = (team: string, slot: number, id: string) => ({ team_id: team, slot, player_id: id, name: id, pos: "RB", nfl_team: "PIT", revealed: true });
+  const matchups = [
+    { away_team: "0011", home_team: "0005", away_score: 28, home_score: 63.7 },   // stored totals: one pass behind
+    { away_team: "0001", home_team: "0002", away_score: 10, home_score: 10 }];
+  const slots = [slot("0011", 1, "a1"), slot("0011", 2, "a2"), slot("0005", 1, "b1"), slot("0001", 1, "c1"), slot("0002", 1, "d1")];
+  const d = { week: 9, sw: { status: "live" }, games, matchups, official: slots, test: [], slots, src: {},
+    scores: { a1: { points: 14 }, a2: { points: 15 }, b1: { points: 65.7 }, c1: { points: 10 }, d1: { points: 10 } } as Record<string, { points: number }> };
+  // Cards read the live points, not the stored (lagging) totals
+  const cards = String(V.cardsHtml(d, "0011"));
+  assert.match(cards, /29\.0/); assert.match(cards, /65\.7/);
+  assert.doesNotMatch(cards, />28\.0</, "never the stored total");
+  // A score lands for the NON-selected matchup (NSFW): its card changes on the next render, no reload
+  d.scores.c1 = { points: 16.5 };
+  assert.match(String(V.cardsHtml(d, "0011")), /16\.5/);
+  // Card == detail for every team, selected or not (same function, same points)
+  const dt = { key: "9:0001-0002", roster: [], injuries: {}, scores: { c1: { points: 12, lines: [] } } };   // the detail's own fetch is older
+  assert.deepEqual(JSON.parse(JSON.stringify(V.totalMismatches(d, dt, matchups[1], now))), [], "the detail uses the week's points too");
+  assert.equal(V.teamScore(d, matchups[1], "0001"), 16.5);
+  assert.equal(V.teamTotal(slots.filter(s => s.team_id === "0001"), V.detailScores(d, dt)), 16.5);
+  // The check catches a drift: a card on the stored total (points not loaded) vs a header from live points
+  const drift = JSON.parse(JSON.stringify(V.totalMismatches({ ...d, scores: undefined }, dt, matchups[1], now)));
+  assert.deepEqual(drift, [{ team: "0001", card: 10, detail: 12 }, { team: "0002", card: 10, detail: 0 }], "logged and re-synced by the page");
+  assert.equal(V.teamTotal([{ player_id: "x" }, { player_id: null }, { player_id: "y" }], { x: { points: 1.25 }, y: { points: "2.5" } }), 3.75, "empty and unscored slots count 0");
+});
