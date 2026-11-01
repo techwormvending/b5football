@@ -128,7 +128,7 @@ export function infoFromEvent(e: EspnEvent, season: number, week: number, at: st
     season, week, game_key, away_record: overall(a), home_record: overall(h),
     venue_name: v?.fullName ?? null, venue_city: v?.address?.city ?? st?.city ?? null, venue_country: country, intl,
     roof, surface, lat: st?.lat ?? null, lon: st?.lon ?? null,
-    espn_weather: w && (w.temperature != null || w.displayValue) ? { temp_f: w.temperature ?? null, condition: w.displayValue ?? null } : null,
+    espn_weather: w && (w.temperature != null || w.displayValue) ? { temp_f: w.temperature ?? null, condition: /[a-z]/i.test(w.displayValue ?? "") ? w.displayValue! : null } : null,
     updated_at: at
   };
   const o = (c?.odds ?? []).find(x => x.details || x.overUnder != null);
@@ -178,12 +178,14 @@ export function meteoAt(json: unknown, kickoff: string): { temp_f: number | null
 /** ESPN's forecast (temperature, words) first; Open-Meteo for the rest, or all of it when ESPN has none. */
 export function mergeWeather(espn: InfoRow["espn_weather"], meteo: ReturnType<typeof meteoAt>): Weather | null {
   if (!espn && !meteo) return null;
-  const code = meteo?.code ?? null, cond = espn?.condition ?? (code != null ? WMO[code]?.[0] ?? null : null);
+  // ESPN's words when it has them (a bare code like "2" isn't words), else Open-Meteo's.
+  const espnWords = espn?.condition && /[a-z]/i.test(espn.condition) ? espn.condition : null;
+  const code = meteo?.code ?? null, cond = espnWords ?? (code != null ? WMO[code]?.[0] ?? null : null);
   return {
     temp_f: espn?.temp_f ?? meteo?.temp_f ?? null, condition: cond,
-    icon: espn?.condition ? iconFor(espn.condition) : code != null ? WMO[code]?.[1] ?? "🌡️" : "🌡️",
+    icon: espnWords ? iconFor(espnWords) : code != null ? WMO[code]?.[1] ?? "🌡️" : "🌡️",
     wind_mph: meteo?.wind_mph ?? null, precip_pct: meteo?.precip_pct ?? null,
-    heavy: isHeavy(espn?.condition ? null : code, cond),
+    heavy: isHeavy(espnWords ? null : code, cond),
     source: espn && meteo ? "ESPN, Open-Meteo" : espn ? "ESPN" : "Open-Meteo"
   };
 }

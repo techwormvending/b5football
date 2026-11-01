@@ -61,6 +61,10 @@ describe("weather", () => {
       { temp_f: 64, condition: "Thunderstorms", icon: "⛈️", wind_mph: 17, precip_pct: 70, heavy: true, source: "ESPN, Open-Meteo" });
     assert.deepEqual(mergeWeather(null, m), { temp_f: 23, condition: "Heavy snow", icon: "❄️", wind_mph: 17, precip_pct: 70, heavy: true, source: "Open-Meteo" });
     assert.equal(mergeWeather(null, null), null);
+    // ESPN sometimes sends a bare code as the conditions (BAL@BUF, 2026-11-01): Open-Meteo's words and icon instead
+    assert.deepEqual(mergeWeather({ temp_f: 61, condition: "2" }, { temp_f: 60, code: 2, wind_mph: 9, precip_pct: 1 }),
+      { temp_f: 61, condition: "Partly cloudy", icon: "⛅", wind_mph: 9, precip_pct: 1, heavy: false, source: "ESPN, Open-Meteo" });
+    assert.equal(infoFromEvent(ev({ away: "BAL", home: "BUF", weather: { displayValue: "2", temperature: 61 } }), 2026, 8, AT)!.info.espn_weather!.condition, null);
   });
   test("the job: lines and stadiums for this week and next; forecasts only for outdoor/retractable games not started; domes none", async () => {
     const NOW = Date.parse("2026-10-29T15:00:00Z");
