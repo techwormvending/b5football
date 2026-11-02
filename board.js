@@ -5,7 +5,7 @@
    [text](https://...), bare https links, @mentions, line breaks. Never raw HTML.
    Images: up to 4 per post, an https link or an upload to the private Storage bucket board-images
    (images/GIFs, 5 MB; photos are shrunk in the browser first; shown through 1-hour signed URLs).
-   Reactions 👍 😂 🔥 💀 🗑️ (one of each per person), edit/delete your own posts ("edited"), unread
+   Reactions 👍 😂 🔥 🏈 🏆 💀 🗑️ plus "+" for any emoji (emoji.js picker; one of each per person), edit/delete your own posts ("edited"), unread
    highlighting and the nav badge (public.board_unread), live updates over Supabase Realtime.
    The commissioner pins, locks and deletes any post (audited by the database). */
 (function (root) {
@@ -17,7 +17,7 @@
     });
   };
   var f = function (u, i) { return root.fetch(u, i); };
-  var EMOJI = ["👍", "😂", "🔥", "💀", "🗑️"];
+  var EMOJI = ["👍", "😂", "🔥", "🏈", "🏆", "💀", "🗑️"];   // the quick set; "+" opens the full picker (any emoji)
   var TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"], MAX_BYTES = 5 * 1024 * 1024, MAX_IMAGES = 4;
   var TL = function () { return root.B5Team; };   // team names, logos and profile links (teamlink.js)
   var logo = function (team, bot) {
@@ -50,7 +50,12 @@
     return '<a href="' + esc(url) + '"' + (internal ? "" : ' target="_blank" rel="noopener noreferrer nofollow ugc"') + ">" + esc(text) + "</a>";
   }
   /** A post body -> safe HTML. Only http(s) and in-site (#...) links; everything else is escaped. */
-  function formatBody(raw, ctx) {
+  /** formatBody, with emoji-only messages (1-10 emoji) wrapped to show larger. */
+  function formatBodyBig(text, ctx) {
+    var html = formatBodyRaw(text, ctx);
+    return root.B5Emoji && root.B5Emoji.isEmojiOnly(text) ? '<span class="emoji-only">' + html + "</span>" : html;
+  }
+  function formatBodyRaw(raw, ctx) {
     var text = String(raw == null ? "" : raw);
     var re = /\[([^\]\n]{1,200})\]\(((?:https?:\/\/|#)[^\s()<>"']{1,1000})\)|(https?:\/\/[^\s<>"']*[^\s<>"'.,!?;:)\]])/g;
     var out = "", last = 0, m;
@@ -239,15 +244,16 @@
     var me = myId(), mine = p.author_id === me && !p.is_bot;
     var byEmoji = {};
     reacts.filter(function (r) { return r.post_id === p.id; }).forEach(function (r) { (byEmoji[r.emoji] = byEmoji[r.emoji] || []).push(r.user_id); });
-    var bar = EMOJI.map(function (e) {
+    var extra = Object.keys(byEmoji).filter(function (e) { return EMOJI.indexOf(e) < 0; });
+    var bar = EMOJI.concat(extra).map(function (e) {
       var who = byEmoji[e] || [], minee = who.indexOf(me) >= 0;
       return '<button type="button" class="bd-react' + (minee ? " mine" : "") + '" data-bd="react" data-post="' + esc(p.id) + '" data-emoji="' + esc(e) + '" aria-pressed="' + minee + '"' +
-        (who.length ? ' title="' + esc(who.map(function (u) { return st.names[u] || "?"; }).join(", ")) + '"' : "") + ">" + e + (who.length ? " <b>" + who.length + "</b>" : "") + "</button>";
-    }).join("");
+        (who.length ? ' title="' + esc(who.map(function (u) { return st.names[u] || "?"; }).join(", ")) + '"' : "") + ">" + esc(e) + (who.length ? " <b>" + who.length + "</b>" : "") + "</button>";
+    }).join("") + '<button type="button" class="bd-react bd-more" data-bd="react-more" data-post="' + esc(p.id) + '" aria-label="More reactions">+</button>';
     var editing = st.editing === p.id;
     var body = editing
       ? '<form data-bd-edit="' + esc(p.id) + '"><textarea name="body" rows="4" maxlength="10000">' + esc(p.body) + '</textarea><div class="bd-tools"><button class="btn" type="submit">Save</button><button class="btn ghost" type="button" data-bd="cancel-edit">Cancel</button></div></form>'
-      : '<div class="bd-body">' + formatBody(p.body, ctx) + "</div>" + imagesHtml(p.images);
+      : '<div class="bd-body">' + formatBodyBig(p.body, ctx) + "</div>" + imagesHtml(p.images);
     var actions = (mine && !editing ? '<button type="button" class="bd-act" data-bd="edit" data-post="' + esc(p.id) + '">Edit</button>' : "") +
       ((mine && !p.is_opener) || (isCommish() && !p.is_opener) ? '<button type="button" class="bd-act" data-bd="del" data-post="' + esc(p.id) + '">Delete</button>' : "");
     return '<article class="card bd-post' + (p.is_bot ? " bot" : "") + '" id="post-' + esc(p.id) + '">' +
@@ -345,6 +351,13 @@
     var k = b.dataset.bd, t = st.view && st.view.thread, post = Number(b.dataset.post);
     var done = function (r, okMsg) { st.msg = r.ok ? (okMsg ? { ok: okMsg } : null) : { err: friendly(r.error) }; reload(); };
     if (k === "new") { st.open = !st.open; render(); return; }
+    if (k === "react-more" && root.B5Emoji) {
+      root.B5Emoji.open(b, function (e) {
+        var mineAlready = ((st.view && st.view.reactions) || []).some(function (r) { return r.post_id === post && r.user_id === myId() && r.emoji === e; });
+        act({ dataset: { bd: "react", post: String(post), emoji: e }, classList: { contains: function () { return mineAlready; } } });
+      });
+      return;
+    }
     if (k === "react") {
       var mine = b.classList.contains("mine");
       api(mine ? "board_reactions?post_id=eq." + post + "&user_id=eq." + myId() + "&emoji=eq." + encodeURIComponent(b.dataset.emoji) : "board_reactions",
@@ -495,6 +508,6 @@
     sign: function (paths, sess, bucket) { return signUrls(paths, sess, bucket).then(function () { var out = {}; paths.forEach(function (p) { if (st.signed[p]) out[p] = st.signed[p]; }); return out; }); },
     remove: removeUploads
   };
-  root.B5Board = { start: start, stop: stop, badge: badge, media: media, formatBody: formatBody, inline: inline, checkUpload: checkUpload, checkImageUrl: checkImageUrl,
+  root.B5Board = { start: start, stop: stop, badge: badge, media: media, formatBody: formatBodyBig, inline: inline, checkUpload: checkUpload, checkImageUrl: checkImageUrl,
     fitSize: fitSize, mentionMatches: mentionMatches, isUnread: isUnread, htmlToText: htmlToText };
 })(typeof globalThis !== "undefined" ? globalThis : this);

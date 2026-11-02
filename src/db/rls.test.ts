@@ -1174,12 +1174,12 @@ describe("message board (members only)", () => {
     await denied(db, user(BOB), `insert into public.board_posts (thread_id, body) values (${t}, '')`, /check constraint/);
   });
 
-  test("reactions: one of each per person; only your own; only the five", async () => {
+  test("reactions: one of each per person; only your own; emoji only", async () => {
     const t = await newThread(user(ALICE));
     const p = await reply(user(BOB), t);
     await rows(db, user(ALICE), `insert into public.board_reactions (post_id, emoji) values (${p}, '🔥'), (${p}, '💀')`);
     await denied(db, user(ALICE), `insert into public.board_reactions (post_id, emoji) values (${p}, '🔥')`, /duplicate/);
-    await denied(db, user(ALICE), `insert into public.board_reactions (post_id, emoji) values (${p}, '❤️')`, /check constraint/);
+    await denied(db, user(ALICE), `insert into public.board_reactions (post_id, emoji) values (${p}, 'lol')`, /check constraint/);   // any emoji since 2026-11-02, but not text
     await denied(db, user(ALICE), `insert into public.board_reactions (post_id, user_id, emoji) values (${p}, '${BOB}', '👍')`, /row-level security/);
     assert.equal(await affected(db, user(BOB), `delete from public.board_reactions where post_id = ${p}`), 0, "can't remove Alice's");
     assert.equal(await affected(db, user(ALICE), `delete from public.board_reactions where post_id = ${p} and emoji = '💀'`), 1);
@@ -2968,5 +2968,22 @@ describe("draft room (2026-11-02)", () => {
     const r = await rowsT(db, service, `select team_id, player_id, acquired from public.roster_entries where season = 2027 order by player_id`);
     assert.deepEqual(r.map(x => [x.team_id, x.player_id, x.acquired]), [["0001", "P01", "1.01"], ["0002", "P02", "1.02"], ["0003", "P03", "1.03"]]);
     assert.ok((await rowsT(db, service, `select 1 from public.notify_queue where kind = 'draft' and payload ->> 'type' = 'results'`)).length >= 2);
+  });
+});
+
+describe("reactions: any emoji (2026-11-02)", () => {
+  test("board and chat reactions take any single emoji (team ones too), never text or markup", async () => {
+    const t = (await rowsT(db, user(ALICE), `select public.board_new_thread('Emoji', 'body', '[]'::jsonb, null) as id`))[0]!.id;
+    const post = (await rowsT(db, user(ALICE), `select id from public.board_posts where thread_id = ${t}`))[0]!.id;
+    for (const e of ["🏈", "🏆", "⚙️", "🏴‍☠️", "🐦‍⬛", "🇺🇸", "👍"]) {
+      await as(db, user(BOB), tx => tx.query(`insert into public.board_reactions (post_id, emoji) values ($1, $2)`, [post, e]));
+    }
+    assert.equal((await rowsT(db, user(ALICE), `select 1 from public.board_reactions where post_id = ${post}`)).length, 7);
+    for (const bad of ["lol", "<b>", "👍 ok", "1", "", "🔥🔥🔥🔥🔥🔥🔥🔥🔥"]) {
+      await assert.rejects(as(db, user(BOB), tx => tx.query(`insert into public.board_reactions (post_id, emoji) values ($1, $2)`, [post, bad])), /check constraint|violates/, JSON.stringify(bad));
+    }
+    const m = (await rowsT(db, user(ALICE), `insert into public.chat_messages (room_id, body) values ('league', 'hi') returning id`))[0]!.id;
+    await as(db, user(BOB), tx => tx.query(`insert into public.chat_reactions (message_id, emoji) values ($1, '⛏️')`, [m]));
+    await assert.rejects(as(db, user(BOB), tx => tx.query(`insert into public.chat_reactions (message_id, emoji) values ($1, 'x')`, [m])), /check constraint|violates/);
   });
 });

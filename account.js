@@ -79,7 +79,7 @@
   function viewer() {
     if (!me) return { signedIn: false, name: "", roles: [], member: false };
     var p = me.profile || {}, email = (me.session && me.session.user && me.session.user.email) || "";
-    return { signedIn: true, name: p.display_name || email.split("@")[0] || "My Account", roles: (p.roles || []).slice(), member: seesMoney(me) };
+    return { signedIn: true, name: p.display_name || email.split("@")[0] || "My Account", roles: (p.roles || []).slice(), member: seesMoney(me), id: me.session && me.session.user ? me.session.user.id : null };
   }
   /** Dollar amounts are for league members (a team owner, or any officer); the database enforces it
       (migration money_members_only). Signed out or not on a team: no amounts anywhere. */

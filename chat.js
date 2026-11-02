@@ -22,7 +22,7 @@
   };
   var f = function (u, i) { return root.fetch(u, i); };
   var B = function () { return root.B5Board; };
-  var EMOJI = ["👍", "😂", "🔥", "💀", "🗑️"], PAGE = 100;
+  var EMOJI = ["👍", "😂", "🔥", "🏈", "🏆", "💀", "🗑️"], PAGE = 100;   // the quick set; "+" opens the full picker
   var TL = function () { return root.B5Team; };   // team names, logos and profile links (teamlink.js)
   var logo = function (team, bot, title) {
     var tt = title ? ' title="' + esc(title) + '"' : "";
@@ -168,16 +168,17 @@
     var mine = m.author_id === myId() && !m.is_bot, cont = continues(prev, m), dayBreak = !prev || day(prev.created_at) !== day(m.created_at);
     var reacts = st.reactions[m.id] || [], byEmoji = {};
     reacts.forEach(function (r) { (byEmoji[r.emoji] = byEmoji[r.emoji] || []).push(r.user_id); });
-    var chips = EMOJI.filter(function (e) { return byEmoji[e]; }).map(function (e) {
+    var chips = EMOJI.concat(Object.keys(byEmoji).filter(function (e) { return EMOJI.indexOf(e) < 0; })).filter(function (e) { return byEmoji[e]; }).map(function (e) {
       var mineR = byEmoji[e].indexOf(myId()) >= 0;
       return '<button type="button" class="ch-chip' + (mineR ? " mine" : "") + '" data-ch="react" data-id="' + m.id + '" data-emoji="' + esc(e) + '"' + (st.readOnly ? " disabled" : "") +
-        ' title="' + esc(byEmoji[e].map(function (u) { return (st.people[u] || {}).name || "?"; }).join(", ")) + '">' + e + " " + byEmoji[e].length + "</button>";
+        ' title="' + esc(byEmoji[e].map(function (u) { return (st.people[u] || {}).name || "?"; }).join(", ")) + '">' + esc(e) + " " + byEmoji[e].length + "</button>";
     }).join("");
     var open = st.menu === m.id && !st.readOnly, editing = st.editing === m.id;
     var body = editing
       ? '<form data-ch-edit="' + m.id + '"><textarea name="body" rows="2" maxlength="2000">' + esc(m.body) + '</textarea><div class="ch-tools"><button class="btn" type="submit">Save</button><button class="btn ghost" type="button" data-ch="cancel-edit">Cancel</button></div></form>'
       : (m.body ? '<div class="ch-body">' + (B() ? B().formatBody(m.body, ctx) : esc(m.body)) + "</div>" : "") + imagesHtml(m.images);
     var acts = open ? '<div class="ch-acts">' + EMOJI.map(function (e) { return '<button type="button" data-ch="react" data-id="' + m.id + '" data-emoji="' + esc(e) + '">' + e + "</button>"; }).join("") +
+      '<button type="button" data-ch="react-more" data-id="' + m.id + '" aria-label="More reactions">+</button>' +
       (mine ? '<button type="button" data-ch="edit" data-id="' + m.id + '">Edit</button>' : "") +
       (mine || isCommish() ? '<button type="button" data-ch="del" data-id="' + m.id + '">Delete</button>' : "") +
       (isCommish() ? '<button type="button" data-ch="pin" data-id="' + m.id + '">Pin</button>' : "") +
@@ -386,6 +387,7 @@
     var k = b.dataset.ch, id = Number(b.dataset.id);
     var done = function (r) { if (r && !r.ok) { st.compose.err = friendly(r.error); render({ compose: true }); } };
     if (k === "jump") { st.atBottom = true; st.newBelow = 0; var log = st.el.querySelector(".ch-log"); log.scrollTop = log.scrollHeight; render({ log: true }); markRead(); return; }
+    if (k === "react-more" && root.B5Emoji) { root.B5Emoji.open(b, function (e) { act({ dataset: { ch: "react", id: String(id), emoji: e } }); }); return; }
     if (k === "react") {
       var mine = (st.reactions[id] || []).some(function (x) { return x.user_id === myId() && x.emoji === b.dataset.emoji; });
       st.menu = null;

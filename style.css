@@ -905,3 +905,26 @@ body.draft-tv { padding-bottom: 0; }
 .dr-board-wrap.big .dr-cell { height: auto; min-width: 0; }
 .dr-tv-chat { height: 22vh; overflow: hidden; margin-top: 1vw; }
 .dr-tv-last li { display: flex; align-items: center; gap: .6vw; flex-wrap: wrap; }
+
+/* Emoji (emoji.js): the picker, the shortcode autocomplete, the composer button, big emoji-only messages */
+.em-bar { margin: 6px 0; }
+.em-open { min-height: 48px; font-size: 17px; }
+.em-picker { position: fixed; z-index: 60; background: #151515; border: 2px solid var(--gold); border-radius: 12px; box-shadow: 0 12px 30px rgba(0,0,0,.6); padding: 8px; max-height: 70vh; display: grid; grid-template-rows: auto 1fr; }
+.em-picker.sheet { border-radius: 14px 14px 0 0; border-width: 2px 0 0; max-height: 60vh; padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+.em-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.em-tabs button { min-height: 48px; padding: 0 14px; border-radius: 8px; border: 2px solid var(--card-line); background: var(--card); color: var(--chalk); font: 600 16px var(--body); cursor: pointer; }
+.em-tabs button.active { background: var(--gold); color: var(--ink-deep); border-color: var(--gold); }
+.em-tabs .em-close { margin-left: auto; }
+.em-grid { overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); gap: 6px; }
+.em-b { min-height: 56px; min-width: 48px; border-radius: 10px; border: 1px solid var(--card-line); background: var(--card); cursor: pointer; display: grid; place-items: center; padding: 4px; color: var(--chalk); }
+.em-b:hover, .em-b:focus-visible { border-color: var(--gold); outline: none; }
+.em-e { font-size: 28px; line-height: 1.1; }
+.em-team { min-height: 68px; }
+.em-l { font: 600 15px var(--body); }
+.em-ac { position: fixed; z-index: 61; list-style: none; margin: 0; padding: 4px; background: #151515; border: 2px solid var(--gold); border-radius: 10px; width: min(300px, calc(100vw - 16px)); }
+.em-ac button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 48px; padding: 0 10px; border: 0; border-radius: 6px; background: none; color: var(--chalk); font: 500 17px var(--body); cursor: pointer; text-align: left; }
+.em-ac button.on, .em-ac button:hover { background: rgba(255,255,255,.12); }
+.em-ac .em-e { font-size: 24px; }
+.emoji-only { font-size: 2.2em; line-height: 1.25; }
+.bd-react, .ch-chip { font-size: 18px; }
+.bd-more { min-width: 48px; font-weight: 700; }
