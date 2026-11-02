@@ -12,7 +12,7 @@
 -- (public.confirm_payment). With no such commissioner it goes ahead, flagged in the audit log
 -- (coi:own_team_unreviewed), as with the other own-team actions. Pending entries don't count.
 -- Roles: commissioners grant/revoke treasurer (0 or more holders); audited and emailed like the others.
--- Emails (account notices, always sent): "Pay Mac Daddies $35 — Week 8 high score" when an award
+-- Emails (account notices, always sent): "Pay Mac Daddies <amount> — Week 8 high score" when an award
 -- becomes final, and a Monday "who's owed" summary; to treasurers, or commissioners when there's none.
 -- PRIVACY (changed 2026-10-25 at the commissioner's request): payment handles and mailing addresses
 -- are stored ONLY in payment_prefs, readable by the owner and treasurers; never public, never admins.
@@ -391,7 +391,7 @@ create function private.award_notice_key(a public.awards) returns text
 language sql immutable set search_path = ''
 as $$ select concat_ws(':', 'pay', a.season, a.kind, coalesce(a.week, 0), coalesce(a.place, 0), a.team_id, a.label, a.amount) $$;
 
--- An award that becomes final -> "Pay Mac Daddies $35 — Week 8 high score" (once per award).
+-- An award that becomes final -> "Pay Mac Daddies <amount> — Week 8 high score" (once per award).
 create function private.notify_award_final() returns trigger
 language plpgsql security definer set search_path = ''
 as $$

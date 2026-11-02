@@ -63,12 +63,12 @@
       api("empire_ledger?select=*&order=entry_date,id"),
       api("payment_prefs?select=*"),
       api("team_managers?select=user_id,team_id,profiles(display_name)"),
-      api("season_settings" + q + "&select=buy_in")
+      rpc("season_money", { p_season: season })
     ]).then(function (r) {
       var people = {};
       ok(r[6]).forEach(function (x) { people[x.user_id] = { team: x.team_id, name: (x.profiles && x.profiles.display_name) || "" }; });
       st.d = { info: r[0].ok ? r[0].data : null, balances: ok(r[1]), fees: ok(r[2]), payouts: ok(r[3]), empire: ok(r[4]), prefs: ok(r[5]), people: people,
-        buyIn: (ok(r[7])[0] || {}).buy_in || 360 };
+        buyIn: r[7] && r[7].ok && r[7].data ? Number(r[7].data.buy_in) || 0 : 0 };
     });
   }
 

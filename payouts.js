@@ -80,7 +80,8 @@
   function load(admin) {
     var q = "?season=eq." + season;
     var reqs = [
-      get("season_settings" + q + "&select=*"),
+      // The money columns are members-only (season_money); the rest of the settings row is public
+      A.api(cfg, session(), "rpc/season_money", { method: "POST", body: JSON.stringify({ p_season: season }) }, f),
       get("awards" + q + "&select=id,kind,week,place,label,team_id,amount,status,source,note&order=kind,week,place,team_id"),
       get("guillotine" + q + "&select=week,team_id,points,status,source,note&order=week"),
       get("team_scores" + q + "&select=week,team_id,points,status")
@@ -94,7 +95,7 @@
     return Promise.all(reqs).then(function (r) {
       var ok = function (x) { return x && x.ok ? x.data || [] : []; };
       st.data = {
-        settings: ok(r[0])[0] || null, awards: ok(r[1]), guillotine: ok(r[2]), scores: ok(r[3]),
+        settings: r[0] && r[0].ok ? r[0].data : null, awards: ok(r[1]), guillotine: ok(r[2]), scores: ok(r[3]),
         fees: ok(r[4]), payments: ok(r[5]), totals: r[6] && r[6].ok ? r[6].data : null,
         flags: r[7] && r[7].ok && r[7].data[0] ? r[7].data[0] : null,
         errors: r.filter(function (x) { return x && !x.ok; }).map(function (x) { return x.error; })
@@ -356,17 +357,26 @@
         if (!(me && me.profile && me.profile.is_commissioner)) { rootEl.innerHTML = '<section><h2>Payout tools</h2><div class="card">Commissioner only.</div></section>'; return; }
         return load(true).then(function () { rootEl.innerHTML = adminHtml(); startAdmin(rootEl); });
       }
+      // Dollar amounts are for league members only (the database refuses everyone else too)
+      if (!(root.B5Account && root.B5Account.seesMoney(me))) {
+        rootEl.innerHTML = '<section><h2>Payouts</h2><div class="card bd-gate"><p><b>Sign in to view payouts.</b></p>' +
+          (me ? '<p class="muted">Payouts are for league members. Ask the commissioner to connect you to your team.</p>' : '<a class="btn" href="#account">Sign in</a>') + "</div></section>";
+        return;
+      }
       return load(false).then(function () { rootEl.innerHTML = publicHtml(); });
     }).catch(function (e) { rootEl.innerHTML = '<section><h2>Payouts</h2><p class="acct-msg err">Couldn\'t load payouts: ' + esc(e.message) + "</p></section>"; });
   }
 
-  /** Season winnings per team for the Teams page and My Team (public). */
-  var winP = null;
+  /** Season winnings per team for the Teams page, My Team and team profiles: members only ({} for
+      everyone else, and the database refuses them anyway). */
   function teamWinnings() {
     if (!(cfg && cfg.configured && A)) return Promise.resolve({});
-    if (!winP) winP = A.api(cfg, null, "awards?season=eq." + season + "&select=kind,week,place,team_id,amount,status,source", {}, f)
-      .then(function (r) { return r.ok ? winningsByTeam(r.data || []) : {}; }, function () { return {}; });
-    return winP;
+    var who = root.B5Account ? root.B5Account.load().catch(function () { return null; }) : Promise.resolve(null);
+    return who.then(function (me) {
+      if (!(me && root.B5Account.seesMoney(me))) return {};
+      return A.api(cfg, me.session, "awards?season=eq." + season + "&select=kind,week,place,team_id,amount,status,source", {}, f)
+        .then(function (r) { return r.ok ? winningsByTeam(r.data || []) : {}; }, function () { return {}; });
+    });
   }
 
   root.B5Payouts = { start: start, teamWinnings: teamWinnings, money: money,

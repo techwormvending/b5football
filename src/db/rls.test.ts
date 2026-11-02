@@ -507,9 +507,26 @@ describe("payouts (ledger only)", () => {
       insert into public.payout_flags (season, flags) values (${S}, '[{"kind":"tie"}]');`);
   });
 
-  test("anyone reads settings, awards, eliminations and team scores; nobody but the commissioner writes them", async () => {
-    for (const t of ["season_settings", "awards", "guillotine", "team_scores"]) await rows(db, anon, `select * from public.${t}`);
-    assert.equal((await rows(db, anon, `select * from public.awards`)).length, 1);
+  test("money is for members (2026-11-01): anon and signed-in non-members get no amounts; members and officers do; only the commissioner writes", async () => {
+    // Logged out: no awards, no money columns; the non-money settings, eliminations and team scores stay public
+    await denied(db, anon, `select * from public.awards`, /permission denied/);
+    await denied(db, anon, `select * from public.season_settings`, /permission denied/);
+    for (const col of ["buy_in", "website_fee", "empire_contribution", "empire_carry_in", "prizes", "seed"]) {
+      await denied(db, anon, `select ${col} from public.season_settings`, /permission denied/);
+      await denied(db, user(ALICE), `select ${col} from public.season_settings`, /permission denied/);
+    }
+    assert.equal((await rows(db, anon, `select season, team_count, pools, waivers, trades from public.season_settings`)).length, 1);
+    for (const t of ["guillotine", "team_scores"]) await rows(db, anon, `select * from public.${t}`);
+    await denied(db, anon, `select public.season_money(${S})`, /permission denied/);
+    // A signed-in account that isn't on a team: nothing
+    const NOBODY = "00000000-0000-0000-0000-0000000000f9";
+    await db.exec(`insert into auth.users (id, email) values ('${NOBODY}', 'nobody@example.com')`);
+    assert.equal((await rows(db, user(NOBODY), `select * from public.awards`)).length, 0);
+    assert.equal((await rowsT(db, user(NOBODY), `select public.season_money(${S}) as m`))[0]!.m, null);
+    // Members (and officers) see amounts as before
+    assert.equal((await rows(db, user(ALICE), `select * from public.awards`)).length, 1);
+    assert.equal(Number((await rowsT(db, user(ALICE), `select public.season_money(${S}) as m`))[0]!.m.buy_in), 360);
+    assert.equal(Number((await rowsT(db, user(COMMISH), `select public.season_money(${S}) as m`))[0]!.m.buy_in), 360);
     await denied(db, anon, `insert into public.awards (season, kind, label, team_id, amount, status, source) values (${S}, 'manual', 'x', '0001', 1, 'final', 'manual')`, /permission denied/);
     await denied(db, user(ALICE), `insert into public.awards (season, kind, label, team_id, amount, status, source) values (${S}, 'manual', 'x', '0001', 1, 'final', 'manual')`);
     assert.equal(await affected(db, user(ALICE), `update public.awards set amount = 1000`), 0);

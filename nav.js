@@ -10,6 +10,8 @@
   "use strict";
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
 
+  /** The League pages; Payouts (dollar amounts) only for league members. */
+  function leagueLinks(v) { return LEAGUE_LINKS.filter(function (x) { return x[0] !== "#payouts" || (v && v.member); }); }
   var LEAGUE_LINKS = [["#schedule", "Standings & Schedule"], ["#teams", "Teams"], ["#players", "Players"], ["#payouts", "Payouts"],
     ["#history", "History"], ["#rules", "Rules"], ["#traditions", "Traditions"]];
   /** Role tools, in menu order, for the roles a person holds (Treasury also for commissioners: they read the books). */
@@ -67,7 +69,7 @@
       : '<a href="#account" class="nav-signin' + (s.sec === "user" ? " active" : "") + '">Sign in</a>';
     return item("#home", "Home", "home") + item("#myteam", "My Team", "myteam") + item("#scores", "Scores", "scores") +
       item("#pools", "Pools", "pools") + item("#messages", "Messages", "messages", badgeHtml(badges && badges.messages, "msgBadge")) +
-      menu("league", "League", LEAGUE_LINKS.map(link).join(""), s.sec === "league") + user;
+      menu("league", "League", leagueLinks(v).map(link).join(""), s.sec === "league") + user;
   }
 
   var ICONS = { home: "🏠", myteam: "📋", scores: "🏈", messages: "💬", more: "☰" };
@@ -91,7 +93,7 @@
         '<button type="button" class="tile tile-out" data-nav="signout">Sign out</button></div>'
       : '<h2>Account</h2><div class="tiles"><a class="tile tile-signin" href="#account">Sign in</a></div>';
     return '<section class="more"><div class="tiles">' + tile(["#pools", "Pools"]) + "</div>" +
-      '<h2>League</h2><div class="tiles">' + LEAGUE_LINKS.map(tile).join("") + "</div>" + acct + "</section>";
+      '<h2>League</h2><div class="tiles">' + leagueLinks(v).map(tile).join("") + "</div>" + acct + "</section>";
   }
 
   /** The big page title under the bar, plus the page's tabs (with unread counts on Messages). */
@@ -160,5 +162,5 @@
   }
 
   root.B5Nav = { topHtml: topHtml, bottomHtml: bottomHtml, moreHtml: moreHtml, headHtml: headHtml, sectionOf: sectionOf, roleLinks: roleLinks,
-    route: route, setViewer: setViewer, setCount: setCount, mount: mount, LEAGUE_LINKS: LEAGUE_LINKS, TABS: TABS };
+    leagueLinks: leagueLinks, route: route, setViewer: setViewer, setCount: setCount, mount: mount, LEAGUE_LINKS: LEAGUE_LINKS, TABS: TABS };
 })(typeof globalThis !== "undefined" ? globalThis : this);

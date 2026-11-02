@@ -77,9 +77,16 @@
 
   /** The nav (nav.js) shows the person's name and only the tools of the roles he holds. */
   function viewer() {
-    if (!me) return { signedIn: false, name: "", roles: [] };
+    if (!me) return { signedIn: false, name: "", roles: [], member: false };
     var p = me.profile || {}, email = (me.session && me.session.user && me.session.user.email) || "";
-    return { signedIn: true, name: p.display_name || email.split("@")[0] || "My Account", roles: (p.roles || []).slice() };
+    return { signedIn: true, name: p.display_name || email.split("@")[0] || "My Account", roles: (p.roles || []).slice(), member: seesMoney(me) };
+  }
+  /** Dollar amounts are for league members (a team owner, or any officer); the database enforces it
+      (migration money_members_only). Signed out or not on a team: no amounts anywhere. */
+  function seesMoney(m) {
+    m = m === undefined ? me : m;
+    var p = m && m.profile;
+    return !!(m && p && !p.disabled && (m.teams.length || (p.roles || []).length));
   }
   function refreshNav() { if (window.B5Nav) window.B5Nav.setViewer(viewer()); }
   /** Sign out from anywhere (the account menu, the More page). */
@@ -149,7 +156,7 @@
       ["league_moves", "League first-come adds/drops", "one digest per hour"]]],
     ["Lineups", [["lineup_saved", "My lineup confirmation", "10 minutes after your team's lineup is saved, by you or your co-owner"],
       ["lineup", "Lineup reminders", "starters on bye or out, about 3 hours before kickoff"]]],
-    ["Scores", [["scoring", "Daily scoring update", "after each game day's final scoring: your matchup, every score, the $35 race, guillotine danger"]]],
+    ["Scores", [["scoring", "Daily scoring update", "after each game day's final scoring: your matchup, every score, the weekly high score race, guillotine danger"]]],
     ["League", [["announcements", "Commissioner announcements and messages", ""]]]];
   var NOTIFY_BOOLS = [];
   NOTIFY_GROUPS.forEach(function (g) { g[1].forEach(function (t) { NOTIFY_BOOLS.push(t[0]); }); });
@@ -897,7 +904,7 @@
     },
     unsubscribe: unsubscribe,
     presence: presence,
-    refreshNav: refreshNav, signOut: signOut, viewer: viewer,
+    refreshNav: refreshNav, signOut: signOut, viewer: viewer, seesMoney: seesMoney,
     rolesText: rolesText, roleBadges: roleBadges, defaultsSummary: defaultsSummary, nextRoles: nextRoles, roleChangeText: roleChangeText,
     managerNames: managerNames, annKey: function (a) { return annKey(a); },
     load: load

@@ -134,6 +134,7 @@
   function render(d) {
     var id = st.id, T = TL();
     var rows = (L.standings && L.standings.rows) || [], i = rows.map(function (r) { return r[0]; }).indexOf(id), rec = i >= 0 ? rows[i] : null;
+    var showMoney = !!(root.B5Account && root.B5Account.seesMoney && root.B5Account.seesMoney(st.me));   // amounts: members only
     var w = d.winnings[id] || { final: 0, projected: 0 }, money = root.B5Payouts ? root.B5Payouts.money : function (x) { return "$" + x; };
     var div = ((L.divisions || []).filter(function (x) { return x.id === T.division(id); })[0] || {}).name;
     var titleYears = (L.champions || []).filter(function (c) { return T.byName(c.champion) === id; }).map(function (c) { return c.year; });
@@ -146,7 +147,7 @@
       '<div class="muted">' + esc(div ? div + " Division" : "") + (owners ? " · " + esc(owners) : "") + "</div>" +
       (titles ? '<div class="rings" title="' + esc(titles) + ' title(s)">' + "🏆".repeat(titles) + "</div>" : "") + "</div>" +
       '<div class="mt-stats">' + (rec ? "<div><b>" + esc(rec[1] + "-" + rec[2] + (rec[3] ? "-" + rec[3] : "")) + "</b><span>Record</span></div><div><b>#" + esc(i + 1) + "</b><span>Standings</span></div>" : "") +
-      "<div><b>" + esc(money(w.final)) + "</b><span>Won" + (w.projected ? " (+" + esc(money(w.projected)) + " projected)" : "") + "</span></div></div>" + buttons + "</div>";
+      (showMoney ? "<div><b>" + esc(money(w.final)) + "</b><span>Won" + (w.projected ? " (+" + esc(money(w.projected)) + " projected)" : "") + "</span></div>" : "") + "</div>" + buttons + "</div>";
 
     var roster = lineupStatus(d.roster, d.slots);
     var rosterHtml = '<div class="card"><h3>Roster (' + roster.length + ")" + (d.week ? ' <span class="muted small">· week ' + esc(d.week) + " lineup</span>" : "") + "</h3>" +

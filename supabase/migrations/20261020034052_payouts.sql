@@ -198,29 +198,9 @@ create trigger audit_payouts after insert or update or delete on public.team_fee
 create trigger audit_payouts after insert or update or delete on public.payout_payments for each row execute function private.audit_payouts();
 
 -- ---------------------------------------------------------------------------
--- 2026 settings (rules confirmed by the commissioner, 2026-10-20). Public information.
--- Pot: 12 x $360 = $4,320 - $80 website - $120 Empire = $4,120 paid out; the prizes below
--- add up to exactly $4,120. Seed = winners already recorded in the spreadsheet (team IDs).
+-- 2026 settings: entered once into the live database when this migration was applied (2026-10-20):
+-- the season's fee, prizes, Empire amounts, the spreadsheet's recorded winners (seed) and the
+-- Survivor award. Dollar amounts are members-only (migration money_members_only, 2026-11-01), so
+-- they were removed from this public repo; the database is the only copy. A fresh database gets
+-- its season_settings row from the commissioner.
 -- ---------------------------------------------------------------------------
-insert into public.season_settings (season, team_count, buy_in, website_fee, empire_contribution, empire_carry_in, prizes, seed)
-select 2026, 12, 360, 80, 120, 240,
-  '{
-    "weekly_high":   { "amount": 35, "first_week": 1, "last_week": 17 },
-    "playoffs":      { "r1": 60, "r1_games": 4, "r2": 120, "r2_games": 2, "champion": 240, "weeks": [15, 16, 17] },
-    "season_points": { "amounts": [1075, 740, 390], "first_week": 1, "last_week": 17 },
-    "guillotine":    { "amount": 120, "start_week": 2 },
-    "manual": [
-      { "key": "pickem_1", "label": "Pick''em 1st", "amount": 180 },
-      { "key": "pickem_2", "label": "Pick''em 2nd", "amount": 60 },
-      { "key": "survivor", "label": "Survivor", "amount": 240 }
-    ]
-  }'::jsonb,
-  '{
-    "weekly_high": { "1": "0005", "2": "0009", "3": "0004", "4": "0003", "5": "0008" },
-    "guillotine":  { "2": "0011", "3": "0003", "4": "0012", "5": "0009" }
-  }'::jsonb
-where exists (select 1 from public.teams where id = '0002');
-
-insert into public.awards (season, kind, label, team_id, amount, status, source, note)
-select 2026, 'manual', 'Survivor', '0002', 240, 'final', 'manual', 'From the 2026 payout spreadsheet'
-where exists (select 1 from public.teams where id = '0002');

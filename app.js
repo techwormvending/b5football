@@ -123,6 +123,25 @@
       .then(r => { if (!r.ok) { alert("Couldn't change the pin: " + (r.error || "not allowed")); b.disabled = false; return; } annPins[b.dataset.annPin] = pin; route(); });
   });
 
+  // ---- Money is for members (2026-11-01) ---------------------------------------------
+  const seesMoney = () => !!(window.B5Account && window.B5Account.seesMoney && window.B5Account.seesMoney());
+  // Announcements are commissioner HTML: signed-out viewers get any dollar amount blanked
+  const hideAmounts = (html) => String(html).replace(/\$\s?\d[\d,]*(\.\d+)?/g, "(amount for members)");
+  const SIGN_IN_MONEY = 'Payouts and fees: <a href="#account">sign in</a> to see the league\'s payout structure.';
+  let moneyRule = SIGN_IN_MONEY;
+  // The Rules page's money bylaw, from the database for members (no amounts in the repo)
+  function loadMoneyRule() {
+    if (!seesMoney()) { moneyRule = SIGN_IN_MONEY; return Promise.resolve(); }
+    return window.B5Account.load().then(me => window.B5Auth.api(window.B5_SUPABASE, me && me.session, "rpc/season_money",
+      { method: "POST", body: JSON.stringify({ p_season: Number(L.season) }) }, (u, i) => window.fetch(u, i))).then(r => {
+      const m = r && r.ok && r.data; if (!m) return;
+      const usd = (x) => "$" + Number(x).toLocaleString("en-US", { maximumFractionDigits: 2 });
+      const w = m.prizes && m.prizes.weekly_high;
+      moneyRule = esc("Entry fee " + usd(m.buy_in) + " per team." + (w ? " Weekly high score pays " + usd(w.amount) + " every week, weeks " + w.first_week + "–" + w.last_week + " (playoff weeks included)." : "")) +
+        ' Full prize list on the <a href="#payouts">Payouts</a> page.';
+    }, () => {});
+  }
+
   const pages = {
     // League > Standings & Schedule: the standings, then the week-by-week schedule
     schedule() { return standingsTable() + pages.scheduleWeeks(); },
@@ -155,7 +174,7 @@
           <div class="post-meta"><span class="tag">${esc(a.tag || "News")}</span>${fmtDate(a.date)}${a.isPinned ? `<span class="tag post-pin">📌 Pinned</span>` : ""}
             ${officer ? `<button type="button" class="btn ghost post-pin-btn" data-ann-pin="${esc(annKey(a))}" data-pin="${a.isPinned ? "0" : "1"}">${a.isPinned ? "Unpin" : "Pin to top"}</button>` : ""}</div>
           <h3>${esc(a.title)}</h3>
-          <div class="post-body">${a.body}</div>
+          <div class="post-body">${seesMoney() ? a.body : hideAmounts(a.body)}</div>
           ${a.image ? `<img class="post-img" src="${esc(a.image)}" alt="">` : ""}
         </article>`).join("");
       return `
@@ -253,7 +272,7 @@
         <section><h2>Scoring</h2><div class="grid">${groups}</div></section>
         <section><h2>Roster</h2><div class="card">${esc(L.roster)}</div></section>
         <section><h2>Bylaws</h2><div class="card"><ul class="checks">
-          ${L.bylaws.map(b => `<li>${esc(b)}</li>`).join("")}</ul></div></section>
+          ${L.bylaws.map(b => b && b.money ? `<li data-money-rule>${moneyRule}</li>` : `<li>${esc(b)}</li>`).join("")}</ul></div></section>
         ${L.rulesUpdated ? `<p class="muted small">Rules last updated ${esc(fmtDate(L.rulesUpdated))}.</p>` : ""}`;
     },
 
@@ -336,6 +355,7 @@
     dedupeTitles(NAV.sectionOf(r));
     if (page === "schedule") centerWeek();
     if (page === "home") startClock();
+    if (page === "rules") loadMoneyRule().then(() => { const li = view.querySelector("[data-money-rule]"); if (li && curPage === "rules") li.innerHTML = moneyRule; });
     if (page === "live" && window.B5Live) window.B5Live.start(document.getElementById("lvRoot"), r);
     if (page === "board" && window.B5Board) window.B5Board.start(document.getElementById("bdRoot"), r);
     if (window.B5Board) window.B5Board.badge();   // unread count on the nav item (signed-in members)

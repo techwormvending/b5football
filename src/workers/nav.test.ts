@@ -34,8 +34,8 @@ const menuLinks = (html: string, id: string) => {
 const hrefs = (html: string) => [...html.matchAll(/href="([^"]+)"/g)].map(m => m[1]);
 
 const OUT = { signedIn: false, name: "", roles: [] };
-const MANAGER = { signedIn: true, name: "Mike", roles: [] };
-const as = (...roles: string[]) => ({ signedIn: true, name: "Adam", roles });
+const MANAGER = { signedIn: true, name: "Mike", roles: [], member: true };
+const as = (...roles: string[]) => ({ signedIn: true, name: "Adam", roles, member: true });
 
 test("top bar: exactly Home · My Team · Scores · Pools · Messages · League ▾ · [name] ▾ (or Sign in)", () => {
   assert.deepEqual(topItems(N.topHtml(MANAGER, { sec: "home" })), ["Home", "My Team", "Scores", "Pools", "Messages", "League", "Mike"]);
@@ -91,7 +91,7 @@ test("phones: a bottom bar of 5 (icon + word): Home · My Team · Scores · Mess
   assert.match(N.bottomHtml({ sec: "league" }), /<a href="#more" class="active"/, "League pages light up More");
   assert.match(N.bottomHtml({ sec: "pools" }), /<a href="#more" class="active"/);
   const tiles = (html: string) => [...html.matchAll(/class="tile[^"]*"[^>]*>([^<]+)</g)].map(m => text(m[1]!));
-  assert.deepEqual(tiles(N.moreHtml(OUT)), ["Pools", "Standings & Schedule", "Teams", "Players", "Payouts", "History", "Rules", "Traditions", "Sign in"]);
+  assert.deepEqual(tiles(N.moreHtml(OUT)), ["Pools", "Standings & Schedule", "Teams", "Players", "History", "Rules", "Traditions", "Sign in"], "no Payouts signed out");
   assert.deepEqual(tiles(N.moreHtml(MANAGER)), ["Pools", "Standings & Schedule", "Teams", "Players", "Payouts", "History", "Rules", "Traditions", "My Account", "Sign out"]);
   assert.deepEqual(tiles(N.moreHtml(as("commissioner", "admin"))).slice(-5), ["My Account", "Commissioner", "Treasury", "Admin", "Sign out"]);
   // No hamburger in the page any more
