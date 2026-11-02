@@ -35,10 +35,12 @@
       return Promise.all([
         A.api(cfg, s, "profiles?id=eq." + encodeURIComponent(s.user.id) + "&select=display_name,is_commissioner,is_admin,disabled", {}, f),
         A.api(cfg, s, "team_managers?user_id=eq." + encodeURIComponent(s.user.id) + "&select=team_id", {}, f),
-        A.api(cfg, s, "user_roles?user_id=eq." + encodeURIComponent(s.user.id) + "&select=role", {}, f)
+        A.api(cfg, s, "user_roles?user_id=eq." + encodeURIComponent(s.user.id) + "&select=role", {}, f),
+        A.api(cfg, s, "rpc/my_auth", { method: "POST", body: "{}" }, f)
       ]).then(function (r) {
         var prof = (r[0].ok && r[0].data && r[0].data[0]) || null;
         if (prof) {
+          prof.has_password = !!(r[3] && r[3].ok && r[3].data && r[3].data.has_password);
           prof.roles = prof.disabled ? [] : ((r[2] && r[2].ok && r[2].data) || []).map(function (x) { return x.role; });
           prof.is_treasurer = prof.roles.indexOf("treasurer") >= 0;
         }
@@ -88,7 +90,7 @@
     var p = m && m.profile;
     return !!(m && p && !p.disabled && (m.teams.length || (p.roles || []).length));
   }
-  function refreshNav() { if (window.B5Nav) window.B5Nav.setViewer(viewer()); }
+  function refreshNav() { if (window.B5Nav) window.B5Nav.setViewer(viewer()); try { passwordBanner(); } catch (e) { /* no page yet */ } }
   /** Sign out from anywhere (the account menu, the More page). */
   function signOut() {
     if (!ready()) return Promise.resolve();
@@ -98,19 +100,111 @@
     });
   }
 
+  // ---- Sign in (2026-11-02): email + password; 6-digit codes; reset by code. No links. ---------------
+  // lg.mode: "password" | "code" | "reset" | "create" (just signed in by code, no password yet)
+  var lg = { mode: "password", step: 1, email: "" };
+  var pwField = function (name, label, auto) {
+    return '<label>' + label + '<span class="pw-wrap"><input name="' + name + '" type="password" autocomplete="' + auto + '" required minlength="' + (auto === "new-password" ? 8 : 1) + '">' +
+      '<button type="button" class="btn ghost pw-show" data-acct="showpw" aria-label="Show password">Show</button></span></label>';
+  };
+  var emailField = function () { return '<label>Email<input name="email" type="email" autocomplete="username" inputmode="email" autocapitalize="off" spellcheck="false" required value="' + esc(lg.email) + '"></label>'; };
+  var codeField = function () { return '<label>6-digit code<input name="code" class="code-in" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]*" maxlength="8" required></label>'; };
+  var link = function (k, label) { return '<button type="button" class="linkish big" data-acct="' + k + '">' + label + "</button>"; };
+  function signInHtml(m) {
+    var body;
+    if (lg.mode === "code" && lg.step === 1) body = "<h3>Email me a sign-in code</h3><p>We'll email you a 6-digit code. Type it here to sign in.</p>" + emailField() +
+      '<button class="btn big" type="submit">Send my code</button>' + link("mode-password", "Use my password instead");
+    else if (lg.mode === "code") body = "<h3>Enter your code</h3><p>We emailed a 6-digit code to <b>" + esc(lg.email) + "</b>. It expires in 10 minutes.</p>" + codeField() +
+      '<button class="btn big" type="submit">Sign in</button>' + link("resend", "Send a new code") + link("mode-password", "Use my password instead");
+    else if (lg.mode === "reset" && lg.step === 1) body = "<h3>Forgot your password?</h3><p>We'll email you a 6-digit code to set a new one.</p>" + emailField() +
+      '<button class="btn big" type="submit">Email me a code</button>' + link("mode-password", "Back to sign in");
+    else if (lg.mode === "reset") body = "<h3>Set a new password</h3><p>We emailed a 6-digit code to <b>" + esc(lg.email) + "</b>.</p>" + codeField() +
+      pwField("password", "New password (at least 8 characters)", "new-password") + '<button class="btn big" type="submit">Save my new password</button>' + link("resend", "Send a new code");
+    else if (lg.mode === "create") body = "<h3>Create a password</h3><p>You're signed in. Set a password so next time you can sign in without waiting for an email.</p>" +
+      '<input type="email" name="email" autocomplete="username" value="' + esc(lg.email) + '" hidden>' +
+      pwField("password", "New password (at least 8 characters)", "new-password") + '<button class="btn big" type="submit">Save my password</button>' + link("skip", "Skip for now");
+    else body = "<p>The league is invite-only. Sign in with your email and password.</p>" + emailField() + pwField("password", "Password", "current-password") +
+      '<button class="btn big" type="submit">Sign in</button>' + link("mode-code", "Email me a sign-in code") + link("mode-reset", "Forgot password?");
+    return '<section class="signin"><h2>' + (lg.mode === "create" ? "Welcome" : "Sign in") + '</h2><form class="card acct-form signin-form" data-acct="signin">' + m + body + "</form></section>";
+  }
+  function passwordCard(p) {
+    var has = p.has_password;
+    return '<form class="card acct-form" data-acct="setpw" id="password"><h3>' + (has ? "Change your password" : "Set a password") + "</h3>" +
+      (has ? "" : "<p>Set a password so you can sign in without waiting for an email code.</p>") +
+      '<input type="email" name="email" autocomplete="username" value="' + esc(me.session.user.email) + '" hidden>' +
+      pwField("password", "New password (at least 8 characters)", "new-password") +
+      (pw.reauth ? '<p class="acct-msg ok">For your security we emailed you a 6-digit code. Enter it to save the password.</p>' + codeField() : "") +
+      '<button class="btn" type="submit">' + (has ? "Change password" : "Set password") + "</button>" + (pw.msg ? '<p class="acct-msg ' + (pw.msg.err ? "err" : "ok") + '">' + esc(pw.msg.err || pw.msg.ok) + "</p>" : "") + "</form>";
+  }
+  var pw = { reauth: false, msg: null };
+  var fopts = function () { return { storage: storage, fetchImpl: f, now: Date.now() }; };
+  /** Signed in (by password or code): load the account and go to My Team (or ask for a password first). */
+  function afterSignIn(root, fromCode) {
+    return load().then(function () {
+      refreshNav();
+      if (fromCode && me && me.profile && !me.profile.has_password) { lg = { mode: "create", step: 1, email: me.session.user.email }; renderAccount(root); return; }
+      lg = { mode: "password", step: 1, email: "" };
+      location.hash = "#myteam";
+    });
+  }
+  function signInSubmit(root, form) {
+    var fd = new FormData(form), email = String(fd.get("email") || lg.email || "").trim();
+    var done = function (msg) { renderAccount(root, msg); var c = root.querySelector('[name="code"], [name="password"], [name="email"]'); if (c && msg && msg.err) c.focus(); };
+    if (email) lg.email = email;
+    if (lg.mode === "password") {
+      return A.signInPassword(cfg, email, fd.get("password"), fopts()).then(function (r) { return r.ok ? afterSignIn(root, false) : done({ err: r.error }); });
+    }
+    if (lg.mode === "code" && lg.step === 1) return A.sendCode(cfg, email, f).then(function (r) { if (r.ok) lg.step = 2; done(r.ok ? null : { err: r.error }); });
+    if (lg.mode === "code") return A.verifyCode(cfg, lg.email, fd.get("code"), "email", fopts()).then(function (r) { return r.ok ? afterSignIn(root, true) : done({ err: r.error }); });
+    if (lg.mode === "reset" && lg.step === 1) return A.sendResetCode(cfg, email, f).then(function (r) { if (r.ok) lg.step = 2; done(r.ok ? null : { err: r.error }); });
+    if (lg.mode === "reset") {
+      var bad = A.passwordProblem(fd.get("password"), lg.email);
+      if (bad) return Promise.resolve(done({ err: bad }));
+      return A.verifyCode(cfg, lg.email, fd.get("code"), "recovery", fopts()).then(function (r) {
+        if (!r.ok) return done({ err: r.error });
+        return A.setPassword(cfg, r.session, fd.get("password"), null, fopts()).then(function (x) {
+          if (!x.ok) return done({ err: x.error });
+          return afterSignIn(root, false);
+        });
+      });
+    }
+    if (lg.mode === "create") {
+      return A.setPassword(cfg, me.session, fd.get("password"), null, fopts()).then(function (x) {
+        if (!x.ok) return done({ err: x.error });
+        return afterSignIn(root, false);
+      });
+    }
+  }
+  function setPwSubmit(root, form) {
+    var fd = new FormData(form);
+    return A.setPassword(cfg, me.session, fd.get("password"), pw.reauth ? fd.get("code") : null, fopts()).then(function (x) {
+      if (x.ok) { pw = { reauth: false, msg: { ok: "Password saved. You can sign in with it on any device." } }; return load().then(function () { refreshNav(); renderAccount(root); }); }
+      if (x.reauth) return A.reauthenticate(cfg, me.session, f).then(function (r) { pw = { reauth: true, msg: r.ok ? null : { err: r.error } }; renderAccount(root); });
+      pw.msg = { err: x.error }; renderAccount(root);
+    });
+  }
+  /** One-time banner for members without a password (dismissed per person in this browser). */
+  function passwordBanner() {
+    var d = document, old = d.getElementById("pwBanner");
+    var key = me && me.session ? "b5-pw-banner:" + me.session.user.id : null;
+    var dismissed = false; try { dismissed = !!(key && storage.getItem(key)); } catch (e) { /* storage blocked */ }
+    var show = !!(me && me.profile && !me.profile.has_password && !dismissed && location.hash.indexOf("#account") !== 0);
+    if (!show) { if (old) old.remove(); return; }
+    if (old) return;
+    var b = d.createElement("div"); b.id = "pwBanner"; b.className = "pw-banner"; b.setAttribute("role", "status");
+    b.innerHTML = '<span>Set a password so you can sign in without email.</span><a class="btn" href="#account">Set a password</a><button type="button" class="btn ghost">Not now</button>';
+    b.querySelector("button").addEventListener("click", function () { try { storage.setItem(key, "1"); } catch (e) { /* storage blocked */ } b.remove(); });
+    b.querySelector("a").addEventListener("click", function () { try { storage.setItem(key, "1"); } catch (e) { /* storage blocked */ } b.remove(); });
+    var head = d.querySelector(".top"); if (head && head.parentNode) head.parentNode.insertBefore(b, head.nextSibling);
+  }
+
   // ---- #account ------------------------------------------------------------
   function renderAccount(root, msg) {
     var notice = window.B5AuthNotice; window.B5AuthNotice = null;
-    var banner = msg || (notice && notice.error ? { err: "That sign-in link didn't work: " + notice.error + ". Request a new one below." } : null);
+    var banner = msg || (notice && notice.error ? { err: "That old sign-in link didn't work: " + notice.error + ". Sign in below." } : null);
     var m = banner ? '<p class="acct-msg ' + (banner.err ? "err" : "ok") + '">' + esc(banner.err || banner.ok) + "</p>" : "";
     if (!ready()) { root.innerHTML = '<section><h2>Account</h2><div class="card"><p>Sign-in isn\'t set up yet.</p></div></section>'; return; }
-    if (!me) {
-      root.innerHTML = '<section><h2>Sign in</h2><form class="card acct-form" data-acct="login">' +
-        "<p>Managers sign in with a one-time link sent to their email. The league is invite-only.</p>" +
-        '<label>Email<input name="email" type="email" autocomplete="email" inputmode="email" required></label>' +
-        '<button class="btn" type="submit">Email me a sign-in link</button>' + m + "</form></section>";
-      return;
-    }
+    if (!me || (lg.mode === "create" && me)) { root.innerHTML = signInHtml(m); return; }   // signed in by code, no password yet: offer one first
     var p = me.profile || {};
     var teams = me.teams.length
       ? me.teams.map(function (t) { return window.B5Team.link(t.team_id); }).join(", ")
@@ -125,7 +219,7 @@
       '<form class="acct-form" data-acct="name"><label>Display name<input name="display_name" maxlength="40" required value="' + esc(p.display_name) + '"></label>' +
       '<p class="muted small">Shown to the league as your team\'s manager.</p>' +
       '<button class="btn ghost" type="submit">Save name</button></form>' +
-      '<button class="btn ghost" type="button" data-acct="signout">Sign out</button></div>' + contactForm(p) + payForm() + notifyForm() + "</section>";
+      '<button class="btn ghost" type="button" data-acct="signout">Sign out</button></div>' + passwordCard(p) + contactForm(p) + payForm() + notifyForm() + "</section>";
   }
 
   // Owner contact info (owner_contacts: your row only; members see the fields you mark "League members"
@@ -225,10 +319,10 @@
       e.preventDefault();
       var fd = new FormData(form), btn = form.querySelector("button");
       if (btn) btn.disabled = true;
-      if (form.dataset.acct === "login") {
-        A.requestLink(cfg, fd.get("email"), location.origin + location.pathname, f).then(function (r) {
-          renderAccount(root, r.ok ? { ok: "Check your email for a sign-in link from noreply@b5football.win. It works once and expires in an hour." } : { err: r.error });
-        });
+      if (form.dataset.acct === "signin") {
+        signInSubmit(root, form).then(function () { if (btn) btn.disabled = false; }, function () { if (btn) btn.disabled = false; });
+      } else if (form.dataset.acct === "setpw") {
+        setPwSubmit(root, form);
       } else if (form.dataset.acct === "name") {
         A.api(cfg, me.session, "profiles?id=eq." + encodeURIComponent(me.session.user.id), {
           method: "PATCH", body: JSON.stringify({ display_name: String(fd.get("display_name") || "").trim() }), headers: { Prefer: "return=minimal" }
@@ -279,6 +373,22 @@
         });
         return;
       }
+      var t = e.target.closest("[data-acct]");
+      var k = t && t.dataset.acct;
+      if (k === "showpw") {
+        var inp = t.parentNode.querySelector("input"), show = inp.type === "password";
+        inp.type = show ? "text" : "password"; t.textContent = show ? "Hide" : "Show"; t.setAttribute("aria-label", show ? "Hide password" : "Show password");
+        return;
+      }
+      if (k === "mode-code" || k === "mode-reset" || k === "mode-password") {
+        var em = root.querySelector('input[name="email"]'); if (em && em.value) lg.email = em.value.trim();
+        lg = { mode: k.slice(5), step: 1, email: lg.email }; renderAccount(root); return;
+      }
+      if (k === "resend") {
+        (lg.mode === "reset" ? A.sendResetCode(cfg, lg.email, f) : A.sendCode(cfg, lg.email, f)).then(function (r) { renderAccount(root, r.ok ? { ok: "We sent a new code to " + lg.email + "." } : { err: r.error }); });
+        return;
+      }
+      if (k === "skip") { lg = { mode: "password", step: 1, email: "" }; location.hash = "#myteam"; return; }
       var b = e.target.closest("[data-acct='signout']");
       if (!b) return;
       A.signOut(cfg, opts()).then(function () { me = null; refreshNav(); renderAccount(root, { ok: "Signed out." }); });
@@ -457,7 +567,7 @@
       cm.invites.map(function (i) {
         return "<tr><td>" + esc(i.email) + "</td><td>" + tlink(i.team_id) + "</td><td>" + (i.is_commissioner ? "Commissioner" : "Manager") +
           "</td><td>" + (i.accepted_at ? '<span class="tag">Joined</span> ' + esc(et(i.accepted_at)) : "Invited " + esc(et(i.invited_at)) + '<br><span class="muted small">Not signed in yet</span>') + "</td>" +
-          '<td class="cm-actions"><button class="btn ghost" type="button" data-cm="send" data-email="' + esc(i.email) + '">Send link</button>' +
+          '<td class="cm-actions"><button class="btn ghost" type="button" data-cm="send" data-email="' + esc(i.email) + '">Send a code</button>' +
           '<button class="btn ghost" type="button" data-cm="remove-invite" data-email="' + esc(i.email) + '">Remove</button></td></tr>';
       }).join("") + "</tbody></table></div>" : '<p class="muted">No invites yet.</p>';
 
@@ -493,7 +603,7 @@
       '<label>Email<input name="email" type="email" autocomplete="off" required></label>' +
       '<label>Team<select name="team_id">' + teamOpts + "</select></label>" +
       '<label class="acct-check"><input type="checkbox" name="is_commissioner"> Commissioner</label>' +
-      '<label class="acct-check"><input type="checkbox" name="send" checked> Email a sign-in link now</label>' +
+      '<label class="acct-check"><input type="checkbox" name="send" checked> Email a 6-digit sign-in code now</label>' +
       '<button class="btn" type="submit">Add invite</button></form>' +
       '<p class="muted small">Only invited emails can create an account. Their team and role are applied when they first sign in. Inviting to a team that already has an owner adds a co-owner (up to ' + esc(cm.maxOwners || 2) + " per team). " +
       "Removing an invite stops new sign-ups; to cut off someone who already joined, also remove them from their team.</p></div>" +
@@ -561,7 +671,7 @@
         return "<tr" + (a.disabled ? ' class="muted"' : "") + "><td>" + esc(a.display_name || "(no name)") + '<br><span class="muted small">' + esc(a.email || "") + "</span></td><td>" + (a.teams || []).map(tlink).join(", ") +
           "</td><td>" + roleBadges(a.roles) + (a.disabled ? ' <span class="tag cm-bad">Disabled</span>' : "") +
           '</td><td class="small">' + esc(a.last_sign_in_at ? et(a.last_sign_in_at) : "never") + '</td><td class="cm-actions">' +
-          (a.email ? '<button class="btn ghost" type="button" data-cm="send" data-email="' + esc(a.email) + '">Send link</button>' : "") +
+          (a.email ? '<button class="btn ghost" type="button" data-cm="send" data-email="' + esc(a.email) + '">Send a sign-in code</button>' : "") +
           '<button class="btn ghost" type="button" data-cm="sign-out" data-user="' + esc(a.user_id) + '">Sign out everywhere</button>' +
           '<button class="btn ghost" type="button" data-cm="' + (a.disabled ? "enable" : "disable") + '" data-user="' + esc(a.user_id) + '">' + (a.disabled ? "Enable" : "Disable") + "</button></td></tr>";
       }).join("") + "</tbody></table></div>" +
@@ -754,8 +864,8 @@
       act(A.api(cfg, me.session, "invites", { method: "POST", body: JSON.stringify(row), headers: { Prefer: "return=minimal" } }, f).then(function (r) {
         if (!r.ok) return { ok: false, error: /duplicate|unique/i.test(r.error) ? email + " is already invited." : /check constraint/i.test(r.error) ? "That doesn't look like a valid email." : r.error };
         if (fd.get("send") !== "on") return { msgOk: "Invited " + email + "." };
-        return A.requestLink(cfg, email, location.origin + location.pathname, f).then(function (s) {
-          return s.ok ? { msgOk: "Invited " + email + " and emailed a sign-in link." } : { ok: false, error: "Invited " + email + ", but the email failed: " + s.error };
+        return A.sendCode(cfg, email, f).then(function (s) {
+          return s.ok ? { msgOk: "Invited " + email + " and emailed a 6-digit sign-in code." } : { ok: false, error: "Invited " + email + ", but the email failed: " + s.error };
         });
       }));
     });
@@ -792,8 +902,8 @@
       var kind = b.dataset.cm;
       if (kind === "send") {
         b.disabled = true;
-        act(A.requestLink(cfg, b.dataset.email, location.origin + location.pathname, f).then(function (s) {
-          return s.ok ? { msgOk: "Sign-in link sent to " + b.dataset.email + "." } : s;
+        act(A.sendCode(cfg, b.dataset.email, f).then(function (s) {
+          return s.ok ? { msgOk: "Sign-in code sent to " + b.dataset.email + "." } : s;
         }));
       } else if (kind === "remove-invite") {
         if (!window.confirm("Remove the invite for " + b.dataset.email + "?")) return;

@@ -928,3 +928,14 @@ body.draft-tv { padding-bottom: 0; }
 .emoji-only { font-size: 2.2em; line-height: 1.25; }
 .bd-react, .ch-chip { font-size: 18px; }
 .bd-more { min-width: 48px; font-weight: 700; }
+
+/* Sign-in (2026-11-02): big and simple; passwords with Show/Hide; codes */
+.signin-form { max-width: 520px; display: grid; gap: 14px; }
+.signin-form input, .acct-form input[type=password] { min-height: 52px; font-size: 19px; }
+.pw-wrap { display: flex; gap: 8px; align-items: stretch; }
+.pw-wrap input { flex: 1; min-width: 0; }
+.pw-show { min-width: 76px; }
+.code-in { letter-spacing: .4em; font: 700 26px var(--head) !important; text-align: center; max-width: 260px; }
+.btn.big { min-height: 56px; font-size: 19px; }
+.linkish.big { font-size: 18px; min-height: 48px; text-align: left; padding: 0; }
+.pw-banner { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center; padding: 10px 16px; background: #2a2208; border-bottom: 2px solid var(--gold); font-size: 17px; }

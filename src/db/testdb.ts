@@ -24,7 +24,8 @@ const AUTH_STUB = `
     email text,
     raw_user_meta_data jsonb not null default '{}'::jsonb,
     created_at timestamptz not null default now(),
-    last_sign_in_at timestamptz             -- null until the magic link is used
+    last_sign_in_at timestamptz,            -- null until the first sign-in
+    encrypted_password text not null default ''   -- empty until a password is set (code-only accounts)
   );
   create function auth.uid() returns uuid language sql stable as $$
     select nullif(coalesce(

@@ -115,3 +115,92 @@ describe("auth.js", () => {
     assert.deepEqual([bad.ok, bad.error], [false, "permission denied for table invites"]);
   });
 });
+
+describe("passwords and 6-digit codes (2026-11-02)", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const X = A as any;
+  type Call = { url: string; method: string; body: Record<string, unknown> | null; auth: string | null };
+  /** A fake Supabase Auth: routes by path; records every call. */
+  function fakeAuth(routes: Record<string, (body: Record<string, unknown>) => [number, unknown]>) {
+    const calls: Call[] = [];
+    const f: Fetch = async (url, init = {}) => {
+      const body = init.body ? JSON.parse(init.body) : null;
+      calls.push({ url, method: init.method || "GET", body, auth: init.headers?.Authorization ?? null });
+      const key = Object.keys(routes).find(k => url.includes("/auth/v1/" + k));
+      const [status, out] = key ? routes[key]!(body || {}) : [404, { msg: "not found" }];
+      return new Response(JSON.stringify(out), { status });
+    };
+    return { f, calls };
+  }
+  const TOKENS = { access_token: JWT, refresh_token: "r1", expires_in: 3600, user: { id: "user-1", email: "manager@example.com" } };
+  const opts = (f: Fetch, storage = memStorage()) => ({ storage, fetchImpl: f, now: NOW });
+
+  test("email + password signs in and keeps the session (refresh token: stays signed in)", async () => {
+    const { f, calls } = fakeAuth({ "token?grant_type=password": b => b.password === "goodpass99" ? [200, TOKENS] : [400, { error_code: "invalid_credentials", msg: "Invalid login credentials" }] });
+    const st = memStorage();
+    const r = await X.signInPassword(CFG, " Manager@Example.com ", "goodpass99", opts(f, st));
+    assert.equal(r.ok, true);
+    assert.deepEqual(calls[0]!.body, { email: "manager@example.com", password: "goodpass99" });
+    const saved = A.getSession(CFG, st) as { refresh_token: string; user: { id: string } };
+    assert.equal(saved.refresh_token, "r1"); assert.equal(saved.user.id, "user-1");
+  });
+
+  test("wrong password: a plain message; 5 wrong in a row lock this email for 5 minutes (the server also rate-limits)", async () => {
+    const { f, calls } = fakeAuth({ "token?grant_type=password": () => [400, { error_code: "invalid_credentials", msg: "Invalid login credentials" }] });
+    const st = memStorage();
+    const r1 = await X.signInPassword(CFG, "a@b.co", "nope1234", opts(f, st));
+    assert.equal(r1.ok, false); assert.match(r1.error, /That password isn't right/);
+    for (let i = 0; i < 4; i++) await X.signInPassword(CFG, "a@b.co", "nope1234", opts(f, st));
+    const locked = await X.signInPassword(CFG, "a@b.co", "right-one", opts(f, st));
+    assert.equal(locked.locked, true); assert.match(locked.error, /Wait 5 minutes/);
+    assert.equal(calls.length, 5, "the 6th try never reaches the server");
+    const later = await X.signInPassword(CFG, "a@b.co", "right-one", { storage: st, fetchImpl: f, now: NOW + 5 * 60 * 1000 + 1 });
+    assert.equal(later.locked, undefined, "after 5 minutes it asks the server again");
+    const rl = await X.signInPassword(CFG, "c@d.co", "x", opts(fakeAuth({ "token?grant_type=password": () => [429, { msg: "Request rate limit reached" }] }).f));
+    assert.match(rl.error, /Too many tries/);
+  });
+
+  test("sign-in code: send, then type it (type email); expired and wrong codes say so", async () => {
+    const { f, calls } = fakeAuth({ otp: () => [200, {}], verify: b => b.token === "123456" ? [200, TOKENS] : b.token === "000000" ? [403, { error_code: "otp_expired", msg: "Token has expired or is invalid" }] : [403, { msg: "Invalid OTP" }] });
+    assert.equal((await X.sendCode(CFG, "M@x.com", f)).ok, true);
+    assert.deepEqual(calls[0]!.body, { email: "m@x.com", create_user: true }, "no redirect link: a code");
+    assert.match((await X.verifyCode(CFG, "m@x.com", "000000", "email", opts(f))).error, /expired or isn't right. Send a new one/);
+    assert.match((await X.verifyCode(CFG, "m@x.com", "12", "email", opts(f))).error, /6-digit code/);
+    const st = memStorage();
+    const ok = await X.verifyCode(CFG, "m@x.com", "123 456", "email", opts(f, st));
+    assert.equal(ok.ok, true);
+    assert.deepEqual(calls.at(-1)!.body, { type: "email", email: "m@x.com", token: "123456" });
+    assert.ok(A.getSession(CFG, st));
+    const blocked = await X.sendCode(CFG, "stranger@x.com", fakeAuth({ otp: () => [403, { msg: "The B5 league is invite-only. Ask the commissioner for an invite." }] }).f);
+    assert.match(blocked.error, /isn't on the league's invite list/, "sign-ups stay blocked by the invite-only hook");
+  });
+
+  test("forgot password: a reset code (recover, verify type recovery), then the new password; no links", async () => {
+    const { f, calls } = fakeAuth({ recover: () => [200, {}], verify: b => b.type === "recovery" && b.token === "654321" ? [200, TOKENS] : [403, { error_code: "otp_expired" }], user: () => [200, { id: "user-1" }] });
+    assert.equal((await X.sendResetCode(CFG, "manager@example.com", f)).ok, true);
+    assert.deepEqual(calls[0]!.body, { email: "manager@example.com" });
+    const v = await X.verifyCode(CFG, "manager@example.com", "654321", "recovery", opts(f));
+    const r = await X.setPassword(CFG, v.session, "brand-new-pass", null, opts(f));
+    assert.equal(r.ok, true);
+    assert.deepEqual([calls.at(-1)!.method, calls.at(-1)!.body, calls.at(-1)!.auth], ["PUT", { password: "brand-new-pass" }, "Bearer " + JWT]);
+  });
+
+  test("set a password from an old session: Supabase asks for a fresh code (reauthenticate), sent as the nonce", async () => {
+    const { f, calls } = fakeAuth({ "user": b => b.nonce === "112233" ? [200, {}] : [400, { error_code: "reauthentication_needed", msg: "Password update requires reauthentication" }], reauthenticate: () => [200, {}] });
+    const sess = { access_token: JWT, user: { email: "manager@example.com" } };
+    const first = await X.setPassword(CFG, sess, "my new password", null, opts(f));
+    assert.equal(first.reauth, true);
+    assert.equal((await X.reauthenticate(CFG, sess, f)).ok, true);
+    assert.equal(calls.at(-1)!.method, "GET");
+    assert.equal((await X.setPassword(CFG, sess, "my new password", "112 233", opts(f))).ok, true);
+    assert.deepEqual(calls.at(-1)!.body, { password: "my new password", nonce: "112233" });
+  });
+
+  test("password rules: at least 8 characters, the most common blocked, nothing else", () => {
+    assert.match(X.passwordProblem("short1", "a@b.co"), /at least 8/);
+    for (const p of ["password", "Password1", "12345678", "qwerty123", "steelers", "iloveyou"]) assert.match(X.passwordProblem(p, "a@b.co"), /most common/, p);
+    assert.match(X.passwordProblem("manager1", "manager1@example.com"), /email name/);
+    assert.match(X.passwordProblem("aaaaaaaa", "a@b.co"), /less guessable/);
+    for (const p of ["blitz on 3rd down", "Bridgeville5!", "terriblytowel"]) assert.equal(X.passwordProblem(p, "a@b.co"), null, p);
+  });
+});

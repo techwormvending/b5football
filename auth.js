@@ -1,11 +1,15 @@
-/* Supabase Auth for the static site: magic-link sign-in, session storage,
+/* Supabase Auth for the static site: email + password, 6-digit email codes, session storage,
    token refresh, sign-out, and authenticated Data API calls. No dependencies.
 
-   Flow: the visitor enters an email -> POST /auth/v1/otp sends a magic link
-   (Supabase custom SMTP via Resend, sender noreply@b5football.win). The link
-   returns to this site with tokens in the URL fragment (#access_token=...).
-   This script runs BEFORE app.js, saves the session and replaces the fragment
-   with a normal route (#myteam, or #account if the link failed), so the hash router never sees the tokens.
+   Sign-in (2026-11-02; links broke in Safari and Apple Mail's in-app browser, so no more links):
+   - Email + password: POST /auth/v1/token?grant_type=password.
+   - "Email me a sign-in code": POST /auth/v1/otp sends a 6-digit code (the email templates show
+     {{ .Token }}, see supabase/templates), typed on the same page: POST /auth/v1/verify (type email).
+   - "Forgot password?": POST /auth/v1/recover emails a code; verify (type recovery) signs in, then
+     PUT /auth/v1/user sets the new password. Setting a password from an old session may need a fresh
+     code (Supabase's "secure password change": GET /auth/v1/reauthenticate emails one, sent as nonce).
+   Sessions use refresh tokens, so a personal device stays signed in. Old magic-link fragments
+   (#access_token=...) are still consumed before app.js routes, for links already in inboxes.
 
    The league is invite-only: Supabase's "Before User Created" hook rejects
    emails that aren't in public.invites (see supabase/migrations).
@@ -150,9 +154,134 @@
       }).catch(function () { return { ok: false, status: 0, data: null, error: "Network error" }; });
   }
 
+  // ---- Passwords and 6-digit codes (2026-11-02) -------------------------------------------------
+  var post = function (cfg, path, body, fetchImpl, session, method) {
+    var h = { apikey: cfg.publishableKey, "Content-Type": "application/json" };
+    if (session) h.Authorization = "Bearer " + session.access_token;
+    return fetchImpl(cfg.url + "/auth/v1/" + path, { method: method || "POST", headers: h, body: body == null ? undefined : JSON.stringify(body) })
+      .then(function (res) { return res.json().catch(function () { return {}; }).then(function (b) { return { status: res.status, ok: res.ok, body: b }; }); },
+            function () { return { status: 0, ok: false, body: { msg: "network" } }; });
+  };
+  /** Plain words for Auth errors. */
+  function authError(r) {
+    var b = r.body || {}, code = String(b.error_code || b.code || ""), msg = String(b.msg || b.message || b.error_description || b.error || "");
+    if (r.status === 0) return "Couldn't reach the sign-in service. Check your connection.";
+    if (r.status === 429 || /rate limit|over_.*_limit|too many/i.test(code + " " + msg)) return "Too many tries. Wait a few minutes, then try again.";
+    if (/invite-only|signups? not allowed|signup_disabled/i.test(code + " " + msg)) return "That email isn't on the league's invite list. Ask the commissioner.";
+    if (/invalid_credentials|invalid login credentials/i.test(code + " " + msg)) return "That password isn't right. Try again, or use \"Email me a sign-in code\".";
+    if (/otp_expired|expired/i.test(code + " " + msg)) return "That code expired or isn't right. Send a new one.";
+    if (/invalid.*(otp|token)|token.*invalid/i.test(code + " " + msg)) return "That code isn't right. Check the email, or send a new one.";
+    if (/same_password|should be different/i.test(code + " " + msg)) return "That's already your password.";
+    if (/weak_password|password should/i.test(code + " " + msg)) return "Pick a longer, less common password (at least 8 characters).";
+    if (/reauthentication/i.test(code + " " + msg)) return "We need a fresh code to change your password.";
+    if (/email_not_confirmed/i.test(code + " " + msg)) return "Use \"Email me a sign-in code\" the first time.";
+    return msg ? "Sign-in problem: " + msg : "Sign-in failed (HTTP " + r.status + "). Try again.";
+  }
+  var normEmail = function (e) { return String(e || "").trim().toLowerCase(); };
+  var validEmail = function (e) { return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e); };
+  /** A session object from an Auth token response. */
+  function sessionFrom(b, now) {
+    var expiresIn = Number(b.expires_in) || 3600;
+    return { access_token: b.access_token, refresh_token: b.refresh_token || "", token_type: b.token_type || "bearer", expires_in: expiresIn,
+      expires_at: Number(b.expires_at) || Math.floor(now / 1000) + expiresIn, user: { id: (b.user && b.user.id) || "", email: (b.user && b.user.email) || "" } };
+  }
+  var signedIn = function (cfg, opts) { return function (r) {
+    if (!r.ok || !r.body.access_token) return { ok: false, error: authError(r), code: r.body && (r.body.error_code || r.body.code) };
+    var sess = sessionFrom(r.body, opts.now);
+    saveSession(cfg, opts.storage, sess);
+    return { ok: true, session: sess };
+  }; };
+
+  // Too many wrong passwords from this browser: a short pause (the server also rate-limits by IP).
+  var LOCK_TRIES = 5, LOCK_MS = 5 * 60 * 1000;
+  var lockKey = function (email) { return "b5-signin-fail:" + normEmail(email); };
+  /** { locked, until, tries } for this email in this browser. */
+  function lockState(storage, email, now) {
+    try {
+      var x = JSON.parse(storage.getItem(lockKey(email)) || "null");
+      if (!x) return { locked: false, tries: 0 };
+      if (x.until && x.until > now) return { locked: true, until: x.until, tries: x.tries };
+      return { locked: false, tries: x.until ? 0 : x.tries };
+    } catch (e) { return { locked: false, tries: 0 }; }
+  }
+  function noteFailure(storage, email, now) {
+    var st = lockState(storage, email, now), tries = st.tries + 1;
+    try { storage.setItem(lockKey(email), JSON.stringify({ tries: tries, until: tries >= LOCK_TRIES ? now + LOCK_MS : null })); } catch (e) { /* storage blocked */ }
+    return tries >= LOCK_TRIES;
+  }
+  function clearFailures(storage, email) { try { storage.removeItem(lockKey(email)); } catch (e) { /* ignore */ } }
+
+  /** Email + password. opts = { storage, fetchImpl, now }. */
+  function signInPassword(cfg, email, password, opts) {
+    var e = normEmail(email);
+    if (!validEmail(e)) return Promise.resolve({ ok: false, error: "Enter a valid email address." });
+    if (!password) return Promise.resolve({ ok: false, error: "Enter your password." });
+    var lock = lockState(opts.storage, e, opts.now);
+    if (lock.locked) return Promise.resolve({ ok: false, locked: true, error: "Too many wrong passwords. Wait " + Math.ceil((lock.until - opts.now) / 60000) + " minutes, or use \"Email me a sign-in code\"." });
+    return post(cfg, "token?grant_type=password", { email: e, password: String(password) }, opts.fetchImpl).then(function (r) {
+      var out = signedIn(cfg, opts)(r);
+      if (out.ok) clearFailures(opts.storage, e);
+      else if (r.status === 400 && noteFailure(opts.storage, e, opts.now)) out.error = "Too many wrong passwords. Wait 5 minutes, or use \"Email me a sign-in code\".";
+      return out;
+    });
+  }
+  /** Email a 6-digit sign-in code (invited emails get an account on the first one: the invite-only hook decides). */
+  function sendCode(cfg, email, fetchImpl) {
+    var e = normEmail(email);
+    if (!validEmail(e)) return Promise.resolve({ ok: false, error: "Enter a valid email address." });
+    return post(cfg, "otp", { email: e, create_user: true }, fetchImpl).then(function (r) { return r.ok ? { ok: true } : { ok: false, error: authError(r) }; });
+  }
+  /** Type the code: type "email" (sign-in / first sign-in of an invitee) or "recovery" (forgot password). */
+  function verifyCode(cfg, email, code, type, opts) {
+    var e = normEmail(email), c = String(code || "").replace(/\D/g, "");
+    if (c.length < 6) return Promise.resolve({ ok: false, error: "Enter the 6-digit code from the email." });
+    return post(cfg, "verify", { type: type || "email", email: e, token: c }, opts.fetchImpl).then(signedIn(cfg, opts));
+  }
+  /** Forgot password: email a reset code. */
+  function sendResetCode(cfg, email, fetchImpl) {
+    var e = normEmail(email);
+    if (!validEmail(e)) return Promise.resolve({ ok: false, error: "Enter a valid email address." });
+    return post(cfg, "recover", { email: e }, fetchImpl).then(function (r) { return r.ok ? { ok: true } : { ok: false, error: authError(r) }; });
+  }
+  // The most common passwords (blocked in addition to the 8-character minimum; no other rules).
+  var COMMON = ("password password1 password12 password123 password1234 passw0rd p@ssw0rd 12345678 123456789 1234567890 11111111 00000000 87654321 " +
+    "12341234 11223344 1q2w3e4r 1qaz2wsx qwertyui qwerty12 qwerty123 qwertyuiop asdfghjk asdfasdf zxcvbnm1 abcd1234 abc12345 abcdefgh " +
+    "iloveyou iloveyou1 sunshine princess football football1 baseball basketball superman batman123 trustno1 letmein1 welcome1 welcome123 " +
+    "monkey12 dragon12 master12 shadow12 starwars whatever freedom1 michael1 jennifer computer internet charlie1 steelers steelers1 " +
+    "pittsburgh 696969 changeme changeme1 admin123 administrator default1 secret12 test1234 testtest guest123 qazwsxedc").split(" ");
+  /** null when the password is fine: at least 8 characters and not one of the most common. */
+  function passwordProblem(pw, email) {
+    var p = String(pw || "");
+    if (p.length < 8) return "Use at least 8 characters.";
+    var low = p.toLowerCase();
+    if (COMMON.indexOf(low) >= 0) return "That's one of the most common passwords. Pick something else.";
+    var local = normEmail(email).split("@")[0];
+    if (local && local.length >= 4 && low === local) return "Don't use your email name as your password.";
+    if (/^(.)\1+$/.test(p)) return "Pick something less guessable.";
+    return null;
+  }
+  /** Set or change the signed-in user's password. nonce = the code from reauthenticate (old sessions). */
+  function setPassword(cfg, session, password, nonce, opts) {
+    var bad = passwordProblem(password, session && session.user && session.user.email);
+    if (bad) return Promise.resolve({ ok: false, error: bad });
+    var body = { password: String(password) };
+    if (nonce) body.nonce = String(nonce).replace(/\D/g, "");
+    return post(cfg, "user", body, opts.fetchImpl, session, "PUT").then(function (r) {
+      if (r.ok) return { ok: true };
+      var code = String((r.body && (r.body.error_code || r.body.code)) || "") + " " + String((r.body && (r.body.msg || r.body.message)) || "");
+      return { ok: false, error: authError(r), reauth: /reauthentication_needed|reauthenticat/i.test(code) };
+    });
+  }
+  /** Email a fresh code to confirm a password change (Supabase "secure password change"). */
+  function reauthenticate(cfg, session, fetchImpl) {
+    return post(cfg, "reauthenticate", null, fetchImpl, session, "GET").then(function (r) { return r.ok ? { ok: true } : { ok: false, error: authError(r) }; });
+  }
+
   root.B5Auth = {
     storageKey: storageKey, getSession: getSession, saveSession: saveSession, clearSession: clearSession,
-    claims: claims, fromFragment: fromFragment, requestLink: requestLink, current: current, signOut: signOut, api: api
+    claims: claims, fromFragment: fromFragment, requestLink: requestLink, current: current, signOut: signOut, api: api,
+    signInPassword: signInPassword, sendCode: sendCode, verifyCode: verifyCode, sendResetCode: sendResetCode, setPassword: setPassword,
+    reauthenticate: reauthenticate, passwordProblem: passwordProblem, authError: authError, lockState: lockState, sessionFrom: sessionFrom
   };
 
   // Browser: consume a magic-link return before app.js routes, both on page load

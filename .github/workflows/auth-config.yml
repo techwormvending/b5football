@@ -1,0 +1,48 @@
+# Supabase Auth settings for the hosted project (2026-11-02): email + password, 6-digit email codes
+# (no links), 10-minute codes, 8-character passwords, password changes from an old session need a
+# fresh code, and the B5 email templates (supabase/templates, bundled into supabase/auth-config.json).
+# Manual only. Shows the current values first; changes them only when "confirm" is "apply".
+# Uses the SUPABASE_ACCESS_TOKEN secret. A 401/403 means that token lacks Auth config write access:
+# the run says so, and the settings can be pasted in the dashboard instead (see CLAUDE.md, "Sign-in").
+name: Apply Auth settings
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "apply" to change the settings (anything else only shows them)'
+        required: false
+        default: "show"
+permissions:
+  contents: read
+jobs:
+  auth:
+    runs-on: ubuntu-latest
+    env:
+      TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      REF: ${{ vars.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Current settings
+        run: |
+          code=$(curl -sS -o current.json -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "https://api.supabase.com/v1/projects/$REF/config/auth")
+          echo "GET config/auth: HTTP $code"
+          if [ "$code" != "200" ]; then cat current.json; echo "::error::Reading the Auth config failed (HTTP $code): the access token needs Auth read access for project $REF."; exit 1; fi
+          jq '{external_email_enabled, disable_signup, mailer_otp_exp, mailer_otp_length, password_min_length, security_update_password_require_reauthentication,
+               rate_limit_verify, rate_limit_token_refresh, rate_limit_email_sent, site_url,
+               magic_link_subject: .mailer_subjects_magic_link, recovery_subject: .mailer_subjects_recovery, confirmation_subject: .mailer_subjects_confirmation,
+               invite_subject: .mailer_subjects_invite, reauth_subject: .mailer_subjects_reauthentication}' current.json
+      - name: Apply
+        if: ${{ inputs.confirm == 'apply' }}
+        run: |
+          code=$(curl -sS -o result.json -w '%{http_code}' -X PATCH -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+            --data @supabase/auth-config.json "https://api.supabase.com/v1/projects/$REF/config/auth")
+          echo "PATCH config/auth: HTTP $code"
+          if [ "$code" = "401" ] || [ "$code" = "403" ]; then
+            cat result.json
+            echo "::error::Not allowed (HTTP $code): the SUPABASE_ACCESS_TOKEN needs Auth config WRITE access for project $REF (it has Project read + Database read/write). Paste the settings in the dashboard instead (CLAUDE.md, Sign-in)."
+            exit 1
+          fi
+          if [ "$code" -ge 300 ]; then cat result.json; exit 1; fi
+          jq '{external_email_enabled, disable_signup, mailer_otp_exp, mailer_otp_length, password_min_length, security_update_password_require_reauthentication, rate_limit_verify, rate_limit_token_refresh,
+               magic_link_subject: .mailer_subjects_magic_link, recovery_subject: .mailer_subjects_recovery}' result.json
+          echo "Templates now show the code: $(jq -r '.mailer_templates_magic_link_content | test("{{ .Token }}")' result.json)"

@@ -2987,3 +2987,19 @@ describe("reactions: any emoji (2026-11-02)", () => {
     await assert.rejects(as(db, user(BOB), tx => tx.query(`insert into public.chat_reactions (message_id, emoji) values ($1, 'x')`, [m])), /check constraint|violates/);
   });
 });
+
+describe("password sign-in (2026-11-02)", () => {
+  test("my_auth: whether you have a password (code-only accounts don't); about you only; signed in only", async () => {
+    assert.deepEqual((await rowsT(db, user(ALICE), `select public.my_auth() as r`))[0]!.r, { has_password: false });
+    await db.exec(`update auth.users set encrypted_password = '$2a$10$abcdefghijklmnopqrstuv' where id = '${ALICE}'`);
+    assert.deepEqual((await rowsT(db, user(ALICE), `select public.my_auth() as r`))[0]!.r, { has_password: true });
+    assert.deepEqual((await rowsT(db, user(BOB), `select public.my_auth() as r`))[0]!.r, { has_password: false }, "Bob only learns about himself");
+    await denied(db, anon, `select public.my_auth()`, /permission denied/);
+  });
+  test("sign-ups stay invite-only for passwords and codes alike: the Before User Created hook refuses an uninvited email", async () => {
+    const r = await db.transaction(async tx => { await tx.exec("set local role supabase_auth_admin");
+      return tx.query<{ r: { error?: { http_code: number; message: string } } }>(`select public.hook_before_user_created('{"user":{"email":"walk-in@example.com","app_metadata":{"provider":"email"}}}'::jsonb) as r`); });
+    assert.equal(r.rows[0]!.r.error!.http_code, 403);
+    assert.match(r.rows[0]!.r.error!.message, /invite-only/);
+  });
+});
