@@ -12,6 +12,7 @@ const read = (f: string) => fs.readFileSync(path.resolve(import.meta.dirname, ".
 const ctx: Record<string, unknown> = {};
 vm.runInNewContext(read("nav.js"), ctx);
 vm.runInNewContext(read("route.js"), ctx);
+vm.runInNewContext(read("announcements.js"), ctx);
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const N = ctx.B5Nav as any;
 const R = ctx.B5Route as { parse(h: string, k: (x: string) => boolean): Record<string, unknown> };
@@ -180,4 +181,27 @@ test("contrast: text and the gold fill meet WCAG AA", () => {
   assert.ok(ratio("#f5f5f2", "#1e1e1e") >= 4.5, "chalk on cards (tabs, tiles)");
   assert.ok(ratio("#b5b5ae", "#151515") >= 4.5, "menu headings");
   assert.ok(ratio("#ffb3a6", "#151515") >= 4.5, "Sign out");
+});
+
+test("home announcements: the pinned one first (above newer ones) until an officer unpins it; the welcome post's links", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const A = ctx.B5Announcements as any;
+  const list = [{ date: "2026-11-05", title: "Newer news" }, { date: "2026-11-01", title: "Welcome to the new B5 site!", pinned: true }, { date: "2026-10-14", title: "Old" }];
+  const titles = (pins?: Record<string, boolean>) => plain(A.order(list, pins)).map((a: { title: string; isPinned: boolean }) => (a.isPinned ? "📌" : "") + a.title);
+  assert.deepEqual(titles(), ["📌Welcome to the new B5 site!", "Newer news", "Old"], "pinned stays first even when newer ones are posted");
+  const key = A.key(list[1]);
+  assert.equal(key, "announcement:2026-11-01:welcome-to-the-new-b5-site-");
+  assert.match(key, /^announcement:[0-9]{4}-[0-9]{2}-[0-9]{2}:[a-z0-9-]{1,60}$/, "fits the database's key check");
+  assert.deepEqual(titles({ [key]: false }), ["Newer news", "Welcome to the new B5 site!", "Old"], "unpinned: back in date order");
+  assert.deepEqual(titles({ [A.key(list[2])]: true }), ["📌Welcome to the new B5 site!", "📌Old", "Newer news"], "an officer can pin another (pinned ones newest first)");
+  // The real announcement: pinned, Commish tag, sign-in link, board link to its thread by key
+  const L = { } as Record<string, unknown>; vm.runInNewContext(read("league-data.js"), { window: L });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const w = (L.LEAGUE as any).announcements[0];
+  assert.deepEqual([w.title, w.tag, w.pinned, w.board], ["Welcome to the new B5 site!", "Commish", true, "site:feedback"]);
+  assert.match(w.body, /<a href="#account">sign in<\/a>/);
+  assert.match(w.body, /<a href="#messages\/board\/key\/site:feedback">Message Board<\/a>/);
+  assert.deepEqual(plain(R.parse("#messages/board/key/site:feedback", known)), { page: "board", week: null, threadKey: "site:feedback" });
+  assert.equal(R.parse("#messages/board/key/<x>", known).page, "home");
+  assert.deepEqual(plain(R.parse("#account", known)), { page: "account", week: null }, "sign in = the account page (the sign-in form when signed out)");
 });

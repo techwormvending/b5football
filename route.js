@@ -4,7 +4,7 @@
    #more (phones). Old links keep working: each returns `redirect` (the new hash), which app.js
    writes in place (history.replaceState):
      #live/7/0005 -> #scores/7/0005; #live/3/0005-0006, #matchup/3/0005-0006 -> #scores/3/0005;
-     #board/12 -> #messages/board/12; #chat/draft/tv -> #messages/chat/draft/tv; #dm/7 -> #messages/private/7;
+     #board/12 -> #messages/board/12 (#messages/board/key/<source key> opens a thread by its key); #chat/draft/tv -> #messages/chat/draft/tv; #dm/7 -> #messages/private/7;
      #standings -> #schedule; #lineups -> #myteam; #pool -> #confidence.
    Unknown -> home. `known(key)` says whether a page exists. */
 (function (root) {
@@ -20,6 +20,8 @@
     var cr = /^messages\/chat\/([a-z0-9][a-z0-9-]{1,29})(\/tv)?$/.exec(key);
     if (cr) return { page: "chat", week: null, room: cr[1], tv: !!cr[2] };
     if (key === "messages/chat") return { page: "chat", week: null };
+    var bk = /^messages\/board\/key\/([a-z0-9][a-z0-9:._-]{0,79})$/.exec(key);   // a thread by its source key
+    if (bk) return { page: "board", week: null, threadKey: bk[1] };
     var bt = /^messages\/board\/(\d+)$/.exec(key);
     if (bt) return { page: "board", week: null, thread: Number(bt[1]) };
     if (key === "messages" || key === "messages/board") return { page: "board", week: null };

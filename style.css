@@ -795,3 +795,9 @@ a.mention.team-link { display: inline; }
 .wk { min-width: 48px; height: 48px; }
 .pl-tabs .wk, .ch-rooms .wk { height: 48px; padding: 0 16px; }
 .weeks { gap: 8px; }
+
+/* Pinned announcement (Home) */
+.post-pinned { border-color: var(--gold); border-width: 2px; }
+.post-pin { margin-left: 8px; }
+.post-pin-btn { margin-left: auto; min-height: 48px; padding: 0 14px; font-size: 15px; cursor: pointer; }
+.post-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }

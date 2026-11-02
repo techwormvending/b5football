@@ -438,7 +438,13 @@
       st.me = me;
       if (st.el !== el) return;
       if (!isMember()) { render(); return; }
-      return loadPeople().then(reload);
+      // #messages/board/key/<source key> (e.g. the pinned feedback thread): find it, then show it at its own address
+      var byKey = r && r.threadKey ? api("board_threads?source_key=eq." + encodeURIComponent(r.threadKey) + "&select=id").then(function (x) {
+        var t = x.ok && x.data && x.data[0];
+        if (st.el !== el) return;
+        if (t) { st.thread = Number(t.id); if (root.history && root.history.replaceState) root.history.replaceState(null, "", "#messages/board/" + t.id); }
+      }) : Promise.resolve();
+      return byKey.then(loadPeople).then(reload);
     });
 
     rootEl.addEventListener("click", function (e) {

@@ -97,6 +97,32 @@
       </div>`;
   }
 
+  // ---- Announcements: pinned first (league-data.js pinned: true, unless an officer unpinned it) ----
+  const annKey = (a) => window.B5Announcements.key(a), announcementOrder = (l, p) => window.B5Announcements.order(l, p);
+  let annPins = {};   // key -> pinned (public.announcement_pins)
+  function loadPins() {
+    const cfg = window.B5_SUPABASE, A = window.B5Auth;
+    if (!(cfg && cfg.configured && A)) return;
+    A.api(cfg, null, "announcement_pins?select=key,pinned", {}, (u, i) => window.fetch(u, i)).then(r => {
+      if (!r.ok) return;
+      const next = {}; (r.data || []).forEach(x => { next[x.key] = x.pinned; });
+      if (JSON.stringify(next) === JSON.stringify(annPins)) return;
+      annPins = next;
+      if (curPage === "home") route();
+    }, () => {});
+  }
+  // An officer's Pin / Unpin on the Home page
+  view.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-ann-pin]");
+    if (!b || curPage !== "home" || !window.B5Account) return;
+    const pin = b.dataset.pin === "1";
+    if (!confirm(pin ? "Pin this announcement to the top of the Home page?" : "Unpin this announcement? It goes back in date order.")) return;
+    b.disabled = true;
+    window.B5Account.load().then(me => window.B5Auth.api(window.B5_SUPABASE, me && me.session, "announcement_pins?on_conflict=key",
+      { method: "POST", body: JSON.stringify({ key: b.dataset.annPin, pinned: pin }), headers: { Prefer: "resolution=merge-duplicates,return=minimal" } }, (u, i) => window.fetch(u, i)))
+      .then(r => { if (!r.ok) { alert("Couldn't change the pin: " + (r.error || "not allowed")); b.disabled = false; return; } annPins[b.dataset.annPin] = pin; route(); });
+  });
+
   const pages = {
     // League > Standings & Schedule: the standings, then the week-by-week schedule
     schedule() { return standingsTable() + pages.scheduleWeeks(); },
@@ -123,9 +149,11 @@
     },
 
     home() {
-      const posts = L.announcements.map(a => `
-        <article class="card">
-          <div class="post-meta"><span class="tag">${esc(a.tag || "News")}</span>${fmtDate(a.date)}</div>
+      const officer = (() => { const v = window.B5Account && window.B5Account.viewer(); return !!(v && v.roles && (v.roles.includes("commissioner") || v.roles.includes("admin"))); })();
+      const posts = announcementOrder(L.announcements, annPins).map(a => `
+        <article class="card${a.isPinned ? " post-pinned" : ""}">
+          <div class="post-meta"><span class="tag">${esc(a.tag || "News")}</span>${fmtDate(a.date)}${a.isPinned ? `<span class="tag post-pin">📌 Pinned</span>` : ""}
+            ${officer ? `<button type="button" class="btn ghost post-pin-btn" data-ann-pin="${esc(annKey(a))}" data-pin="${a.isPinned ? "0" : "1"}">${a.isPinned ? "Unpin" : "Pin to top"}</button>` : ""}</div>
           <h3>${esc(a.title)}</h3>
           <div class="post-body">${a.body}</div>
           ${a.image ? `<img class="post-img" src="${esc(a.image)}" alt="">` : ""}
@@ -443,4 +471,6 @@
     }, () => {});
   }
   loadFromDb();
+  loadPins();
+  if (window.B5Account) window.B5Account.load().then(() => { if (curPage === "home") route(); }, () => {});
 })();

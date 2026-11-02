@@ -81,7 +81,7 @@ describe("every table is protected", () => {
 
 test("no default grants leak: anon only ever has SELECT, and only on public-data tables", async () => {
   const PUBLIC = new Set(["teams", "nfl_players", "nfl_games", "roster_entries", "score_weeks", "player_scores", "matchups", "standings", "announcements",
-    "season_settings", "team_scores", "awards", "guillotine", "survivor_status", "confidence_scores", "score_events", "player_injuries", "league_settings", "draft_picks", "lineup_slots", "test_lineups", "nfl_game_info", "league_defaults"]);
+    "season_settings", "team_scores", "awards", "guillotine", "survivor_status", "confidence_scores", "score_events", "player_injuries", "league_settings", "draft_picks", "lineup_slots", "test_lineups", "nfl_game_info", "league_defaults", "announcement_pins"]);
   const g = (await db.query<{ table_name: string; privilege_type: string }>(`
     select table_name, privilege_type from information_schema.role_table_grants
     where table_schema = 'public' and grantee = 'anon'`)).rows;
@@ -2699,5 +2699,38 @@ describe("admins assign commissioner and treasurer (2026-11-01)", () => {
     assert.deepEqual(await roles(COM2), ["commissioner"], "nothing in the refused call applied");
     await revoke(user(ADMIN), COMMISH, "admin");
     await assert.rejects(revoke(user(ADMIN), ADMIN, "admin"), /at least one administrator/);
+  });
+});
+
+describe("pinned announcements and the feedback thread (2026-11-01)", () => {
+  const KEY = "announcement:2026-11-01:welcome-to-the-new-b5-site-";
+  test("anyone reads pins; only commissioners and admins pin/unpin; who and when set by the database; audited", async () => {
+    await denied(db, user(ALICE), `insert into public.announcement_pins (key, pinned) values ('${KEY}', false)`, /row-level security/);
+    await denied(db, anon, `insert into public.announcement_pins (key, pinned) values ('${KEY}', false)`, /permission denied/);
+    await as(db, user(COMMISH), tx => tx.query(`insert into public.announcement_pins (key, pinned, updated_by) values ('${KEY}', false, '${ALICE}')
+      on conflict (key) do update set pinned = excluded.pinned`));
+    const row = (await rowsT(db, anon, `select key, pinned, updated_by from public.announcement_pins`))[0]!;
+    assert.deepEqual([row.key, row.pinned, row.updated_by], [KEY, false, COMMISH], "a forged updated_by is overwritten");
+    assert.deepEqual((await rowsT(db, service, `select actor, action, details ->> 'key' as k from public.audit_log where action like 'announcements:%'`)).map(x => [x.actor, x.action, x.k]),
+      [[COMMISH, "announcements:unpin", KEY]]);
+    // An administrator (without the commissioner role) can pin too
+    await db.exec(`insert into public.user_roles (user_id, role) values ('${BOB}', 'admin')`);
+    assert.equal(await affected(db, user(BOB), `update public.announcement_pins set pinned = true where key = '${KEY}'`), 1);
+    assert.equal((await rowsT(db, service, `select 1 from public.audit_log where action = 'announcements:pin' and actor = '${BOB}'`)).length, 1);
+    await denied(db, user(COMMISH), `insert into public.announcement_pins (key, pinned) values ('not-a-key', true)`, /check constraint/);
+  });
+
+  test("the feedback thread: created once, pinned, by the commissioner's account, opener post, no member emails, members only", async () => {
+    const id = (await db.query<{ id: string }>(`select private.create_feedback_thread()::text as id`)).rows[0]!.id;
+    assert.ok(Number(id) > 0);
+    assert.equal((await db.query<{ id: string }>(`select private.create_feedback_thread()::text as id`)).rows[0]!.id, id, "idempotent");
+    const t = (await rowsT(db, user(ALICE), `select title, author_id, pinned, source_key, is_bot from public.board_threads where source_key = 'site:feedback'`))[0]!;
+    assert.deepEqual([t.title, t.author_id, t.pinned, t.is_bot], ["Suggestions & feedback for the new site", COMMISH, true, false]);
+    const p = await rowsT(db, user(ALICE), `select body, is_opener from public.board_posts where thread_id = ${id}`);
+    assert.equal(p.length, 1); assert.equal(p[0]!.is_opener, true); assert.match(p[0]!.body, /\[Sign in\]\(#account\)/);
+    const q = await rowsT(db, service, `select kind, ref from public.notify_queue where ref = 'board:${id}' or kind = 'mentions'`);
+    assert.deepEqual(q, [], "not an announcement: cross-post, so no email to every member");
+    await denied(db, anon, `select 1 from public.board_threads`, /permission denied/);
+    await denied(db, user(ALICE), `select private.create_feedback_thread()`, /permission denied/);
   });
 });
