@@ -97,31 +97,85 @@
       </div>`;
   }
 
-  // ---- Announcements: pinned first (league-data.js pinned: true, unless an officer unpinned it) ----
-  const annKey = (a) => window.B5Announcements.key(a), announcementOrder = (l, p) => window.B5Announcements.order(l, p);
-  let annPins = {};   // key -> pinned (public.announcement_pins)
-  function loadPins() {
-    const cfg = window.B5_SUPABASE, A = window.B5Auth;
-    if (!(cfg && cfg.configured && A)) return;
-    A.api(cfg, null, "announcement_pins?select=key,pinned", {}, (u, i) => window.fetch(u, i)).then(r => {
-      if (!r.ok) return;
-      const next = {}; (r.data || []).forEach(x => { next[x.key] = x.pinned; });
-      if (JSON.stringify(next) === JSON.stringify(annPins)) return;
-      annPins = next;
+  // ---- Announcements (public.announcements): author, team and the role posted as; pinned first ----
+  const AN = window.B5Announcements;
+  let anns = null;   // published announcements from the database (null until loaded)
+  const dbApi = (sess, path, init) => window.B5Auth.api(window.B5_SUPABASE, sess, path, init || {}, (u, i) => window.fetch(u, i));
+  const meNow = () => window.B5Account ? window.B5Account.load().catch(() => null) : Promise.resolve(null);
+  function loadAnnouncements() {
+    const cfg = window.B5_SUPABASE;
+    if (!(cfg && cfg.configured && window.B5Auth)) { anns = []; return; }
+    dbApi(null, "announcements?published_at=not.is.null&select=id,title,body_html,image_url,published_at,author_name,author_team,posted_as,pinned,board_thread_id&order=published_at.desc&limit=30").then(r => {
+      anns = r.ok ? r.data || [] : [];
       if (curPage === "home") route();
-    }, () => {});
+    }, () => { anns = []; });
   }
-  // An officer's Pin / Unpin on the Home page
+  const viewerRoles = () => { const v = window.B5Account && window.B5Account.viewer(); return (v && v.roles) || []; };
+  // Officers on Home: Pin / Unpin (commissioner or admin), post a new announcement (any officer)
   view.addEventListener("click", (e) => {
     const b = e.target.closest("[data-ann-pin]");
-    if (!b || curPage !== "home" || !window.B5Account) return;
+    if (!b || curPage !== "home") return;
     const pin = b.dataset.pin === "1";
     if (!confirm(pin ? "Pin this announcement to the top of the Home page?" : "Unpin this announcement? It goes back in date order.")) return;
     b.disabled = true;
-    window.B5Account.load().then(me => window.B5Auth.api(window.B5_SUPABASE, me && me.session, "announcement_pins?on_conflict=key",
-      { method: "POST", body: JSON.stringify({ key: b.dataset.annPin, pinned: pin }), headers: { Prefer: "resolution=merge-duplicates,return=minimal" } }, (u, i) => window.fetch(u, i)))
-      .then(r => { if (!r.ok) { alert("Couldn't change the pin: " + (r.error || "not allowed")); b.disabled = false; return; } annPins[b.dataset.annPin] = pin; route(); });
+    meNow().then(me => dbApi(me && me.session, "announcements?id=eq." + Number(b.dataset.annPin), { method: "PATCH", body: JSON.stringify({ pinned: pin }), headers: { Prefer: "return=minimal" } }))
+      .then(r => { if (!r.ok) { alert("Couldn't change the pin: " + (r.error || "not allowed")); b.disabled = false; return; } loadAnnouncements(); });
   });
+  view.addEventListener("submit", (e) => {
+    const form = e.target.closest("[data-ann-post]");
+    if (!form || curPage !== "home") return;
+    e.preventDefault();
+    const fd = new FormData(form), btn = form.querySelector("button[type=submit]"), msg = form.querySelector(".acct-msg");
+    const said = (t, err) => { msg.textContent = t; msg.className = "acct-msg " + (err ? "err" : "ok"); msg.hidden = false; btn.disabled = false; };
+    btn.disabled = true;
+    const row = { title: String(fd.get("title") || "").trim(), body_html: String(fd.get("body") || "").trim(), posted_as: fd.get("posted_as"),
+      pinned: fd.get("pinned") === "on", published_at: new Date().toISOString() };
+    meNow().then(me => {
+      const sess = me && me.session;
+      return dbApi(sess, "announcements?select=id", { method: "POST", body: JSON.stringify(row), headers: { Prefer: "return=representation" } }).then(r => {
+        if (!r.ok) return said("Couldn't post: " + r.error, true);
+        if (fd.get("board") !== "on") { form.reset(); said("Posted."); return loadAnnouncements(); }
+        // Also on the Message Board: same author and role badge; replies collect there
+        const text = window.B5Board ? window.B5Board.htmlToText(row.body_html) : row.body_html;
+        return dbApi(sess, "rpc/board_new_thread", { method: "POST", body: JSON.stringify({ p_title: row.title, p_body: text || row.title, p_images: [], p_source_key: null }) }).then(t => {
+          if (!t.ok) return said("Posted, but the Message Board thread failed: " + t.error, true);
+          const id = Number(t.data);
+          return Promise.all([
+            dbApi(sess, "board_threads?id=eq." + id, { method: "PATCH", body: JSON.stringify({ posted_as: row.posted_as }), headers: { Prefer: "return=minimal" } }),
+            dbApi(sess, "board_posts?thread_id=eq." + id + "&is_opener=is.true", { method: "PATCH", body: JSON.stringify({ posted_as: row.posted_as }), headers: { Prefer: "return=minimal" } }),
+            dbApi(sess, "announcements?id=eq." + r.data[0].id, { method: "PATCH", body: JSON.stringify({ board_thread_id: id }), headers: { Prefer: "return=minimal" } })
+          ]).then(() => { form.reset(); said("Posted, and on the Message Board."); loadAnnouncements(); });
+        });
+      });
+    });
+  });
+  function postFormHtml() {
+    const roles = AN.postAsChoices(viewerRoles());
+    if (!roles.length) return "";
+    const canPin = roles.includes("admin") || roles.includes("commissioner");
+    return `<details class="card ann-new"><summary>Post an announcement</summary><form class="acct-form" data-ann-post>
+      <label>Title<input name="title" maxlength="120" required></label>
+      <label>Message (HTML: &lt;p&gt;, &lt;b&gt;, &lt;a href&gt;)<textarea name="body" rows="6" required></textarea></label>
+      <label>Post as<select name="posted_as">${roles.map(r => `<option value="${r}">${esc(AN.ROLE_NAMES[r])}</option>`).join("")}</select></label>
+      ${canPin ? `<label class="acct-check"><input type="checkbox" name="pinned"> Pin to the top</label>` : ""}
+      <label class="acct-check"><input type="checkbox" name="board" checked> Also post it on the Message Board (replies collect there)</label>
+      <button class="btn" type="submit">Post</button><p class="acct-msg" hidden></p></form></details>`;
+  }
+  function announcementsHtml() {
+    if (anns === null) return '<p class="muted">Loading…</p>';
+    if (!anns.length) return '<p class="muted">No announcements yet.</p>';
+    const roles = viewerRoles(), canPin = roles.includes("commissioner") || roles.includes("admin");
+    return AN.order(anns).map(a => `
+        <article class="card${a.pinned ? " post-pinned" : ""}">
+          <div class="post-meta"><span class="tag">${esc(AN.tagFor(a.posted_as))}</span>${fmtDate(String(a.published_at).slice(0, 10))}${a.pinned ? `<span class="tag post-pin">📌 Pinned</span>` : ""}
+            ${canPin ? `<button type="button" class="btn ghost post-pin-btn" data-ann-pin="${esc(a.id)}" data-pin="${a.pinned ? "0" : "1"}">${a.pinned ? "Unpin" : "Pin to top"}</button>` : ""}</div>
+          <h3>${esc(a.title)}</h3>
+          <div class="post-author">${AN.bylineHtml(a, T)}</div>
+          <div class="post-body">${seesMoney() ? a.body_html : hideAmounts(a.body_html)}</div>
+          ${a.image_url && /^https:\/\//.test(a.image_url) ? `<img class="post-img" src="${esc(a.image_url)}" alt="">` : ""}
+          ${a.board_thread_id ? `<p class="small"><a href="#messages/board/${esc(a.board_thread_id)}">Discuss on the Message Board</a></p>` : ""}
+        </article>`).join("");
+  }
 
   // ---- Money is for members (2026-11-01) ---------------------------------------------
   const seesMoney = () => !!(window.B5Account && window.B5Account.seesMoney && window.B5Account.seesMoney());
@@ -168,15 +222,7 @@
     },
 
     home() {
-      const officer = (() => { const v = window.B5Account && window.B5Account.viewer(); return !!(v && v.roles && (v.roles.includes("commissioner") || v.roles.includes("admin"))); })();
-      const posts = announcementOrder(L.announcements, annPins).map(a => `
-        <article class="card${a.isPinned ? " post-pinned" : ""}">
-          <div class="post-meta"><span class="tag">${esc(a.tag || "News")}</span>${fmtDate(a.date)}${a.isPinned ? `<span class="tag post-pin">📌 Pinned</span>` : ""}
-            ${officer ? `<button type="button" class="btn ghost post-pin-btn" data-ann-pin="${esc(annKey(a))}" data-pin="${a.isPinned ? "0" : "1"}">${a.isPinned ? "Unpin" : "Pin to top"}</button>` : ""}</div>
-          <h3>${esc(a.title)}</h3>
-          <div class="post-body">${seesMoney() ? a.body : hideAmounts(a.body)}</div>
-          ${a.image ? `<img class="post-img" src="${esc(a.image)}" alt="">` : ""}
-        </article>`).join("");
+      const posts = postFormHtml() + announcementsHtml();
       return `
         <div class="hero">
           <div class="hero-title">
@@ -491,6 +537,6 @@
     }, () => {});
   }
   loadFromDb();
-  loadPins();
+  loadAnnouncements();
   if (window.B5Account) window.B5Account.load().then(() => { if (curPage === "home") route(); }, () => {});
 })();

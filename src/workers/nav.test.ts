@@ -183,25 +183,24 @@ test("contrast: text and the gold fill meet WCAG AA", () => {
   assert.ok(ratio("#ffb3a6", "#151515") >= 4.5, "Sign out");
 });
 
-test("home announcements: the pinned one first (above newer ones) until an officer unpins it; the welcome post's links", () => {
+test("home announcements: pinned first (newest first among them), then newest; Post as = the roles you hold; tag and byline from the role", () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const A = ctx.B5Announcements as any;
-  const list = [{ date: "2026-11-05", title: "Newer news" }, { date: "2026-11-01", title: "Welcome to the new B5 site!", pinned: true }, { date: "2026-10-14", title: "Old" }];
-  const titles = (pins?: Record<string, boolean>) => plain(A.order(list, pins)).map((a: { title: string; isPinned: boolean }) => (a.isPinned ? "📌" : "") + a.title);
-  assert.deepEqual(titles(), ["📌Welcome to the new B5 site!", "Newer news", "Old"], "pinned stays first even when newer ones are posted");
-  const key = A.key(list[1]);
-  assert.equal(key, "announcement:2026-11-01:welcome-to-the-new-b5-site-");
-  assert.match(key, /^announcement:[0-9]{4}-[0-9]{2}-[0-9]{2}:[a-z0-9-]{1,60}$/, "fits the database's key check");
-  assert.deepEqual(titles({ [key]: false }), ["Newer news", "Welcome to the new B5 site!", "Old"], "unpinned: back in date order");
-  assert.deepEqual(titles({ [A.key(list[2])]: true }), ["📌Welcome to the new B5 site!", "📌Old", "Newer news"], "an officer can pin another (pinned ones newest first)");
-  // The real announcement: pinned, Commish tag, sign-in link, board link to its thread by key
-  const L = { } as Record<string, unknown>; vm.runInNewContext(read("league-data.js"), { window: L });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const w = (L.LEAGUE as any).announcements[0];
-  assert.deepEqual([w.title, w.tag, w.pinned, w.board], ["Welcome to the new B5 site!", "Commish", true, "site:feedback"]);
-  assert.match(w.body, /<a href="#account">sign in<\/a>/);
-  assert.match(w.body, /<a href="#messages\/board\/key\/site:feedback">Message Board<\/a>/);
+  const list = [{ title: "Newer", published_at: "2026-11-05" }, { title: "Welcome", published_at: "2026-11-01", pinned: true }, { title: "Old", published_at: "2026-10-14" }];
+  const titles = (l: unknown[]) => plain(A.order(l)).map((a: { title: string }) => a.title);
+  assert.deepEqual(titles(list), ["Welcome", "Newer", "Old"], "the pinned one stays first even when newer ones are posted");
+  assert.deepEqual(titles([...list, { title: "Pinned later", published_at: "2026-11-06", pinned: true }]), ["Pinned later", "Welcome", "Newer", "Old"]);
+  assert.deepEqual(plain(A.postAsChoices(["treasurer", "admin"])), ["admin", "treasurer"], "fixed order; the first is the default");
+  assert.deepEqual(plain(A.postAsChoices([])), []);
+  assert.deepEqual(["admin", "commissioner", "treasurer"].map((r: string) => A.tagFor(r)), ["Admin", "Commish", "Treasurer"]);
+  const T = { has: (id: string) => id === "0011", logo: () => '<img class="tl-logo">', link: () => '<a href="#team/0011">Mac Daddies</a>' };
+  const by = A.bylineHtml({ author_name: "Adam", author_team: "0011", posted_as: "admin" }, T);
+  assert.match(by, /<img class="tl-logo"><span>Adam · <a href="#team\/0011">Mac Daddies<\/a><\/span> <span class="tag role-admin">Admin<\/span>/);
+  assert.match(A.bylineHtml({ author_name: "<b>x</b>", posted_as: "commissioner" }, T), /&lt;b&gt;x&lt;\/b&gt;.*Commissioner/);
+  // The welcome post's links still route
   assert.deepEqual(plain(R.parse("#messages/board/key/site:feedback", known)), { page: "board", week: null, threadKey: "site:feedback" });
   assert.equal(R.parse("#messages/board/key/<x>", known).page, "home");
-  assert.deepEqual(plain(R.parse("#account", known)), { page: "account", week: null }, "sign in = the account page (the sign-in form when signed out)");
+  // Announcements aren't hardcoded in league-data.js any more
+  const L = {} as Record<string, unknown>; vm.runInNewContext(read("league-data.js"), { window: L });
+  assert.deepEqual(plain((L.LEAGUE as { announcements: unknown[] }).announcements), []);
 });

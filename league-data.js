@@ -22,31 +22,8 @@ window.LEAGUE = {
     date: "2026-11-20T23:59:00-05:00"
   },
 
-  /* ---- Announcements (newest first; pinned: true keeps one on top) -----
-     A commissioner or admin can unpin from the Home page (public.announcement_pins overrides
-     the flag). board: the source key of its Message Board thread ("On the board" on Commish). */
-  announcements: [
-    {
-      date: "2026-11-01",
-      title: "Welcome to the new B5 site!",
-      tag: "Commish",
-      pinned: true,
-      board: "site:feedback",
-      body: `<p>This is the new home of the Bridgeville 5. We're testing it this season, and the hope is that it becomes our official league site for 2027.</p>
-             <p><b>First step:</b> if you haven't already, <a href="#account">sign in</a> and get connected to your team.</p>
-             <p>Then tell us what you think. Post your ideas, wishes and anything that doesn't look right on the <a href="#messages/board/key/site:feedback">Message Board</a>. This is <b>our</b> site, built for our league, so if you want it to look or work a certain way, we can make it happen.</p>`,
-      image: ""
-    },
-    {
-      date: "2026-10-14",
-      title: "Welcome to the B5 Fantasy Site",
-      tag: "Commish",
-      body: `<p>This is our home base now. Sign in to see your team on the <a href="#myteam">My Team</a> page. Lineups move here for the 2027 season.
-             Everything else (trash talk, history, rules) lives here too.</p>
-             <p>And yes, GIFs finally work.</p>`,
-      image: "" // optional: direct URL to a .gif/.jpg/.png, shown full-width
-    }
-  ],
+  /* ---- Announcements: in the database (public.announcements; officers post them on Home). ---- */
+  announcements: [],
 
   /* ---- Divisions & teams ---------------------------------------------- */
   divisions: [

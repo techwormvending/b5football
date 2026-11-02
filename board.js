@@ -132,8 +132,14 @@
     });
   }
   /** "Mike · <TeamLink>" (HTML). */
-  var authorHtml = function (uid, team, bot) {
+  var ROLE_NAMES = { admin: "Admin", commissioner: "Commissioner", treasurer: "Treasurer" };
+  /** The role badge a post was made as (Admin / Commissioner / Treasurer), if any. */
+  var roleBadge = function (r) { return ROLE_NAMES[r] ? ' <span class="tag role-' + r + '">' + ROLE_NAMES[r] + "</span>" : ""; };
+  var authorHtml = function (uid, team, bot, postedAs) {
     if (bot) return "B5 Bot";
+    return authorName(uid, team) + roleBadge(postedAs);
+  };
+  var authorName = function (uid, team) {
     var n = st.names[uid], has = team && TL().has(team);
     if (!has) return esc(n || "Former member");
     return n && n !== TL().name(team) ? esc(n) + " · " + TL().link(team, { logo: false }) : TL().link(team, { logo: false });
@@ -149,7 +155,7 @@
 
   function loadList() {
     return Promise.all([
-      api("board_threads?select=id,title,author_id,author_team,is_bot,pinned,locked,created_at,edited_at,last_activity_at,last_author_id,reply_count&order=pinned.desc,last_activity_at.desc&limit=100"),
+      api("board_threads?select=id,title,author_id,author_team,is_bot,posted_as,pinned,locked,created_at,edited_at,last_activity_at,last_author_id,reply_count&order=pinned.desc,last_activity_at.desc&limit=100"),
       api("board_reads?select=thread_id,read_at"),
       api("board_visits", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=minimal" }, body: "{}" }).then(function () { return api("board_visits?select=first_at"); })
     ]).then(function (r) {
@@ -221,7 +227,7 @@
       // The row opens the thread (a cover link); the author's team link sits on top.
       return '<div class="bd-row has-cover' + (unread ? " unread" : "") + (t.pinned ? " pinned" : "") + '"><a class="card-cover" href="#messages/board/' + esc(t.id) + '" aria-label="Open the thread"></a>' + logo(t.author_team, t.is_bot) +
         '<div class="bd-row-main"><b>' + (t.pinned ? "📌 " : "") + (t.locked ? "🔒 " : "") + inline(t.title, ctx) + "</b>" +
-        '<span class="muted small">' + authorHtml(t.author_id, t.author_team, t.is_bot) + " · " + esc(t.reply_count) + (t.reply_count === 1 ? " reply" : " replies") + " · " + esc(ago(t.last_activity_at)) + "</span></div>" +
+        '<span class="muted small">' + authorHtml(t.author_id, t.author_team, t.is_bot, t.posted_as) + " · " + esc(t.reply_count) + (t.reply_count === 1 ? " reply" : " replies") + " · " + esc(ago(t.last_activity_at)) + "</span></div>" +
         (unread ? '<span class="bd-dot" aria-label="New"></span>' : "") + "</div>";
     }).join("");
     return '<section class="bd"><div class="bd-head"><h2>Board</h2><button class="btn" data-bd="new">' + (st.open ? "Cancel" : "New thread") + "</button></div>" +
@@ -245,7 +251,7 @@
     var actions = (mine && !editing ? '<button type="button" class="bd-act" data-bd="edit" data-post="' + esc(p.id) + '">Edit</button>' : "") +
       ((mine && !p.is_opener) || (isCommish() && !p.is_opener) ? '<button type="button" class="bd-act" data-bd="del" data-post="' + esc(p.id) + '">Delete</button>' : "");
     return '<article class="card bd-post' + (p.is_bot ? " bot" : "") + '" id="post-' + esc(p.id) + '">' +
-      '<div class="bd-by">' + logo(p.author_team, p.is_bot) + '<div><b>' + authorHtml(p.author_id, p.author_team, p.is_bot) + '</b><span class="muted small">' + esc(ago(p.created_at)) +
+      '<div class="bd-by">' + logo(p.author_team, p.is_bot) + '<div><b>' + authorHtml(p.author_id, p.author_team, p.is_bot, p.posted_as) + '</b><span class="muted small">' + esc(ago(p.created_at)) +
       (p.edited_at ? " · edited" : "") + "</span></div></div>" + body +
       '<div class="bd-foot"><div class="bd-reacts">' + bar + '</div><div class="bd-acts">' + actions + "</div></div></article>";
   }

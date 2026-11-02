@@ -81,7 +81,7 @@ describe("every table is protected", () => {
 
 test("no default grants leak: anon only ever has SELECT, and only on public-data tables", async () => {
   const PUBLIC = new Set(["teams", "nfl_players", "nfl_games", "roster_entries", "score_weeks", "player_scores", "matchups", "standings", "announcements",
-    "season_settings", "team_scores", "awards", "guillotine", "survivor_status", "confidence_scores", "score_events", "player_injuries", "league_settings", "draft_picks", "lineup_slots", "test_lineups", "nfl_game_info", "league_defaults", "announcement_pins"]);
+    "season_settings", "team_scores", "awards", "guillotine", "survivor_status", "confidence_scores", "score_events", "player_injuries", "league_settings", "draft_picks", "lineup_slots", "test_lineups", "nfl_game_info", "league_defaults"]);
   const g = (await db.query<{ table_name: string; privilege_type: string }>(`
     select table_name, privilege_type from information_schema.role_table_grants
     where table_schema = 'public' and grantee = 'anon'`)).rows;
@@ -2719,22 +2719,47 @@ describe("admins assign commissioner and treasurer (2026-11-01)", () => {
   });
 });
 
-describe("pinned announcements and the feedback thread (2026-11-01)", () => {
-  const KEY = "announcement:2026-11-01:welcome-to-the-new-b5-site-";
-  test("anyone reads pins; only commissioners and admins pin/unpin; who and when set by the database; audited", async () => {
-    await denied(db, user(ALICE), `insert into public.announcement_pins (key, pinned) values ('${KEY}', false)`, /row-level security/);
-    await denied(db, anon, `insert into public.announcement_pins (key, pinned) values ('${KEY}', false)`, /permission denied/);
-    await as(db, user(COMMISH), tx => tx.query(`insert into public.announcement_pins (key, pinned, updated_by) values ('${KEY}', false, '${ALICE}')
-      on conflict (key) do update set pinned = excluded.pinned`));
-    const row = (await rowsT(db, anon, `select key, pinned, updated_by from public.announcement_pins`))[0]!;
-    assert.deepEqual([row.key, row.pinned, row.updated_by], [KEY, false, COMMISH], "a forged updated_by is overwritten");
-    assert.deepEqual((await rowsT(db, service, `select actor, action, details ->> 'key' as k from public.audit_log where action like 'announcements:%'`)).map(x => [x.actor, x.action, x.k]),
-      [[COMMISH, "announcements:unpin", KEY]]);
-    // An administrator (without the commissioner role) can pin too
-    await db.exec(`insert into public.user_roles (user_id, role) values ('${BOB}', 'admin')`);
-    assert.equal(await affected(db, user(BOB), `update public.announcement_pins set pinned = true where key = '${KEY}'`), 1);
-    assert.equal((await rowsT(db, service, `select 1 from public.audit_log where action = 'announcements:pin' and actor = '${BOB}'`)).length, 1);
-    await denied(db, user(COMMISH), `insert into public.announcement_pins (key, pinned) values ('not-a-key', true)`, /check constraint/);
+describe("announcements: author, posted-as role, pins; the feedback thread (2026-11-01)", () => {
+  const post = (u: string, as_: string | null, extra = "") => as(db, user(u), tx => tx.query(
+    `insert into public.announcements (title, body_html, posted_as, published_at${extra ? ", pinned" : ""}) values ('Hi', '<p>x</p>', ${as_ ? `'${as_}'` : "null"}, now()${extra ? ", " + extra : ""})`));
+  test("an officer posts as a role he holds; author, name, team and tag set by the database; signed-out visitors see the byline", async () => {
+    await db.exec(`insert into public.team_managers values ('0011', '${COMMISH}') on conflict do nothing; update public.profiles set display_name = 'Adam' where id = '${COMMISH}'`).catch(async () => {
+      await db.exec(`update public.profiles set display_name = 'Adam' where id = '${COMMISH}'`);
+    });
+    await post(COMMISH, "admin");
+    const r = (await rowsT(db, anon, `select author_id, author_name, posted_as, tag from public.announcements where title = 'Hi'`))[0]!;
+    assert.deepEqual([r.author_id, r.author_name, r.posted_as, r.tag], [COMMISH, "Adam", "admin", "Admin"], "the tag comes from the role, never typed");
+    // A forged author is overwritten; posting as a role you don't hold is refused; a manager can't post
+    await as(db, user(COMMISH), tx => tx.query(`insert into public.announcements (title, body_html, posted_as, author_id, tag, published_at) values ('Forged', 'x', 'commissioner', '${ALICE}', 'Admin', now())`));
+    const f = (await rowsT(db, anon, `select author_id, tag from public.announcements where title = 'Forged'`))[0]!;
+    assert.deepEqual([f.author_id, f.tag], [COMMISH, "Commish"]);
+    await assert.rejects(post(COMMISH, "treasurer"), /role you hold/);
+    await assert.rejects(post(COMMISH, null), /role you hold/);
+    await assert.rejects(post(ALICE, "admin"), /row-level security|role you hold/);
+    await denied(db, anon, `insert into public.announcements (title, posted_as) values ('x', 'admin')`, /permission denied/);
+    // A treasurer posts as Treasurer
+    await db.exec(`insert into public.user_roles (user_id, role) values ('${BOB}', 'treasurer')`);
+    await post(BOB, "treasurer");
+    assert.equal((await rowsT(db, anon, `select tag, author_team from public.announcements where author_id = '${BOB}'`))[0]!.tag, "Treasurer");
+    // Audited
+    assert.ok((await rowsT(db, service, `select 1 from public.audit_log where action = 'announcements:insert'`)).length >= 3);
+  });
+
+  test("pins: commissioners and admins only (a treasurer author can't pin); the author can't be changed", async () => {
+    await db.exec(`insert into public.user_roles (user_id, role) values ('${BOB}', 'treasurer')`);
+    await post(BOB, "treasurer");
+    await assert.rejects(as(db, user(BOB), tx => tx.query(`update public.announcements set pinned = true`)), /Only a commissioner or an administrator pins/);
+    assert.equal(await affected(db, user(COMMISH), `update public.announcements set pinned = true where author_id = '${BOB}'`), 1);
+    assert.equal((await rowsT(db, service, `select 1 from public.audit_log where action = 'announcements:update:pin'`)).length, 1);
+    await assert.rejects(as(db, user(COMMISH), tx => tx.query(`update public.announcements set author_id = '${COMMISH}'`)), /author can't be changed/);
+    assert.equal(await affected(db, user(ALICE), `update public.announcements set title = 'x'`), 0, "a manager can't edit");
+  });
+
+  test("board posts carry a role badge only for a role the author holds", async () => {
+    const id = (await rowsT(db, user(COMMISH), `select public.board_new_thread('T', 'body', '[]'::jsonb, null) as id`))[0]!.id;
+    assert.equal(await affected(db, user(COMMISH), `update public.board_threads set posted_as = 'admin' where id = ${id}`), 1);
+    await assert.rejects(as(db, user(COMMISH), tx => tx.query(`update public.board_posts set posted_as = 'treasurer' where thread_id = ${id}`)), /role you hold/);
+    await assert.rejects(as(db, user(ALICE), tx => tx.query(`insert into public.board_threads (title, posted_as) values ('x', 'admin')`)), /role you hold|row-level/);
   });
 
   test("the feedback thread: created once, pinned, by the commissioner's account, opener post, no member emails, members only", async () => {
