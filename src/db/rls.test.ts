@@ -3003,3 +3003,48 @@ describe("password sign-in (2026-11-02)", () => {
     assert.match(r.rows[0]!.r.error!.message, /invite-only/);
   });
 });
+
+describe("draft isolation and scoped updates (2026-11-02)", () => {
+  beforeEach(async () => {
+    await db.exec(`insert into public.teams (id, name, division) values ('0003', 'Third', 'Gold');
+      insert into public.nfl_players (id, name, position, nfl_team) select 'P' || lpad(g::text, 2, '0'), 'Player ' || lpad(g::text, 2, '0'), 'WR', 'DET' from generate_series(1, 12) g;`);
+  });
+  const call = (who: Who, sql: string) => rowsT(db, who, sql).then(r => r[0]);
+  const snapshot = (id: number) => db.query<Record<string, unknown>>(`select status, current_overall, clock_ends_at::text as c, paused_remaining, updated_at::text as u from public.drafts where id = ${id}`).then(r => r.rows[0]);
+  test("starting a practice draft leaves the real draft, its picks, rosters and the chat header alone", async () => {
+    const real = Number((await call(user(COMMISH), `select public.draft_create(2027, 'real', '2027 Draft', '{"rounds": 2}'::jsonb) as id`))!.id);
+    await call(user(COMMISH), `select public.draft_set_order(${real}, 1, array['0001','0002','0003'])`);
+    await call(user(COMMISH), `select public.draft_control(${real}, 'start')`);
+    await call(user(ALICE), `select public.draft_pick(${real}, 'P01')`);
+    const before = await snapshot(real);
+    const picksBefore = (await rowsT(db, service, `select * from public.draft_selections where draft_id = ${real}`)).length;
+    assert.equal((await db.query<{ d: string }>(`select draft_id::text as d from public.draft_state`)).rows[0]!.d, String(real), "the real draft holds the header");
+
+    const mock = Number((await call(user(COMMISH), `select public.draft_create(${S}, 'mock', 'Practice', '{"rounds": 1}'::jsonb) as id`))!.id);
+    await call(user(COMMISH), `select public.draft_set_order(${mock}, 1, array['0003','0002','0001'])`);
+    await call(user(COMMISH), `select public.draft_control(${mock}, 'start')`);
+    await call(user(COMMISH), `select public.draft_control(${mock}, 'pause')`);
+    await call(user(COMMISH), `select public.draft_control(${mock}, 'resume')`);
+    await call(user(COMMISH), `select public.draft_control(${mock}, 'extend', 30)`);
+    assert.equal((await db.query<{ status: string }>(`select status from public.drafts where id = ${mock}`)).rows[0]!.status, "live");
+    assert.deepEqual(await snapshot(real), before, "the real draft didn't change");
+    assert.equal((await rowsT(db, service, `select * from public.draft_selections where draft_id = ${real}`)).length, picksBefore);
+    const h = (await db.query<{ d: string; t: string }>(`select draft_id::text as d, team_id as t from public.draft_state`)).rows[0]!;
+    assert.equal(h.d, String(real), "a practice draft doesn't take the header from the running real draft");
+    assert.equal((await rowsT(db, service, `select 1 from public.roster_entries where player_id like 'P%'`)).length, 0);
+    await assert.rejects(call(user(COMMISH), `select public.draft_control(${mock}, 'start')`), /already started/, "can't start twice");
+    // With no real draft running, the practice draft drives the header
+    await call(user(COMMISH), `select public.draft_control(${real}, 'pause')`);
+    await db.exec(`update public.drafts set status = 'setup' where id = ${real}`);
+    await call(user(COMMISH), `select public.draft_control(${mock}, 'extend', 10)`);
+    assert.equal((await db.query<{ d: string }>(`select draft_id::text as d from public.draft_state`)).rows[0]!.d, String(mock));
+  });
+  test("page errors are logged for administrators (rate-limited), never shown raw", async () => {
+    await call(user(ALICE), `select public.log_client_error('draft:start', 'UPDATE requires a WHERE clause')`);
+    const r = await rowsT(db, service, `select actor, details from public.audit_log where action = 'client_error'`);
+    assert.deepEqual([r[0]!.actor, r[0]!.details.where, r[0]!.details.message], [ALICE, "draft:start", "UPDATE requires a WHERE clause"]);
+    for (let i = 0; i < 15; i++) await call(user(ALICE), `select public.log_client_error('x', 'y')`);
+    assert.equal((await rowsT(db, service, `select 1 from public.audit_log where action = 'client_error'`)).length, 10, "at most 10 a minute per person");
+    await denied(db, anon, `select public.log_client_error('x', 'y')`, /permission denied/);
+  });
+});

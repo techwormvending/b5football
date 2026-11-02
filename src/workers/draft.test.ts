@@ -115,3 +115,11 @@ test("routes: #draft, #draft/<id>, #draft/<id>/tv", () => {
   assert.deepEqual(plain(R.parse("#draft/7/tv", known)), { page: "draft", week: null, draft: 7, tv: true });
   assert.equal(R.parse("#draft/x", known).page, "home");
 });
+
+test("draft errors: the draft's own refusals are shown as written; database wording gets a plain message (logged for admins)", () => {
+  assert.equal(P.technical("That pick was already made (Round 1, Pick 3)"), false);
+  assert.equal(P.technical("Set every odd round's order first (round 3 is missing)"), false);
+  assert.equal(P.technical("UPDATE requires a WHERE clause"), true);
+  assert.equal(P.technical("permission denied for table drafts"), true);
+  assert.equal(P.technical('relation "public.draft_state" does not exist'), true);
+});

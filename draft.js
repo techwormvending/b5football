@@ -19,12 +19,32 @@
     queue: [], byes: {}, tab: "players", q: "", pos: "", showDrafted: false, offset: 0, ticked: {}, sub: null, timer: null, msg: null, shown: 150, anim: null, seenOrders: {}, loading: false };
   var session = function () { return st.me && st.me.session; };
   var api = function (path, init) { return A.api(cfg, session(), path, init || {}, f); };
-  var rpc = function (name, args) { return api("rpc/" + name, { method: "POST", body: JSON.stringify(args || {}) }); };
+  // Each call remembers what it was ("draft_control:start"), for the error message if it fails
+  var rpc = function (name, args) {
+    var what = name + (args && args.p_action ? ":" + args.p_action : "");
+    return api("rpc/" + name, { method: "POST", body: JSON.stringify(args || {}) }).then(function (r) { if (r) r.what = what; return r; });
+  };
   var ok = function (r) { return r && r.ok ? r.data || [] : []; };
   var isCommish = function () { return !!(st.me && st.me.profile && st.me.profile.is_commissioner); };
   var myTeam = function () { return st.me && st.me.teams && st.me.teams[0] ? st.me.teams[0].team_id : null; };
   var isMember = function () { return !!(st.me && (myTeam() || isCommish())); };
   var friendly = function (e) { return String(e || "").replace(/^.*?: /, ""); };
+  // The draft's own refusals are written for people ("That pick was already made"); database or
+  // network wording isn't: those get a plain message and are logged for administrators.
+  var FRIENDLY = { "draft_control:start": "Couldn't start the draft.", "draft_control:pause": "Couldn't pause the draft.", "draft_control:resume": "Couldn't resume the draft.",
+    "draft_control:extend": "Couldn't add time.", "draft_control:complete": "Couldn't finish the draft.", draft_undo: "Couldn't undo the pick.", draft_set_order: "Couldn't set the round's order.",
+    draft_pick: "Couldn't make the pick.", draft_edit_pick: "Couldn't change the pick.", draft_create: "Couldn't create the draft.", draft_settings: "Couldn't save the settings.",
+    draft_delete: "Couldn't delete the draft.", draft_rankings_upload: "Couldn't upload the rankings." };
+  function technical(msg) {
+    return /WHERE clause|permission denied for|does not exist|syntax error|violates .*constraint|null value|invalid input|relation "|column "|function |could not|unexpected|internal|HTTP [45]\d\d|Network error|JWT|schema cache|operator/i.test(String(msg || ""));
+  }
+  /** The message to show for a failed draft action (and log the technical ones). */
+  function errorText(r) {
+    if (!technical(r.error)) return friendly(r.error);
+    rpcLog(r.what, r.error);
+    return (FRIENDLY[r.what] || "That didn't work.") + " Try again or contact the admin.";
+  }
+  function rpcLog(what, msg) { api("rpc/log_client_error", { method: "POST", body: JSON.stringify({ p_where: "draft:" + (what || "?"), p_message: String(msg || "").slice(0, 500) }) }); }
 
   // ---- Pure helpers (tested in src/workers/draft.test.ts) ------------------------------------------
   /** The room's view of the draft: total, the board slots, who's on the clock, the next two. */
@@ -341,7 +361,7 @@
   // ---- Actions --------------------------------------------------------------------------------
   function act(p, okMsg) {
     return p.then(function (r) {
-      st.msg = r && r.ok === false ? { err: friendly(r.error) } : okMsg ? { ok: okMsg } : null;
+      st.msg = r && r.ok === false ? { err: errorText(r) } : okMsg ? { ok: okMsg } : null;
       return st.id ? loadDraft().then(render) : startLobby();
     });
   }
@@ -490,5 +510,5 @@
     });
   }
 
-  root.B5Draft = { start: start, stop: stop, view: view, poolRows: poolRows, myPicks: myPicks, byeWeeks: byeWeeks, pickedByText: pickedByText };
+  root.B5Draft = { start: start, stop: stop, technical: technical, errorText: errorText, view: view, poolRows: poolRows, myPicks: myPicks, byeWeeks: byeWeeks, pickedByText: pickedByText };
 })(typeof globalThis !== "undefined" ? globalThis : this);

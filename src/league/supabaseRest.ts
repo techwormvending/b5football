@@ -29,6 +29,7 @@ export async function selectAll<T>(cfg: SbConfig, table: string, query: string, 
 
 /** Delete rows matching a PostgREST filter; returns how many went. */
 export async function deleteWhere(cfg: SbConfig, table: string, filter: string, fetchImpl: typeof fetch = fetch): Promise<number> {
+  if (!filter.trim()) throw new Error(`${table} delete needs a filter`);   // never a whole table (pg-safeupdate refuses it anyway)
   const res = await fetchImpl(`${sbBase(cfg)}${table}?${filter}`, { method: "DELETE", headers: sbHeaders(cfg, { Prefer: "return=representation" }) });
   await check(res, `${table} delete`);
   return (await res.json() as unknown[]).length;
@@ -36,6 +37,7 @@ export async function deleteWhere(cfg: SbConfig, table: string, filter: string, 
 
 /** PATCH rows matching a filter. */
 export async function updateWhere(cfg: SbConfig, table: string, filter: string, body: object, fetchImpl: typeof fetch = fetch): Promise<void> {
+  if (!filter.trim()) throw new Error(`${table} update needs a filter`);
   const res = await fetchImpl(`${sbBase(cfg)}${table}?${filter}`, { method: "PATCH", headers: sbHeaders(cfg, { Prefer: "return=minimal" }), body: JSON.stringify(body) });
   await check(res, `${table} update`);
 }
