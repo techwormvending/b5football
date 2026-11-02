@@ -40,6 +40,29 @@
     if (g.status === "in_progress" || (g.kickoff && Date.parse(g.kickoff) <= now)) return "live";
     return "pre";
   }
+  /** The NFL strip's order: LIVE games first (halftime and delays included; red-zone drives first,
+      then by kickoff), then UPCOMING (soonest kickoff first), then FINAL (most recently finished first,
+      by kickoff since games don't record when they ended; the oldest go to the very end). Past weeks
+      (all final) and future weeks (all upcoming) follow the same rule. Returns a sorted copy. */
+  function stripOrder(games, now) {
+    var rank = { live: 0, pre: 1, final: 2 };
+    var k = function (g) { return g.kickoff ? Date.parse(g.kickoff) : Infinity; };
+    return (games || []).map(function (g, i) { return { g: g, s: gameState(g, now), i: i }; }).sort(function (x, y) {
+      var r = rank[x.s] - rank[y.s];
+      if (r) return r;
+      if (x.s === "live") { var rz = (y.g.red_zone && y.g.possession ? 1 : 0) - (x.g.red_zone && x.g.possession ? 1 : 0); if (rz) return rz; }
+      var t = x.s === "final" ? k(y.g) - k(x.g) : k(x.g) - k(y.g);
+      if (t) return t;
+      return String(x.g.game_key || "").localeCompare(String(y.g.game_key || "")) || x.i - y.i;
+    }).map(function (x) { return x.g; });
+  }
+  /** After a re-sort: snap the strip back to its start "now", "later" (the viewer is scrolling it:
+      finger down, or scrolled within the last 1.5 s) or "no" (the order didn't change). */
+  function snapDecision(changed, user, now) {
+    if (!changed && !(user && user.pending)) return "no";
+    if (user && (user.down || now - (user.last || 0) < 1500)) return "later";
+    return "now";
+  }
   /** The game a team plays this week, by NFL team code. */
   function gameFor(games, nfl) {
     for (var i = 0; i < games.length; i++) if (nfl && (games[i].home === nfl || games[i].away === nfl)) return games[i];
@@ -309,19 +332,81 @@
       (st.err ? '<span class="lv-delayed">' + esc(st.err) + "</span>" : "");
   }
   function nflStrip(d) {
+    var inner = nflStripInner(d);
+    return inner ? '<div class="lv-strip" aria-label="NFL games">' + inner + "</div>" : "";
+  }
+  function nflStripInner(d) {
     if (!d.games.length) return "";
     var now = Date.now();
-    return '<div class="lv-strip" aria-label="NFL games">' + d.games.map(function (g) {
+    return stripOrder(d.games, now).map(function (g) {
       var s = gameState(g, now), sc = s !== "pre" && g.home_score != null;
       var side = function (t, x) {
         var b = s === "live" && g.possession === t ? { rz: !!g.red_zone } : null;
         return '<span class="lv-g-team' + (b ? (b.rz ? " lv-rz" : " lv-ball") : "") + '"><span>' + (b ? '<span class="lv-fb" aria-label="' + (b.rz ? "Red zone" : "Has the ball") + '">🏈</span> ' : "") +
           esc(t) + (b && b.rz ? ' <span class="lv-rztag">RZ</span>' : "") + "</span>" + (sc ? "<b>" + esc(x) + "</b>" : "") + "</span>";
       };
-      return '<div class="lv-g lv-' + s + '">' + side(g.away, g.away_score) + side(g.home, g.home_score) +
+      return '<div class="lv-g lv-' + s + '" data-g="' + esc(g.game_key) + '">' + side(g.away, g.away_score) + side(g.home, g.home_score) +
         '<span class="lv-g-st">' + esc(s === "final" ? "Final" : s === "live" ? (g.status_detail || "Live") : fmtKick(g.kickoff)) + "</span>" +
         (s === "live" && g.possession && g.down_distance ? '<span class="lv-g-dd' + (g.red_zone ? " lv-rz" : " lv-ball") + '">' + esc(g.down_distance) + "</span>" : "") + "</div>";
-    }).join("") + "</div>";
+    }).join("");
+  }
+  // The strip keeps one element per week (so its scroll listeners stay); a refresh re-fills it, and
+  // when the order changed the cards slide to their new spots (FLIP) and the strip snaps back to the
+  // front, unless the viewer is scrolling it, in which case it snaps once he stops.
+  var su = { down: false, last: 0, pending: false, prog: 0, timer: null };
+  function stripEl(box) {
+    var el = box.firstChild;
+    if (el && el.classList && el.classList.contains("lv-strip")) return el;
+    box.innerHTML = '<div class="lv-strip" aria-label="NFL games"></div>';
+    el = box.firstChild;
+    var touch = function () { su.last = Date.now(); };
+    el.addEventListener("scroll", function () { if (Date.now() - su.prog > 400) touch(); }, { passive: true });
+    el.addEventListener("pointerdown", function () { su.down = true; touch(); });
+    ["pointerup", "pointercancel", "pointerleave"].forEach(function (t) { el.addEventListener(t, function () { if (su.down) { su.down = false; touch(); } }); });
+    el.addEventListener("touchstart", function () { su.down = true; touch(); }, { passive: true });
+    el.addEventListener("touchend", function () { su.down = false; touch(); }, { passive: true });
+    return el;
+  }
+  function snapStrip(el) {
+    su.pending = false; su.prog = Date.now();
+    el.scrollLeft = 0;
+  }
+  function waitToSnap(el) {
+    if (su.timer) return;
+    su.timer = setInterval(function () {
+      if (!el.isConnected) { clearInterval(su.timer); su.timer = null; su.pending = false; return; }
+      var dec = snapDecision(false, su, Date.now());
+      if (dec === "later") return;
+      clearInterval(su.timer); su.timer = null;
+      if (dec === "now") { su.prog = Date.now(); if (el.scrollTo) el.scrollTo({ left: 0, behavior: "smooth" }); else el.scrollLeft = 0; su.pending = false; }
+    }, 300);
+  }
+  function fillStrip(box, d) {
+    var inner = nflStripInner(d);
+    if (!inner) { box.innerHTML = ""; return; }
+    var el = stripEl(box);
+    var before = {}, order = [];
+    Array.prototype.forEach.call(el.children, function (c) { before[c.dataset.g] = c.getBoundingClientRect().left; order.push(c.dataset.g); });
+    var sx = el.scrollLeft;
+    el.innerHTML = inner;
+    var after = Array.prototype.map.call(el.children, function (c) { return c.dataset.g; });
+    var changed = order.length > 0 && order.join() !== after.join();
+    var dec = snapDecision(changed, su, Date.now());
+    if (dec === "now") snapStrip(el);
+    else { el.scrollLeft = sx; if (dec === "later") { su.pending = true; waitToSnap(el); } }
+    if (!changed) return;
+    var still = root.matchMedia && root.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (still) return;
+    Array.prototype.forEach.call(el.children, function (c) {
+      var x = before[c.dataset.g];
+      if (x == null) return;
+      var dx = x - c.getBoundingClientRect().left;
+      if (Math.abs(dx) < 1) return;
+      c.style.transition = "none"; c.style.transform = "translateX(" + dx + "px)";
+      void c.offsetWidth;
+      c.style.transition = "transform .35s ease"; c.style.transform = "";
+      c.addEventListener("transitionend", function () { c.style.transition = ""; }, { once: true });
+    });
   }
   var teamSlots = function (d, team) { return d.slots.filter(function (s) { return s.team_id === team; }); };
   /** "⚠ 2 starters on bye · 1 out · 1 doubtful" (red) and "2 questionable" (gold), or nothing. */
@@ -438,9 +523,7 @@
     var y = root.scrollY, d = st.d;
     part("fresh").innerHTML = freshHtml(d);
     part("src").innerHTML = srcHtml(d);
-    var sx = part("strip").firstChild ? part("strip").firstChild.scrollLeft : 0;
-    part("strip").innerHTML = nflStrip(d);
-    if (part("strip").firstChild) part("strip").firstChild.scrollLeft = sx;
+    fillStrip(part("strip"), d);
     part("cards").innerHTML = cardsHtml(d);
     part("detail").innerHTML = detailHtml(d, selected(), st.dd);
     if (root.scrollTo && st.rendered) root.scrollTo(0, y);
@@ -551,7 +634,7 @@
   }
 
   root.B5Live = { start: start, stop: stop, gameState: gameState, playerGame: playerGame, progress: progress, progressText: progressText, cardStatus: cardStatus,
-    staleness: staleness, ago: ago, lineupView: lineupView, withTestLineups: withTestLineups, teamTotal: teamTotal, teamScore: teamScore, totalMismatches: totalMismatches, detailScores: detailScores, ballFor: ballFor, nflStripHtml: function (d) { return nflStrip(d); }, feed: feed, lineSum: lineSum,
+    staleness: staleness, ago: ago, lineupView: lineupView, withTestLineups: withTestLineups, teamTotal: teamTotal, teamScore: teamScore, totalMismatches: totalMismatches, detailScores: detailScores, ballFor: ballFor, nflStripHtml: function (d) { return nflStrip(d); }, stripOrder: stripOrder, snapDecision: snapDecision, feed: feed, lineSum: lineSum,
     weekChipsHtml: function (w) { st.week = w; return weekChips(); }, pickMatchup: pickMatchup,
     cardsHtml: function (d, team, mine) { st.d = d; st.sel = team || null; st.me = mine ? { teams: mine.map(function (t) { return { team_id: t }; }) } : null; return cardsHtml(d); } };
 })(typeof globalThis !== "undefined" ? globalThis : this);

@@ -255,3 +255,56 @@ test("cards and the matchup header use ONE total from ONE set of live points; a 
   assert.deepEqual(drift, [{ team: "0001", card: 10, detail: 12 }, { team: "0002", card: 10, detail: 0 }], "logged and re-synced by the page");
   assert.equal(V.teamTotal([{ player_id: "x" }, { player_id: null }, { player_id: "y" }], { x: { points: 1.25 }, y: { points: "2.5" } }), 3.75, "empty and unscored slots count 0");
 });
+
+test("NFL strip order: live (red zone first, then kickoff), upcoming (soonest first), final (most recent first)", () => {
+  const now = Date.parse("2026-11-01T19:00:00Z");   // Sunday 3 PM ET
+  const wk = [
+    g("NYJ@NE", "2026-10-30T00:15:00Z", "final"),                                       // Thursday final (oldest)
+    g("DEN@LAC", "2026-11-01T21:05:00Z"),                                               // 4:05 upcoming
+    g("CLE@PIT", "2026-11-01T17:00:00Z", "in_progress", { status_detail: "Halftime" }), // halftime = live
+    g("ATL@NO", "2026-11-01T17:00:00Z", "final"),                                       // early final (most recent)
+    g("SF@SEA", "2026-11-02T01:20:00Z"),                                                // Sunday night
+    g("IND@JAX", "2026-11-01T17:00:00Z", "in_progress", { possession: "IND", red_zone: true, down_distance: "2nd & Goal at JAX 4" }),
+    g("LAR@ARI", "2026-11-01T17:00:00Z"),                                               // kicked off, not marked yet (delay) = live
+    g("BAL@LON", "2026-11-01T13:30:00Z", "in_progress", { status_detail: "Delayed" }),  // London, weather delay
+    g("DAL@PHI", "2026-11-01T20:25:00Z")];
+  const keys = (x: unknown[]) => (x as { game_key: string }[]).map(y => y.game_key);
+  assert.deepEqual(keys(V.stripOrder(wk, now)), [
+    "IND@JAX",                               // red zone first
+    "BAL@LON", "CLE@PIT", "LAR@ARI",         // live by kickoff (ties by game)
+    "DAL@PHI", "DEN@LAC", "SF@SEA",          // upcoming, soonest first
+    "ATL@NO", "NYJ@NE"]);                    // finals, most recent first
+  assert.equal(wk[0]!.game_key, "NYJ@NE", "a sorted copy; the week's list is untouched");
+
+  // A status change moves a game: CLE@PIT goes final, DAL@PHI kicks off, IND@JAX leaves the red zone
+  const later = Date.parse("2026-11-01T20:30:00Z");
+  const next = wk.map(x => x.game_key === "CLE@PIT" ? { ...x, status: "final" }
+    : x.game_key === "DAL@PHI" ? { ...x, status: "in_progress" }
+    : x.game_key === "IND@JAX" ? { ...x, red_zone: false } : x);
+  assert.deepEqual(keys(V.stripOrder(next, later)), ["BAL@LON", "IND@JAX", "LAR@ARI", "DAL@PHI", "DEN@LAC", "SF@SEA", "ATL@NO", "CLE@PIT", "NYJ@NE"]);
+  // Red zone beats an earlier kickoff; a red_zone flag without possession isn't a drive
+  const rz = [g("A@B", "2026-11-01T17:00:00Z", "in_progress"), g("C@D", "2026-11-01T20:25:00Z", "in_progress", { possession: "C", red_zone: true }),
+    g("E@F", "2026-11-01T16:00:00Z", "in_progress", { red_zone: true })];
+  assert.deepEqual(keys(V.stripOrder(rz, later)), ["C@D", "E@F", "A@B"]);
+
+  // Past week (all final): most recent first. Future week (all upcoming): by kickoff.
+  const past = [g("A@B", "2026-10-23T00:15:00Z", "final"), g("C@D", "2026-10-27T00:15:00Z", "final"), g("E@F", "2026-10-25T17:00:00Z", "final")];
+  assert.deepEqual(keys(V.stripOrder(past, later)), ["C@D", "E@F", "A@B"]);
+  const fut = [g("A@B", "2026-11-09T01:20:00Z"), g("C@D", "2026-11-06T01:15:00Z"), g("E@F", "2026-11-08T18:00:00Z")];
+  assert.deepEqual(keys(V.stripOrder(fut, later)), ["C@D", "E@F", "A@B"]);
+
+  // The strip renders in that order, each card tagged with its game for the slide animation
+  const html = String(V.nflStripHtml({ games: wk }));
+  const shown = [...html.matchAll(/data-g="([^"]+)"/g)].map(m => m[1]);
+  assert.equal(shown.length, 9);
+  assert.equal(new Set(shown).size, 9);
+});
+
+test("NFL strip snap-back: at once, or after the viewer stops scrolling", () => {
+  const t = 1_000_000;
+  assert.equal(V.snapDecision(false, { down: false, last: 0 }, t), "no", "same order: leave the scroll alone");
+  assert.equal(V.snapDecision(true, { down: false, last: t - 5000 }, t), "now");
+  assert.equal(V.snapDecision(true, { down: true, last: t - 5000 }, t), "later", "finger on the strip");
+  assert.equal(V.snapDecision(true, { down: false, last: t - 500 }, t), "later", "scrolled half a second ago");
+  assert.equal(V.snapDecision(false, { down: false, last: t - 2000, pending: true }, t), "now", "a snap held back goes once he stops");
+});
