@@ -21,8 +21,10 @@
   /** "Adam · <Mac Daddies link>" with the team logo and a role badge. T = window.B5Team. */
   function bylineHtml(a, T) {
     var team = a.author_team && T && T.has(a.author_team) ? a.author_team : null;
-    return '<span class="post-by">' + (team ? T.logo(team) : "") + "<span>" + esc(a.author_name || "League officer") +
-      (team ? " · " + T.link(team, { logo: false }) : "") + "</span>" +
+    // A display name that is just the team name shows once ("Mac Daddies", not "Mac Daddies · Mac Daddies")
+    var name = a.author_name && !(team && String(a.author_name).trim().toLowerCase() === String(T.name(team)).toLowerCase()) ? esc(a.author_name) : "";
+    return '<span class="post-by">' + (team ? T.logo(team) : "") + "<span>" + (name || (team ? "" : "League officer")) +
+      (team ? (name ? " · " : "") + T.link(team, { logo: false }) : "") + "</span>" +
       (a.posted_as ? ' <span class="tag role-' + esc(a.posted_as) + '">' + esc(ROLE_NAMES[a.posted_as] || a.posted_as) + "</span>" : "") + "</span>";
   }
   root.B5Announcements = { order: order, postAsChoices: postAsChoices, tagFor: tagFor, bylineHtml: bylineHtml, ROLE_NAMES: ROLE_NAMES };

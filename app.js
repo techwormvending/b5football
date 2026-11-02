@@ -384,6 +384,10 @@
       if (history.replaceState) history.replaceState(null, "", "#myteam");
       return;
     }
+    if (curPage === "confidence" && window.B5Pools && window.B5Pools.dirty() && !confirm(window.B5Pools.LEAVE)) {
+      if (history.replaceState) history.replaceState(null, "", "#confidence");
+      return;
+    }
     curPage = page;
     clearInterval(timer);
     if (window.B5Live) window.B5Live.stop();   // leaves Realtime and its timers when you leave #live

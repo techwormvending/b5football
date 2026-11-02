@@ -193,7 +193,8 @@ test("home announcements: pinned first (newest first among them), then newest; P
   assert.deepEqual(plain(A.postAsChoices(["treasurer", "admin"])), ["admin", "treasurer"], "fixed order; the first is the default");
   assert.deepEqual(plain(A.postAsChoices([])), []);
   assert.deepEqual(["admin", "commissioner", "treasurer"].map((r: string) => A.tagFor(r)), ["Admin", "Commish", "Treasurer"]);
-  const T = { has: (id: string) => id === "0011", logo: () => '<img class="tl-logo">', link: () => '<a href="#team/0011">Mac Daddies</a>' };
+  const T = { has: (id: string) => id === "0011", name: () => "Mac Daddies", logo: () => '<img class="tl-logo">', link: () => '<a href="#team/0011">Mac Daddies</a>' };
+  assert.match(A.bylineHtml({ author_name: "Mac Daddies", author_team: "0011", posted_as: "admin" }, T), /<span><a href="#team\/0011">Mac Daddies<\/a><\/span>/, "a display name that is the team name shows once");
   const by = A.bylineHtml({ author_name: "Adam", author_team: "0011", posted_as: "admin" }, T);
   assert.match(by, /<img class="tl-logo"><span>Adam · <a href="#team\/0011">Mac Daddies<\/a><\/span> <span class="tag role-admin">Admin<\/span>/);
   assert.match(A.bylineHtml({ author_name: "<b>x</b>", posted_as: "commissioner" }, T), /&lt;b&gt;x&lt;\/b&gt;.*Commissioner/);

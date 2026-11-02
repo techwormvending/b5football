@@ -25,7 +25,8 @@ export interface NflGame {
   kickoff: string | null; home_score: number | null; away_score: number | null; status: string;
 }
 export interface SurvivorPick { week: number; team_id: string; nfl_team: string }
-export interface ConfidencePick { week: number; team_id: string; game_key: string; pick: string; points: number }
+// pick or points may be blank (2026-11-01): that game scores 0
+export interface ConfidencePick { week: number; team_id: string; game_key: string; pick: string | null; points: number | null }
 export interface SurvivorStatus { team_id: string; alive: boolean; eliminated_week: number | null; reason: string | null; winner: boolean; picks_used: number }
 export interface ConfidenceWeek { week: number; team_id: string; points: number; correct: number; decided: number; games: number }
 export interface PoolFlag { kind: "survivor_reuse" | "survivor_bad_pick" | "confidence_values" | "confidence_bad_pick"; week?: number; team_id?: string; message: string }
@@ -115,7 +116,7 @@ export function confidenceScores(input: { settings: PoolSettings; teams: string[
     for (const t of input.teams) {
       const mine = weekPicks.filter(p => p.team_id === t);
       if (!mine.length && !decided) continue;
-      const values = mine.map(p => p.points);
+      const values = mine.map(p => p.points).filter((v): v is number => v != null);
       if (new Set(values).size !== values.length || values.some(v => v < 1 || v > games.length)) {
         flags.push({ kind: "confidence_values", week: w, team_id: t, message: `Week ${w}: ${t}'s confidence values aren't unique 1-${games.length}.` });
       }
@@ -123,7 +124,7 @@ export function confidenceScores(input: { settings: PoolSettings; teams: string[
       for (const p of mine) {
         const r = results.get(p.game_key);
         if (r === undefined) { flags.push({ kind: "confidence_bad_pick", week: w, team_id: t, message: `Week ${w}: ${t} picked ${p.game_key}, which isn't a week ${w} game.` }); continue; }
-        if (r !== "pending" && r !== null && r === p.pick) { points += p.points; correct++; }
+        if (r !== "pending" && r !== null && p.pick != null && r === p.pick && p.points != null) { points += p.points; correct++; }
       }
       weekly.push({ week: w, team_id: t, points, correct, decided, games: games.length });
       totals.set(t, (totals.get(t) ?? 0) + points);

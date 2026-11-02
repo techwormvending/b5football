@@ -177,3 +177,17 @@ test("test mode: the standings and Pick'em scoring query excludes TEST picks", a
   await refreshPayouts({ url: "https://x.supabase.co", serviceKey: "k" }, 2026, f);
   assert.ok(urls.some(u => u.includes("confidence_picks?season=eq.2026&source=neq.test")), "test picks never count");
 });
+
+test("confidence blanks (2026-11-01): a game without a winner or a value scores 0; blanks don't trip the duplicate check", () => {
+  const games = [{ season: 2026, week: 1, game_key: "A@B", home: "B", away: "A", home_score: 10, away_score: 20, status: "final" },
+    { season: 2026, week: 1, game_key: "C@D", home: "D", away: "C", home_score: 30, away_score: 3, status: "final" },
+    { season: 2026, week: 1, game_key: "E@F", home: "F", away: "E", home_score: 7, away_score: 14, status: "final" }];
+  const picks = [{ week: 1, team_id: "0001", game_key: "A@B", pick: "A", points: null },   // right winner, no value: 0
+    { week: 1, team_id: "0001", game_key: "C@D", pick: null, points: 3 },                    // value, no winner: 0
+    { week: 1, team_id: "0001", game_key: "E@F", pick: "E", points: 1 }];                    // counts
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const r = confidenceScores({ settings: { confidence: { start_week: 1, end_week: 1 } }, games, picks, teams: ["0001"] } as any);
+  assert.equal(r.weekly[0]!.points, 1);
+  assert.equal(r.weekly[0]!.correct, 1);
+  assert.deepEqual(r.flags.filter(f => f.kind === "confidence_values"), []);
+});

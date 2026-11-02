@@ -102,31 +102,66 @@
     picks.forEach(function (p) { if (p.team_id === teamId) used[p.nfl_team] = true; });
     return NFL.filter(function (t) { return !used[t]; });
   }
-  /** Ordered confidence list for one team-week: picks first (by points, high to low), then
-      unpicked games in kickoff order with the values nobody used. Each row: game, pick, points, locked. */
-  function confidenceRows(games, picks, now) {
-    var n = games.length, byGame = {};
-    picks.forEach(function (p) { byGame[p.game_key] = p; });
-    var taken = {};
-    picks.forEach(function (p) { taken[p.points] = true; });
-    var free = [];
-    for (var v = n; v >= 1; v--) if (!taken[v]) free.push(v);
-    var sorted = games.slice().sort(function (a, b) { return Date.parse(a.kickoff || 0) - Date.parse(b.kickoff || 0); });
-    var rows = sorted.map(function (g) {
-      var p = byGame[g.game_key];
-      return { game: g, pick: p ? p.pick : null, points: p ? p.points : free.shift(), locked: started(g, now) };
+  // ---- Confidence editor (2026-11-01): games always in kickoff order, a dropdown per game ----
+  /** Kickoff order (Thursday -> Monday), never reordered; same kickoff: alphabetical by away team. */
+  function kickoffOrder(games) {
+    return (games || []).slice().sort(function (a, b) {
+      return (Date.parse(a.kickoff || 0) - Date.parse(b.kickoff || 0)) || String(a.away).localeCompare(String(b.away));
     });
-    return rows.sort(function (a, b) { return b.points - a.points; });
   }
-  /** Move row i up (dir -1) or down (+1) past locked rows; swaps points with the next unlocked row. */
-  function moveRow(rows, i, dir) {
-    if (rows[i].locked) return rows;
-    var j = i + dir;
-    while (j >= 0 && j < rows.length && rows[j].locked) j += dir;
-    if (j < 0 || j >= rows.length) return rows;
-    var out = rows.map(function (r) { return Object.assign({}, r); });
-    var pts = out[i].points; out[i].points = out[j].points; out[j].points = pts;
-    return out.sort(function (a, b) { return b.points - a.points; });
+  var gameName = function (g) { return g.away + " vs " + g.home; };
+  /** One row per game in kickoff order: { game, pick, points, locked }; blanks stay blank (null). */
+  function confidenceRows(games, picks, now) {
+    var byGame = {};
+    (picks || []).forEach(function (p) { byGame[p.game_key] = p; });
+    return kickoffOrder(games).map(function (g) {
+      var p = byGame[g.game_key];
+      return { game: g, pick: p && p.pick || null, points: p && p.points != null ? Number(p.points) : null, locked: started(g, now) };
+    });
+  }
+  /** Set row i's confidence to v (null = blank). A value already used on another game SWAPS: that
+      game gets row i's previous value (or blank). Locked games never change and their values can't
+      be taken. Returns { rows, swapped: { i, points } | null, error }. */
+  function setPoints(rows, i, v) {
+    v = v === "" || v == null ? null : Number(v);
+    if (!rows[i] || rows[i].locked) return { rows: rows, swapped: null, error: "That game has kicked off: it's locked." };
+    var j = v == null ? -1 : rows.map(function (r) { return r.points; }).indexOf(v);
+    if (j === i) return { rows: rows, swapped: null, error: null };
+    if (j >= 0 && rows[j].locked) return { rows: rows, swapped: null, error: v + " is locked on " + gameName(rows[j].game) + "." };
+    var out = rows.map(function (r) { return Object.assign({}, r); }), swapped = null;
+    if (j >= 0) { out[j].points = out[i].points; swapped = { i: j, points: out[j].points }; }
+    out[i].points = v;
+    return { rows: out, swapped: swapped, error: null };
+  }
+  /** "Swapped: KC vs DEN is now 7." (or "... is now blank."). */
+  function swapText(rows, sw) { return sw ? "Swapped: " + gameName(rows[sw.i].game) + " is now " + (sw.points == null ? "blank" : sw.points) + "." : ""; }
+  /** Values 1..n nobody has used yet. */
+  function unusedValues(rows, n) {
+    var used = {}; rows.forEach(function (r) { if (r.points != null) used[r.points] = true; });
+    var out = []; for (var v = 1; v <= n; v++) if (!used[v]) out.push(v);
+    return out;
+  }
+  /** Open games still missing a winner or a confidence value (they'd score 0). */
+  function needingPick(rows) { return rows.filter(function (r) { return !r.locked && (!r.pick || r.points == null); }).length; }
+  /** "Fill remaining values": the unused numbers, lowest first, to the open games without one, in kickoff order. */
+  function fillRemaining(rows, n) {
+    var free = unusedValues(rows, n);
+    return rows.map(function (r) { var o = Object.assign({}, r); if (!o.locked && o.points == null && free.length) o.points = free.shift(); return o; });
+  }
+  /** The dropdown's options for row i: blank, then 1..n; a value used elsewhere is labeled with its
+      game ("12 — used on KC vs DEN"); one locked on a started game can't be picked. */
+  function optionsFor(rows, i, n) {
+    var by = {}; rows.forEach(function (r, k) { if (r.points != null && k !== i) by[r.points] = r; });
+    var out = [{ value: "", label: "—", disabled: false }];
+    for (var v = 1; v <= n; v++) {
+      var r = by[v];
+      out.push({ value: String(v), label: r ? v + " — " + (r.locked ? "locked on " : "used on ") + gameName(r.game) : String(v), disabled: !!(r && r.locked) });
+    }
+    return out;
+  }
+  /** What a save sends: every row with a winner or a value (blank rows are cleared on the server). */
+  function savePayload(rows) {
+    return rows.filter(function (r) { return r.pick || r.points != null; }).map(function (r) { return { game_key: r.game.game_key, pick: r.pick, points: r.points }; });
   }
 
   // ---- Data -------------------------------------------------------------------------
@@ -147,7 +182,7 @@
     ];
     if (session()) {
       reqs.push(api("survivor_picks" + q + "&select=week,team_id,nfl_team,source&limit=1000"));
-      reqs.push(api("confidence_picks" + q + "&select=week,team_id,game_key,pick,points,source&limit=1000"));
+      reqs.push(api("confidence_picks" + q + "&select=week,team_id,game_key,pick,points,source,updated_at,set_by&limit=1000"));
     }
     return Promise.all(reqs).then(function (r) {
       var ok = function (x) { return x && x.ok ? x.data || [] : []; };
@@ -160,7 +195,13 @@
         st.week = cur || lastPlayed;
       }
       // Records, lines, stadiums and forecasts for the week shown (written by server jobs)
-      return api("nfl_game_info" + q + "&week=eq." + st.week + "&select=*").then(function (r) {
+      // Who saved the picks ("Saved 9:14 PM by Mike"): members read profiles
+      var savers = {}; st.data.cpicks.forEach(function (p) { if (p.set_by) savers[p.set_by] = true; });
+      var ids = Object.keys(savers);
+      st.data.names = {};
+      var names = ids.length && session() ? api("profiles?id=in.(" + ids.join(",") + ")&select=id,display_name").then(function (x) { ok(x).forEach(function (p) { st.data.names[p.id] = p.display_name || ""; }); }) : Promise.resolve();
+      return Promise.all([api("nfl_game_info" + q + "&week=eq." + st.week + "&select=*"), names]).then(function (rr) {
+        var r = rr[0];
         st.data.info = {}; ok(r).forEach(function (x) { st.data.info[x.game_key] = x; });
       });
     });
@@ -263,8 +304,8 @@
   }
   function confidenceHtml() {
     var d = st.data, now = Date.now(), w = st.week;
-    var games = d.games.filter(function (g) { return g.week === w; }).sort(function (a, b) { return Date.parse(a.kickoff || 0) - Date.parse(b.kickoff || 0); });
-    var head = '<div class="card"><p class="small">Each week pick the winner of every game (straight up) and rank them 1 to N by confidence, each value once. A correct pick earns its points; a miss, a tie or no pick earns 0. Season standings pay Pick\'em 1st and 2nd.</p>' + noteHtml() + "</div>";
+    var games = kickoffOrder(d.games.filter(function (g) { return g.week === w; }));
+    var head = '<div class="card"><p class="small">Each week pick the winner of every game (straight up) and give each a confidence value from 1 to N, each value once. A correct pick earns its points; a miss, a tie or no pick earns 0. Season standings pay Pick\'em 1st and 2nd.</p>' + noteHtml() + "</div>";
 
     var editor = "";
     var mine = myTeam(), editTeam = isCommish() ? (st.editTeam || mine || TL().ids()[0]) : mine;
@@ -272,23 +313,33 @@
     if (officialWeek && session()) {
       editor = '<div class="card"><p class="muted">Week ' + esc(w) + " has the official MFL picks (read-only).</p></div>";
     } else if (editTeam && (open() || isCommish()) && games.length) {
+      var free = isCommish() && editTeam !== mine;   // the commissioner fixing another team: nothing is locked for him
       if (!st.rows || st.rows.week !== w || st.rows.team !== editTeam) {
-        st.rows = { week: w, team: editTeam, list: confidenceRows(games, d.cpicks.filter(function (p) { return p.week === w && p.team_id === editTeam; }), now) };
+        var saved = d.cpicks.filter(function (p) { return p.week === w && p.team_id === editTeam; });
+        var lastP = saved.slice().sort(function (a, b) { return Date.parse(b.updated_at || 0) - Date.parse(a.updated_at || 0); })[0];
+        st.rows = { week: w, team: editTeam, list: confidenceRows(games, saved, free ? 0 : now), dirty: false, notice: null,
+          saved: lastP ? { at: lastP.updated_at, by: (d.names || {})[lastP.set_by] || "" } : null };
       }
-      var free = isCommish() && editTeam !== mine;
+      var n = games.length, rows = st.rows.list, unused = unusedValues(rows, n), need = needingPick(rows);
+      var savedText = st.rows.saved ? "Saved " + fmtKick(st.rows.saved.at) + (st.rows.saved.by ? " by " + st.rows.saved.by : "") : "Not saved yet";
       editor = '<div class="card"><h3>Week ' + esc(w) + " picks" + (editTeam !== mine ? ": " + tlink(editTeam) : "") + "</h3>" +
         (isCommish() ? '<label class="mt-pick">Team <select data-pl="team">' + TL().ids().map(function (id) { return TL().option(id, id === editTeam, id === mine ? " (your team)" : ""); }).join("") + "</select></label>" : "") +
         (mode() === "test" ? '<p class="pl-test small"><b>TEST picks</b> — MFL is official for ' + esc(season) + ".</p>" : "") +
-        '<p class="muted small">Tap a team to pick it. ▲▼ move a game up or down (more or fewer points). Saved as you go; started games stay locked in place.</p>' +
-        '<ol class="pl-conf">' + st.rows.list.map(function (r, i) {
-          var lock = r.locked && !free;
+        '<p class="muted small">Games are in kickoff order. Tap the team you think wins, then choose how confident you are (1 to ' + esc(n) + ', each number once). Picking a number another game has swaps the two. A game locks at its kickoff.</p>' +
+        '<ol class="pl-conf pl-dd">' + rows.map(function (r, i) {
           var info = (d.info || {})[r.game.game_key];
-          var b = function (t, rec) { return '<button type="button" class="pl-team' + (r.pick === t ? " on" : "") + '" data-pl="cpick" data-i="' + i + '" data-nfl="' + esc(t) + '"' + (lock ? " disabled" : "") + ">" + teamLabel(t, rec) + "</button>"; };
-          return '<li class="pl-gcard' + (lock ? " locked" : "") + '"><div class="pl-gline"><b class="pl-pts">' + esc(r.points) + "</b>" + b(r.game.away, info && info.away_record) + '<span class="muted small">@</span>' + b(r.game.home, info && info.home_record) +
-            '<span class="pl-line" title="' + esc(lineSource(info)) + '">' + esc(lineText(info)) + "</span>" +
-            '<span class="pl-move">' + (lock ? "🔒" : '<button type="button" class="linkish" data-pl="up" data-i="' + i + '" aria-label="More points">▲</button><button type="button" class="linkish" data-pl="down" data-i="' + i + '" aria-label="Fewer points">▼</button>') + "</span></div>" +
-            gameMetaHtml(r.game, info, now) + "</li>";
-        }).join("") + "</ol>" + sourcesHtml(games.map(function (g) { return (d.info || {})[g.game_key]; }).filter(Boolean)) + msgHtml() + "</div>";
+          var b = function (t, rec) { return '<button type="button" class="pl-team' + (r.pick === t ? " on" : "") + '" data-pl="cpick" data-i="' + i + '" data-nfl="' + esc(t) + '" aria-pressed="' + (r.pick === t) + '"' + (r.locked ? " disabled" : "") + ">" + teamLabel(t, rec) + "</button>"; };
+          var sel = '<label class="pl-cf"><span>' + (r.locked ? "🔒 " : "") + 'Confidence</span><select data-pl="points" data-i="' + i + '"' + (r.locked ? " disabled" : "") + ' aria-label="Confidence for ' + esc(gameName(r.game)) + '">' +
+            optionsFor(rows, i, n).map(function (o) { return '<option value="' + esc(o.value) + '"' + (String(r.points == null ? "" : r.points) === o.value ? " selected" : "") + (o.disabled ? " disabled" : "") + ">" + esc(o.label) + "</option>"; }).join("") + "</select></label>";
+          return '<li class="pl-gcard' + (r.locked ? " locked" : "") + '"><div class="pl-gline">' + b(r.game.away, info && info.away_record) + '<span class="muted small">@</span>' + b(r.game.home, info && info.home_record) +
+            '<span class="pl-line" title="' + esc(lineSource(info)) + '">' + esc(lineText(info)) + "</span></div>" + sel + gameMetaHtml(r.game, info, now) + "</li>";
+        }).join("") + "</ol>" + sourcesHtml(games.map(function (g) { return (d.info || {})[g.game_key]; }).filter(Boolean)) +
+        '<div class="pl-savebar">' + (st.rows.notice ? '<p class="acct-msg ok" role="status">' + esc(st.rows.notice) + "</p>" : "") +
+          '<p><b>Unused points:</b> ' + esc(unused.length ? unused.join(", ") : "none") + ' · <b>Games still needing a pick:</b> ' + esc(need) + "</p>" +
+          (need ? '<p class="pl-warn small">⚠ A game without a winner or a confidence value scores 0. You can still save.</p>' : "") +
+          '<div class="pl-saveacts"><button type="button" class="btn ghost" data-pl="fill"' + (unused.length ? "" : " disabled") + ">Fill remaining values</button>" +
+          '<button type="button" class="btn" data-pl="save">Save picks</button></div>' +
+          '<p class="muted small">' + esc(st.rows.dirty ? "Unsaved changes" : savedText) + "</p>" + msgHtml() + "</div></div>";
     }
     // No pick list (signed out, or an official MFL week): the same game cards, read-only.
     if (!editor || officialWeek) editor += gamesListHtml(games, now);
@@ -335,17 +386,21 @@
   // ---- Saving ------------------------------------------------------------------------
   var friendly = function (e) { return String(e || "").replace(/^.*?: /, ""); };
   function saveConfidence(rootEl) {
-    var r = st.rows, mine = myTeam(), free = isCommish() && r.team !== mine;
-    var picks = r.list.filter(function (x) { return x.pick && (free || !x.locked); }).map(function (x) { return { game_key: x.game.game_key, pick: x.pick, points: x.points }; });
-    if (!picks.length) { render(rootEl); return; }
-    api("rpc/save_confidence", { method: "POST", body: JSON.stringify({ p_season: season, p_week: r.week, p_team: r.team, p_picks: picks }) }).then(function (res) {
-      st.msg = res.ok ? { ok: "Saved." } : { err: "Not saved: " + friendly(res.error) };
-      return load().then(function () { if (!res.ok) st.rows = null; render(rootEl); });
+    var r = st.rows;
+    api("rpc/save_confidence_week", { method: "POST", body: JSON.stringify({ p_season: season, p_week: r.week, p_team: r.team, p_picks: savePayload(r.list) }) }).then(function (res) {
+      if (!res.ok) { st.msg = { err: "Not saved: " + friendly(res.error) }; render(rootEl); return; }
+      st.msg = { ok: "Saved." };
+      var who = res.data || {};
+      return load().then(function () { st.rows = null; render(rootEl); if (st.rows) { st.rows.saved = { at: who.saved_at, by: who.saved_by || "" }; render(rootEl); } });
     });
   }
+  var LEAVE = "Your Confidence picks have unsaved changes. Leave without saving?";
+  /** True while the pick editor holds changes that aren't saved (app.js asks before leaving). */
+  function dirty() { return !!(st.rows && st.rows.dirty && st.el && root.document && root.document.body.contains(st.el)); }
+  if (root.addEventListener) root.addEventListener("beforeunload", function (e) { if (dirty()) { e.preventDefault(); e.returnValue = LEAVE; } });
 
   function start(page, rootEl, week) {
-    st.page = page;
+    st.page = page; st.el = rootEl;
     if (week) { st.week = Number(week); st.rows = null; }
     if (!(cfg && cfg.configured && A)) { rootEl.innerHTML = '<section><h2>Pools</h2><div class="card">Not set up yet.</div></section>'; return; }
     rootEl.innerHTML = '<section><h2>' + (page === "survivor" ? "Survivor" : "Confidence Pool") + '</h2><p class="muted">Loading…</p></section>';
@@ -366,16 +421,31 @@
         return;
       }
       if (!st.rows) return;
-      var i = Number(b.dataset.i);
-      if (k === "cpick") { st.rows.list[i].pick = b.dataset.nfl; saveConfidence(rootEl); }
-      else if (k === "up" || k === "down") { st.rows.list = moveRow(st.rows.list, i, k === "up" ? -1 : 1); saveConfidence(rootEl); }
+      var i = Number(b.dataset.i), row = st.rows.list[i];
+      if (k === "cpick" && row && !row.locked) {
+        row.pick = row.pick === b.dataset.nfl ? null : b.dataset.nfl;   // tap the picked team again to clear it
+        st.rows.dirty = true; st.rows.notice = null; render(rootEl);
+      } else if (k === "fill") {
+        st.rows.list = fillRemaining(st.rows.list, st.rows.list.length); st.rows.dirty = true; st.rows.notice = "Filled the unused values in kickoff order. Adjust any you like."; render(rootEl);
+      } else if (k === "save") saveConfidence(rootEl);
     });
     rootEl.addEventListener("change", function (e) {
+      var p = e.target.closest("[data-pl='points']");
+      if (p && st.rows) {
+        var res = setPoints(st.rows.list, Number(p.dataset.i), p.value);
+        if (res.error) { st.msg = { err: res.error }; render(rootEl); return; }
+        st.rows.list = res.rows; st.rows.dirty = true; st.rows.notice = swapText(res.rows, res.swapped) || null;
+        render(rootEl);
+        var again = rootEl.querySelector('[data-pl="points"][data-i="' + p.dataset.i + '"]'); if (again) again.focus();
+        return;
+      }
       var s = e.target.closest("[data-pl='team']"); if (!s) return;
+      if (dirty() && !root.confirm(LEAVE)) { s.value = st.rows.team; return; }
       st.editTeam = s.value; st.rows = null; render(rootEl);
     });
   }
 
-  root.B5Pools = { start: start, testScore: testScore, weekChipsHtml: function (cfgC, week) { st.data = st.data || { pools: { confidence: cfgC } }; st.week = week; return weekChips(); }, result: result, availableTeams: availableTeams, confidenceRows: confidenceRows, moveRow: moveRow,
+  root.B5Pools = { start: start, testScore: testScore, weekChipsHtml: function (cfgC, week) { st.data = st.data || { pools: { confidence: cfgC } }; st.week = week; return weekChips(); }, result: result, availableTeams: availableTeams, confidenceRows: confidenceRows, kickoffOrder: kickoffOrder, setPoints: setPoints, swapText: swapText, unusedValues: unusedValues, needingPick: needingPick,
+    fillRemaining: fillRemaining, optionsFor: optionsFor, savePayload: savePayload, dirty: dirty, LEAVE: LEAVE,
     recordText: recordText, lineText: lineText, lineSource: lineSource, kickoffText: kickoffText, venueText: venueText, weatherText: weatherText, weatherAlerts: weatherAlerts, scoreText: scoreText, gameMetaHtml: gameMetaHtml };
 })(typeof globalThis !== "undefined" ? globalThis : this);

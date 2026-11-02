@@ -8,12 +8,20 @@ import vm from "node:vm";
 const ctx: Record<string, unknown> = { LEAGUE: { season: 2026, teams: [] } };
 vm.runInNewContext(fs.readFileSync(path.resolve(import.meta.dirname, "../../teamlink.js"), "utf8"), ctx);
 vm.runInNewContext(fs.readFileSync(path.resolve(import.meta.dirname, "../../pools.js"), "utf8"), ctx);
-type Row = { game: { game_key: string }; pick: string | null; points: number; locked: boolean };
+type Row = { game: { game_key: string; away: string; home: string }; pick: string | null; points: number | null; locked: boolean };
+type Opt = { value: string; label: string; disabled: boolean };
 const P = ctx.B5Pools as {
   result(g: unknown): string | null;
   availableTeams(picks: { team_id: string; nfl_team: string }[], team: string): string[];
   confidenceRows(games: unknown[], picks: unknown[], now: number): Row[];
-  moveRow(rows: Row[], i: number, dir: number): Row[];
+  kickoffOrder(games: unknown[]): { game_key: string }[];
+  setPoints(rows: Row[], i: number, v: number | string | null): { rows: Row[]; swapped: { i: number; points: number | null } | null; error: string | null };
+  swapText(rows: Row[], sw: { i: number; points: number | null } | null): string;
+  unusedValues(rows: Row[], n: number): number[];
+  needingPick(rows: Row[]): number;
+  fillRemaining(rows: Row[], n: number): Row[];
+  optionsFor(rows: Row[], i: number, n: number): Opt[];
+  savePayload(rows: Row[]): unknown[];
 };
 const plain = <T>(x: T): T => JSON.parse(JSON.stringify(x));
 const NOW = Date.parse("2026-10-18T18:00:00Z");
@@ -27,18 +35,46 @@ test("survivor: a used team isn't available again; 32 to start", () => {
   assert.ok(!left.includes("KC") && left.includes("DET"));
 });
 
-test("confidence: saved picks keep their points; unpicked games get the unused values by kickoff; started games are locked", () => {
-  const rows = P.confidenceRows(games, [{ game_key: "C@D", pick: "D", points: 4 }], NOW);
+test("confidence: games always in kickoff order (Thursday -> Monday), same kickoff alphabetical by away team; never reordered by points", () => {
+  const same = [...games, game("AA@ZZ", "2026-10-18T17:00:00Z"), game("ZZZ@B2", "2026-10-18T17:00:00Z")];
+  assert.deepEqual(plain(P.kickoffOrder(same).map(g => g.game_key)), ["G@H", "A@B", "AA@ZZ", "ZZZ@B2", "C@D", "E@F"]);
+  const rows = P.confidenceRows(games, [{ game_key: "E@F", pick: "E", points: 4 }, { game_key: "G@H", pick: "G", points: 1 }], NOW);
   assert.deepEqual(plain(rows.map(r => [r.game.game_key, r.pick, r.points, r.locked])),
-    [["C@D", "D", 4, false], ["G@H", null, 3, true], ["A@B", null, 2, true], ["E@F", null, 1, false]]);
+    [["G@H", "G", 1, true], ["A@B", null, null, true], ["C@D", null, null, false], ["E@F", "E", 4, false]], "blanks stay blank; started games locked");
+  const after = P.setPoints(rows, 2, 3).rows;
+  assert.deepEqual(plain(after.map(r => r.game.game_key)), ["G@H", "A@B", "C@D", "E@F"], "the order never changes");
 });
 
-test("moving a game swaps points with the next unlocked game, skipping locked ones; locked games don't move", () => {
-  const rows = P.confidenceRows(games, [{ game_key: "C@D", pick: "D", points: 4 }], NOW);
-  const moved = P.moveRow(rows, 3, -1);   // E@F (1 pt) up: G@H and A@B are locked, so it swaps with C@D
-  assert.deepEqual(plain(moved.map(r => [r.game.game_key, r.points])), [["E@F", 4], ["G@H", 3], ["A@B", 2], ["C@D", 1]]);
-  assert.equal(P.moveRow(rows, 1, -1), rows, "a locked game stays put");
-  assert.equal(P.moveRow(rows, 0, -1), rows, "nothing above the top");
+test("confidence: picking a used value swaps (the other game gets this game's old value, or blank)", () => {
+  let rows = P.confidenceRows(games, [{ game_key: "C@D", pick: "D", points: 2 }, { game_key: "E@F", pick: "E", points: 4 }], NOW);
+  let r = P.setPoints(rows, 2, 4);   // C@D 2 -> 4: E@F had 4, gets 2
+  assert.deepEqual(plain(r.rows.map(x => x.points)), [null, null, 4, 2]);
+  assert.equal(P.swapText(r.rows, r.swapped), "Swapped: E vs F is now 2.");
+  rows = P.confidenceRows(games, [{ game_key: "E@F", pick: "E", points: 4 }], NOW);
+  r = P.setPoints(rows, 2, 4);       // C@D blank -> 4: E@F becomes blank
+  assert.deepEqual(plain(r.rows.map(x => x.points)), [null, null, 4, null]);
+  assert.equal(P.swapText(r.rows, r.swapped), "Swapped: E vs F is now blank.");
+  assert.deepEqual(plain(P.setPoints(r.rows, 2, "").rows.map(x => x.points)), [null, null, null, null], "clearing a value");
+});
+
+test("confidence: locked games keep their value; it can't be taken by a swap and the dropdown marks it", () => {
+  const rows = P.confidenceRows(games, [{ game_key: "G@H", pick: "G", points: 3 }, { game_key: "C@D", pick: "D", points: 1 }], NOW);
+  const r = P.setPoints(rows, 2, 3);
+  assert.equal(r.rows, rows, "nothing changes");
+  assert.match(String(r.error), /3 is locked on G vs H/);
+  assert.match(String(P.setPoints(rows, 0, 2).error), /locked/, "a locked game's own value can't change");
+  const opts = P.optionsFor(rows, 3, 4);
+  assert.deepEqual(plain(opts.map(o => [o.value, o.label, o.disabled])), [["", "—", false], ["1", "1 — used on C vs D", false], ["2", "2", false], ["3", "3 — locked on G vs H", true], ["4", "4", false]]);
+});
+
+test("confidence: unused values, games still needing a pick, fill remaining in kickoff order, blanks save (and score 0)", () => {
+  const rows = P.confidenceRows(games, [{ game_key: "C@D", pick: "D", points: 2 }, { game_key: "G@H", pick: "G", points: 4 }], NOW);
+  assert.deepEqual(plain(P.unusedValues(rows, 4)), [1, 3]);
+  assert.equal(P.needingPick(rows), 1, "E@F (open, no pick); the locked A@B can't be fixed any more");
+  const filled = P.fillRemaining(rows, 4);
+  assert.deepEqual(plain(filled.map(x => x.points)), [4, null, 2, 1], "the open game without a value gets the lowest unused; locked A@B untouched");
+  assert.deepEqual(plain(P.savePayload(P.setPoints(rows, 2, null).rows)), [{ game_key: "G@H", pick: "G", points: 4 }, { game_key: "C@D", pick: "D", points: null }],
+    "a winner without a value is saved; empty games aren't sent (the server clears them)");
 });
 
 test("results: winner, tie (null) or pending", () => {

@@ -626,6 +626,31 @@ describe("pools: survivor and confidence picks", () => {
     assert.deepEqual(swapped.rows.map(r => [(r as { game_key: string }).game_key, (r as { points: number }).points]), [["DET@ARI", 2], ["NE@BUF", 1]]);
   });
 
+  test("confidence dropdowns (2026-11-01): blanks save and score 0, cleared games are removed, a locked game's value can't be taken", async () => {
+    const week = (who: Who, team: string, picks: unknown[], wk = W) =>
+      as(db, who, tx => tx.query(`select public.save_confidence_week(${S}, ${wk}, '${team}', $1::jsonb) as r`, [JSON.stringify(picks)])).then(r => (r.rows[0] as { r: { saved_at: string; saved_by: string } }).r);
+    const mine = async (team: string, wk = W) => (await db.query<{ game_key: string; pick: string | null; points: number | null }>(
+      `select game_key, pick, points from public.confidence_picks where season = ${S} and week = ${wk} and team_id = '${team}' order by game_key`)).rows;
+    // A winner without a value, and a value without a winner: both saved
+    await db.exec(`insert into public.nfl_games (season, week, game_key, home, away, kickoff) values (${S}, 7, 'NE@BUF', 'BUF', 'NE', now() + interval '9 days')`);
+    const r = await week(user(BOB), "0002", [{ game_key: "DET@ARI", pick: "ARI", points: null }, { game_key: "NE@BUF", pick: null, points: 2 }], 7);
+    assert.deepEqual(await mine("0002", 7), [{ game_key: "DET@ARI", pick: "ARI", points: null }, { game_key: "NE@BUF", pick: null, points: 2 }]);
+    assert.ok(r.saved_at, "when"); assert.equal(r.saved_by, "bob", "by whom");
+    // A cleared game is removed; a blank row isn't stored
+    await week(user(BOB), "0002", [{ game_key: "DET@ARI", pick: null, points: null }, { game_key: "NE@BUF", pick: "NE", points: 2 }], 7);
+    assert.deepEqual(await mine("0002", 7), [{ game_key: "NE@BUF", pick: "NE", points: 2 }]);
+    // Locked (KC@LV kicked off): its row can't change or be removed, and its value can't be taken by another game
+    await db.exec(`insert into public.confidence_picks (season, week, team_id, game_key, pick, points, source) values (${S}, ${W}, '0001', 'KC@LV', 'KC', 2, 'site')`);
+    await assert.rejects(week(user(ALICE), "0001", [{ game_key: "KC@LV", pick: "KC", points: 2 }, { game_key: "DET@ARI", pick: "DET", points: 2 }]), /confidence_points_unique|duplicate/, "the locked game keeps 2");
+    await assert.rejects(week(user(ALICE), "0001", [{ game_key: "KC@LV", pick: "KC", points: 1 }, { game_key: "DET@ARI", pick: "DET", points: 2 }]), /locked/, "no swap out of a locked game");
+    await assert.rejects(week(user(ALICE), "0001", [{ game_key: "DET@ARI", pick: "DET", points: 1 }]), /locked/, "a locked game can't be cleared");
+    await week(user(ALICE), "0001", [{ game_key: "KC@LV", pick: "KC", points: 2 }, { game_key: "DET@ARI", pick: "DET", points: 1 }]);
+    assert.deepEqual(await mine("0001"), [{ game_key: "DET@ARI", pick: "DET", points: 1 }, { game_key: "KC@LV", pick: "KC", points: 2 }]);
+    // Someone else's team: refused
+    await assert.rejects(week(user(BOB), "0001", [{ game_key: "DET@ARI", pick: "ARI", points: 1 }]), /row-level|own team|permission/);
+    await denied(db, anon, `select public.save_confidence_week(${S}, ${W}, '0001', '[]'::jsonb)`, /permission denied/);
+  });
+
   test("hidden until kickoff: others' picks appear once that game starts; anon never sees picks", async () => {
     await db.exec(`insert into public.survivor_picks (season, week, team_id, nfl_team) values (${S}, ${W}, '0002', 'DET');
       insert into public.confidence_picks (season, week, team_id, game_key, pick, points) values (${S}, ${W}, '0002', 'DET@ARI', 'DET', 2);`);
@@ -2743,6 +2768,9 @@ describe("announcements: author, posted-as role, pins; the feedback thread (2026
     assert.equal((await rowsT(db, anon, `select tag, author_team from public.announcements where author_id = '${BOB}'`))[0]!.tag, "Treasurer");
     // Audited
     assert.ok((await rowsT(db, service, `select 1 from public.audit_log where action = 'announcements:insert'`)).length >= 3);
+    // The byline follows a display-name change
+    await as(db, user(COMMISH), tx => tx.query(`update public.profiles set display_name = 'Adam B' where id = '${COMMISH}'`));
+    assert.equal((await rowsT(db, anon, `select author_name from public.announcements where title = 'Hi' and author_id = '${COMMISH}'`))[0]!.author_name, "Adam B");
   });
 
   test("pins: commissioners and admins only (a treasurer author can't pin); the author can't be changed", async () => {
