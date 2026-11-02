@@ -1,4 +1,4 @@
-/* Message Board (#board, #board/<threadId>). League members only: the database refuses everyone
+/* Message Board (#board, #messages/board/<threadId>). League members only: the database refuses everyone
    else (RLS on every board table, see migration board); signed-out visitors get "Sign in to view
    the board". Threads (title + first post) and replies, newest activity first, pinned on top.
    Text only, with light formatting rendered here from escaped text: **bold**, *italic*,
@@ -219,7 +219,7 @@
     var rows = (st.list || []).map(function (t) {
       var unread = isUnread(t, st.reads[t.id], st.baseline, me);
       // The row opens the thread (a cover link); the author's team link sits on top.
-      return '<div class="bd-row has-cover' + (unread ? " unread" : "") + (t.pinned ? " pinned" : "") + '"><a class="card-cover" href="#board/' + esc(t.id) + '" aria-label="Open the thread"></a>' + logo(t.author_team, t.is_bot) +
+      return '<div class="bd-row has-cover' + (unread ? " unread" : "") + (t.pinned ? " pinned" : "") + '"><a class="card-cover" href="#messages/board/' + esc(t.id) + '" aria-label="Open the thread"></a>' + logo(t.author_team, t.is_bot) +
         '<div class="bd-row-main"><b>' + (t.pinned ? "📌 " : "") + (t.locked ? "🔒 " : "") + inline(t.title, ctx) + "</b>" +
         '<span class="muted small">' + authorHtml(t.author_id, t.author_team, t.is_bot) + " · " + esc(t.reply_count) + (t.reply_count === 1 ? " reply" : " replies") + " · " + esc(ago(t.last_activity_at)) + "</span></div>" +
         (unread ? '<span class="bd-dot" aria-label="New"></span>' : "") + "</div>";
@@ -250,7 +250,7 @@
       '<div class="bd-foot"><div class="bd-reacts">' + bar + '</div><div class="bd-acts">' + actions + "</div></div></article>";
   }
   function threadHtml() {
-    var v = st.view, back = '<p><a href="#board">← All threads</a></p>';
+    var v = st.view, back = '<p><a href="#messages/board">← All threads</a></p>';
     if (!v || v.missing) return '<section class="bd"><h2>Board</h2>' + back + '<div class="card muted">That thread is gone.</div></section>';
     var t = v.thread, ctx = mentionCtx(), me = myId();
     var ctl = (isCommish() ? '<button class="btn ghost" data-bd="pin">' + (t.pinned ? "Unpin" : "Pin") + '</button><button class="btn ghost" data-bd="lock">' + (t.locked ? "Unlock" : "Lock") + "</button>" : "") +
@@ -331,7 +331,7 @@
       if (!r.ok) { c.err = friendly(r.error); render(); return; }
       st.composers[key] = { images: [], busy: false, err: null };
       st.el.querySelectorAll('[data-bd-compose="' + key + '"] textarea, [data-bd-compose="' + key + '"] input[name=title]').forEach(function (x) { x.value = ""; });
-      if (key === "new") { st.open = false; root.location.hash = "#board/" + r.data; return; }
+      if (key === "new") { st.open = false; root.location.hash = "#messages/board/" + r.data; return; }
       reload();
     });
   }
@@ -353,7 +353,7 @@
     }
     if (k === "del-thread" && root.confirm("Delete this whole thread?")) {
       api("board_threads?id=eq." + t.id, { method: "DELETE", headers: { Prefer: "return=representation" } }).then(function (r) {
-        if (r.ok && r.data && r.data.length) { st.view.posts.forEach(function (x) { removeUploads(x.images); }); root.location.hash = "#board"; }
+        if (r.ok && r.data && r.data.length) { st.view.posts.forEach(function (x) { removeUploads(x.images); }); root.location.hash = "#messages/board"; }
         else done(r.ok ? { ok: false, error: "Not deleted." } : r);
       });
     }
@@ -405,12 +405,12 @@
     return who.then(function (me) {
       st.me = me;
       var member = isMember();
-      if (!member) { if (el) el.hidden = true; if (rt.sub) { rt.sub.close(); rt.sub = null; } return; }
+      if (!member) { if (el) el.hidden = true; if (root.B5Nav) root.B5Nav.setCount("board", 0); if (rt.sub) { rt.sub.close(); rt.sub = null; } return; }
       if (!rt.sub || rt.user !== myId()) startRealtime();
-      if (!el) return;
       return api("rpc/board_unread", { method: "POST", body: "{}" }).then(function (r) {
         var n = r.ok ? Number(r.data) || 0 : 0;
-        el.textContent = n > 9 ? "9+" : String(n); el.hidden = !n;
+        if (root.B5Nav) root.B5Nav.setCount("board", n);   // the Messages badge (board + chat + private)
+        if (el) { el.textContent = n > 9 ? "9+" : String(n); el.hidden = !n; }
       });
     }).catch(function () {});
   }

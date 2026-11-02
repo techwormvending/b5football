@@ -183,10 +183,8 @@
     }, 0);
   }
 
-  // One "Pools" nav item; the two pools are tabs.
-  var poolTabs = function (page) {
-    return '<div class="weeks pl-tabs" aria-label="Pools"><a class="wk' + (page === "survivor" ? " active" : "") + '" href="#survivor">Survivor</a><a class="wk' + (page === "confidence" ? " active" : "") + '" href="#confidence">Confidence</a></div>';
-  };
+  // The two pools are tabs in the page head (nav.js: Confidence Pool | Survivor).
+  var poolTabs = function () { return ""; };
 
   // ---- Survivor ----------------------------------------------------------------------
   function survivorHtml() {

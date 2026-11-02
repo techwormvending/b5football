@@ -160,7 +160,7 @@
     var gs = games(L.schedule, id);
     var schedHtml = '<div class="card"><h3>' + esc(season) + " schedule</h3>" + (gs.length ? '<div class="table-wrap"><table><thead><tr><th>Wk</th><th>Opponent</th><th class="num">Score</th><th></th></tr></thead><tbody>' +
       gs.map(function (g) {
-        return "<tr><td>" + esc(g.week) + "</td><td>" + (g.home ? "vs " : "@ ") + T.link(g.opp) + '</td><td class="num">' + (g.us != null ? esc(Number(g.us).toFixed(1) + "–" + Number(g.them).toFixed(1)) : '<a href="#live/' + esc(g.week) + "/" + esc(id) + '">Week ' + esc(g.week) + "</a>") +
+        return "<tr><td>" + esc(g.week) + "</td><td>" + (g.home ? "vs " : "@ ") + T.link(g.opp) + '</td><td class="num">' + (g.us != null ? esc(Number(g.us).toFixed(1) + "–" + Number(g.them).toFixed(1)) : '<a href="#scores/' + esc(g.week) + "/" + esc(id) + '">Week ' + esc(g.week) + "</a>") +
           '</td><td><b class="tp-r ' + esc(g.result) + '">' + esc(g.result) + "</b></td></tr>";
       }).join("") + "</tbody></table></div>" : '<p class="muted">No schedule yet.</p>') + "</div>";
 

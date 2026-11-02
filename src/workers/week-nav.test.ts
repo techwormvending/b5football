@@ -34,11 +34,14 @@ test("no pool button carries the Schedule's week attribute (the Schedule handler
 
 test("routes: pool weeks, old #pool links, matchups, old #lineups, unknown pages", () => {
   assert.deepEqual({ ...R.parse("#confidence/12", known) }, { page: "confidence", week: 12 });
-  assert.deepEqual({ ...R.parse("#pool/7", known) }, { page: "confidence", week: 7 });
+  assert.deepEqual({ ...R.parse("#pool/7", known) }, { page: "confidence", week: 7, redirect: "#confidence/7" });
+  assert.deepEqual({ ...R.parse("#pools", known) }, { page: "confidence", week: null }, "Pools opens the Confidence Pool tab");
   assert.deepEqual({ ...R.parse("#confidence", known) }, { page: "confidence", week: null });
   assert.deepEqual({ ...R.parse("#survivor", known) }, { page: "survivor", week: null });
-  assert.deepEqual({ ...R.parse("#matchup/3/0005-0006", known) }, { page: "live", week: 3, team: "0005", redirect: "#live/3/0005" }, "old matchup links redirect to the Live page");
-  assert.deepEqual({ ...R.parse("#lineups", known) }, { page: "myteam", week: null });
+  assert.deepEqual({ ...R.parse("#matchup/3/0005-0006", known) }, { page: "live", week: 3, team: "0005", redirect: "#scores/3/0005" }, "old matchup links redirect to Scores");
+  assert.deepEqual({ ...R.parse("#lineups", known) }, { page: "myteam", week: null, redirect: "#myteam" });
+  assert.deepEqual({ ...R.parse("#myteam/roster", known) }, { page: "myteam", week: null, tab: "roster" });
+  assert.deepEqual({ ...R.parse("#standings", known) }, { page: "schedule", week: null, redirect: "#schedule" });
   assert.deepEqual({ ...R.parse("#nope", known) }, { page: "home", week: null });
   assert.deepEqual({ ...R.parse("", known) }, { page: "home", week: null });
 });

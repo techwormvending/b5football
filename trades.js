@@ -150,7 +150,7 @@
       (s.key === "proposed" ? " · expires " + esc(when(t.expires_at)) : "") + (t.decided_at ? " · decided " + esc(when(t.decided_at)) : "") + "</p>" +
       (t.decision_note ? '<p class="small">Commissioner: “' + esc(t.decision_note) + "”</p>" : "") +
       (acts ? '<div class="tr-acts">' + acts + "</div>" : "") +
-      (t.conversation_id && (toMine || fromMine) ? '<a class="linkish" href="#dm/' + esc(t.conversation_id) + '">Conversation</a>' : "") + "</div>";
+      (t.conversation_id && (toMine || fromMine) ? '<a class="linkish" href="#messages/private/' + esc(t.conversation_id) + '">Conversation</a>' : "") + "</div>";
   }
   function listHtml() {
     var now = Date.now(), groups = { you: [], mine: [], commish: [], done: [], other: [] };

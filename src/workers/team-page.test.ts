@@ -13,12 +13,14 @@ const TP = ctx.B5TeamPage as any, DM = ctx.B5DM as any, TR = ctx.B5Trades as any
 const R = ctx.B5Route as { parse(h: string, k: (x: string) => boolean): Record<string, unknown> };
 const plain = <T>(x: T): T => JSON.parse(JSON.stringify(x));
 
-test("routes: #team/<id>, #trade/<id>, #trades, #dm, #dm/<id>", () => {
+test("routes: #team/<id>, #trade/<id>, #trades, #messages/private[/<id>] (old #dm links redirect)", () => {
   assert.deepEqual(plain(R.parse("#team/0011", () => true)), { page: "team", week: null, team: "0011" });
   assert.deepEqual(plain(R.parse("#trade/0002", () => true)), { page: "trade", week: null, team: "0002" });
-  assert.deepEqual(plain(R.parse("#dm/42", () => true)), { page: "dm", week: null, conv: 42 });
+  assert.deepEqual(plain(R.parse("#messages/private/42", () => true)), { page: "dm", week: null, conv: 42 });
+  assert.deepEqual(plain(R.parse("#dm/42", () => true)), { page: "dm", week: null, conv: 42, redirect: "#messages/private/42" });
   assert.equal(R.parse("#trades", k => k === "trades").page, "trades");
-  assert.equal(R.parse("#dm", k => k === "dm").page, "dm");
+  assert.equal(R.parse("#messages/private", k => k === "dm").page, "dm");
+  assert.equal(R.parse("#dm", k => k === "dm").redirect, "#messages/private");
   assert.equal(R.parse("#team/<script>", k => k === "team").page, "home");
   const tok = "00000000-0000-0000-0000-00000000000b.dm." + "a".repeat(32);
   assert.deepEqual(plain(R.parse("#unsubscribe/" + tok, () => true)), { page: "unsubscribe", week: null, token: tok }, "email unsubscribe link");

@@ -295,7 +295,7 @@
     return '<div class="card"><h3>Week ' + esc(w.week) + (test ? " official MFL lineup" : " lineup") + ' <span class="tag">' + esc(statusText(w.data)) + "</span></h3>" +
       (mine.length ? lineupListHtml(mine) : '<p class="muted">No starters for week ' + esc(w.week) + " yet.</p>") +
       '<p class="muted small">Mirrored from MFL. <b>MFL is official for ' + esc(L.season) + "</b>: " + (test ? "this is the lineup that counts." : "set your lineup there.") + " Points are this site\'s, from live ESPN stats, finalized nightly by nflverse." +
-      (w.matchup ? ' <a href="#live/' + esc(w.week) + "/" + esc(st.teamId) + '">Open the matchup</a>' : "") + "</p></div>";
+      (w.matchup ? ' <a href="#scores/' + esc(w.week) + "/" + esc(st.teamId) + '">Open the matchup</a>' : "") + "</p></div>";
   }
 
   // Week to show on My Team (2026): the current week if it has starters, else the latest week that does.
@@ -552,13 +552,19 @@
     }
     var open = lineupsOpen(L), test = !open && st.lu && st.lu.test;
     var rosterNote = L.rosters && L.rosters.asOf ? "As of " + fmtDate(L.rosters.asOf) + (L.rosters.week ? " (week " + L.rosters.week + ")" : "") + "." : "";
-    rootEl.innerHTML = '<section class="mt">' + msgHtml(notice || st.msg) + headerHtml(t) +
-      '<div class="mt-cols"><div>' + (open ? editorHtml()
+    // Two tabs (nav.js page head): Lineup (#myteam) and Roster (#myteam/roster).
+    var lineup = function () {
+      return (open ? editorHtml()
         : test ? (st.lu.error || st.lu.open ? editorHtml() : testClosedHtml()) + testPrevHtml() + shadowLineupHtml()
-        : shadowLineupHtml() + closedHtml()) + activityHtml() + "</div><div>" +
-      (open || (test && !st.lu.error) ? rosterHtml(st.lu && st.lu.roster || [], "")
+        : shadowLineupHtml() + closedHtml()) + activityHtml();
+    };
+    var roster = function () {
+      return open || (test && !st.lu.error) ? rosterHtml(st.lu && st.lu.roster || [], "")
         : st.dbRosters ? rosterHtml(st.dbRosters[t.id] || [], "Current roster (synced nightly).")
-        : rosterHtml(leagueRoster(L, t.id), rosterNote)) + "</div></div></section>";
+        : rosterHtml(leagueRoster(L, t.id), rosterNote);
+    };
+    rootEl.innerHTML = '<section class="mt">' + msgHtml(notice || st.msg) + headerHtml(t) +
+      (st.tab === "roster" ? roster() : lineup()) + "</section>";
     st.msg = null;
   }
 
@@ -575,8 +581,8 @@
   if (root.addEventListener) root.addEventListener("beforeunload", function (e) { if (dirty()) { e.preventDefault(); e.returnValue = LEAVE; } });
 
   var bound = null;
-  function start(rootEl) {
-    st.el = rootEl; st.lu = null;
+  function start(rootEl, opt) {
+    st.el = rootEl; st.lu = null; st.tab = opt && opt.tab === "roster" ? "roster" : "lineup";
     rootEl.innerHTML = '<section><h2>My Team</h2><p class="muted">Loading…</p></section>';
     var load = root.B5Account ? root.B5Account.load() : Promise.resolve(null);
     load.then(function (me) {

@@ -93,8 +93,11 @@ test("home-page announcements become board text: links kept, tags dropped", () =
   assert.equal(B.htmlToText("<script>x</script>hi"), "xhi", "then rendered as escaped text anyway");
 });
 
-test("routes: #board and #board/<thread>", () => {
+test("routes: #messages/board and #messages/board/<thread>; old #board links redirect", () => {
   const known = (k: string) => ["home", "board"].includes(k);
-  assert.deepEqual({ ...R.parse("#board", known) }, { page: "board", week: null });
-  assert.deepEqual({ ...R.parse("#board/42", known) }, { page: "board", week: null, thread: 42 });
+  assert.deepEqual({ ...R.parse("#messages", known) }, { page: "board", week: null });
+  assert.deepEqual({ ...R.parse("#messages/board", known) }, { page: "board", week: null });
+  assert.deepEqual({ ...R.parse("#messages/board/42", known) }, { page: "board", week: null, thread: 42 });
+  assert.deepEqual({ ...R.parse("#board", known) }, { page: "board", week: null, redirect: "#messages/board" });
+  assert.deepEqual({ ...R.parse("#board/42", known) }, { page: "board", week: null, thread: 42, redirect: "#messages/board/42" });
 });

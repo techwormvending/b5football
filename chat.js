@@ -1,4 +1,4 @@
-/* Chat (#chat, #chat/<room>, #chat/draft/tv): live rooms for league members, separate from the
+/* Chat (#chat, #messages/chat/<room>, #messages/chat/draft/tv): live rooms for league members, separate from the
    Message Board. The database refuses everyone else (RLS; see migration chat); signed-out visitors
    get "Sign in to chat".
    Rooms: "League" and "Draft" always; the commissioner adds or archives others. Messages arrive
@@ -10,7 +10,7 @@
    (highlighted when they're you), edit/delete your own; the commissioner deletes, pins, mutes,
    clears and manages rooms (audited by the database).
    Draft room: a pinned header with the pick on the clock and time left (draft_state), B5 Bot
-   messages from public.draft_event. Big-screen mode (#chat/draft/tv, or B5Chat.mount(el,
+   messages from public.draft_event. Big-screen mode (#messages/chat/draft/tv, or B5Chat.mount(el,
    { room: "draft", tv: true }) beside the draft board): read-only, large type. */
 (function (root) {
   "use strict";
@@ -218,7 +218,7 @@
   function roomsHtml() {
     return '<div class="ch-rooms" role="tablist">' + st.rooms.map(function (r) {
       var n = st.unread[r.id] || 0;
-      return '<a class="wk' + (r.id === st.room ? " active" : "") + '" href="#chat/' + esc(r.id) + '" role="tab">' + esc(r.name) + (n && r.id !== st.room ? ' <span class="nav-badge">' + (n > 99 ? "99+" : n) + "</span>" : "") + "</a>";
+      return '<a class="wk' + (r.id === st.room ? " active" : "") + '" href="#messages/chat/' + esc(r.id) + '" role="tab">' + esc(r.name) + (n && r.id !== st.room ? ' <span class="nav-badge">' + (n > 99 ? "99+" : n) + "</span>" : "") + "</a>";
     }).join("") + (isCommish() && !st.tv ? '<button type="button" class="wk ch-room-menu" data-ch="room-menu" aria-label="Room settings">⚙</button>' : "") + "</div>";
   }
   function composeHtml() {
@@ -289,7 +289,9 @@
     var sec = st.el && st.el.querySelector(".ch");
     if (!sec || st.mounted) return;
     var vv = root.visualViewport, h = vv ? vv.height + vv.offsetTop : root.innerHeight;
-    sec.style.height = Math.max(260, h - Math.max(0, sec.getBoundingClientRect().top)) + "px";
+    // Phones: stop above the bottom nav bar (it steps aside while typing, so the keyboard gets the room).
+    var bar = root.document.getElementById("bottomBar"), bh = bar ? bar.getBoundingClientRect().height : 0;   // 0 while hidden (desktop, typing)
+    sec.style.height = Math.max(260, h - bh - Math.max(0, sec.getBoundingClientRect().top)) + "px";
     var log = sec.querySelector(".ch-log");
     if (log && st.atBottom) log.scrollTop = log.scrollHeight;
   }
@@ -347,7 +349,7 @@
     var who = root.B5Account ? root.B5Account.load().catch(function () { return null; }) : Promise.resolve(null);
     return who.then(function (m) {
       st.me = m;
-      if (!isMember()) { if (el) el.hidden = true; if (rt.sub) { rt.sub.close(); rt.sub = null; } return; }
+      if (!isMember()) { if (el) el.hidden = true; if (root.B5Nav) root.B5Nav.setCount("chat", 0); if (rt.sub) { rt.sub.close(); rt.sub = null; } return; }
       var ready = Object.keys(st.people).length ? Promise.resolve() : loadPeople();
       return ready.then(function () {
         if (!rt.sub || rt.user !== myId()) startRealtime();
@@ -357,6 +359,7 @@
         var total = 0;
         ok(r).forEach(function (x) { st.unread[x.room_id] = x.unread; if (!(st.el && x.room_id === st.room)) total += x.unread; });
         if (el) { el.textContent = total > 99 ? "99+" : String(total); el.hidden = !total; }
+        if (root.B5Nav) root.B5Nav.setCount("chat", total);
         if (st.el) render({ top: true });
       });
     }).catch(function () {});
@@ -421,12 +424,12 @@
         var name = root.prompt("New room name"); if (!name) return;
         var rid = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30) || "room";
         api("chat_rooms", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ id: rid, name: name.trim(), sort: 50 }) })
-          .then(function (r) { done(r); if (r.ok) root.location.hash = "#chat/" + rid; });
+          .then(function (r) { done(r); if (r.ok) root.location.hash = "#messages/chat/" + rid; });
       } else if (choice === "2" && root.confirm("Delete every message in this room? This can't be undone.")) {
         api("rpc/chat_clear_room", { method: "POST", body: JSON.stringify({ p_room: st.room }) }).then(function (r) { done(r); st.msgs = []; render({ log: true }); });
       } else if (choice === "3") {
         api("chat_rooms?id=eq." + encodeURIComponent(st.room), { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ archived: true }) })
-          .then(function (r) { done(r); if (r.ok) root.location.hash = "#chat/league"; });
+          .then(function (r) { done(r); if (r.ok) root.location.hash = "#messages/chat/league"; });
       } else if (choice === "4") {
         api("chat_mutes?until=gt." + new Date().toISOString(), { method: "DELETE" }).then(done);
       }

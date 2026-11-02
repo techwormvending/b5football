@@ -46,12 +46,10 @@
     `${L.name}${L.established ? " · Est. " + L.established : ""}`;
   document.getElementById("footYear").textContent = new Date().getFullYear();
 
-  const nav = document.getElementById("nav");
-  const toggle = document.querySelector(".nav-toggle");
-  toggle.addEventListener("click", () => {
-    const open = nav.classList.toggle("open");
-    toggle.setAttribute("aria-expanded", open);
-  });
+  // Top bar, menus, phone bottom bar, page titles and tabs: nav.js (window.B5Nav)
+  const NAV = window.B5Nav;
+  const head = document.getElementById("pageHead");
+  NAV.mount();
 
   // ---- Pages ----------------------------------------------------------
   // Schedule helpers. Default week = first week not yet played.
@@ -71,7 +69,7 @@
     const divGame = T.division(aId) && T.division(aId) === T.division(hId);
     const round = roundName(week);
     // The whole card opens the matchup (a cover link); the team names on top open the teams.
-    return `<div class="card game has-cover"><a class="card-cover" href="#live/${esc(week)}/${esc(aId)}" aria-label="Open the week ${esc(week)} matchup"></a>
+    return `<div class="card game has-cover"><a class="card-cover" href="#scores/${esc(week)}/${esc(aId)}" aria-label="Open the week ${esc(week)} matchup"></a>
       ${side(aId, aPts, hPts)}${side(hId, hPts, aPts)}
       <div class="g-meta muted">${done ? (sched.liveWeeks && sched.liveWeeks.has(week) ? "Live" : "Final") : "Upcoming"}${round ? ` · ${esc(round)}` : divGame ? ` · ${esc(divName(T.division(aId)))} division game` : ""}</div>
     </div>`;
@@ -100,7 +98,11 @@
   }
 
   const pages = {
-    schedule() {
+    // League > Standings & Schedule: the standings, then the week-by-week schedule
+    schedule() { return standingsTable() + pages.scheduleWeeks(); },
+    // Phones: the More page (big tiles)
+    more() { return NAV.moreHtml(window.B5Account ? window.B5Account.viewer() : null); },
+    scheduleWeeks() {
       if (!sched.weeks.length) return `<section><h2>Schedule</h2><p class="muted">No schedule yet.</p></section>`;
       const cur = currentWeek();
       const wk = schedWeek ?? cur;
@@ -282,7 +284,7 @@
 
   function route() {
     const r = window.B5Route.parse(location.hash, k => !!pages[k]);
-    if (r.redirect && history.replaceState) history.replaceState(null, "", r.redirect);   // old matchup links -> #live/<week>/<team>
+    if (r.redirect && history.replaceState) history.replaceState(null, "", r.redirect);   // old links (#live, #board, #chat, #dm, ...) -> their new homes
     const page = r.page;
     // Unsaved lineup on My Team: ask first; staying puts the address back without reloading the page.
     if (curPage === "myteam" && page !== "myteam" && window.B5MyTeam && window.B5MyTeam.dirty() && !confirm(window.B5MyTeam.LEAVE)) {
@@ -299,11 +301,12 @@
     if (window.B5DM) window.B5DM.stop();
     if (window.B5Trades) window.B5Trades.stop();
     document.body.dataset.page = page;   // lets a page restyle the frame (the chat hides the footer)
+    // Big page title and the page's tabs under the bar (none on Home: its own heading says it)
+    head.innerHTML = page === "home" ? "" : NAV.route(r);
+    if (page === "home") NAV.route(r);
     view.innerHTML = pages[page]();
-    document.querySelectorAll(".nav a[href^='#']").forEach(a =>
-      a.classList.toggle("active", a.getAttribute("href") === "#" + (page === "commish-payouts" ? "commish" : page === "confidence" ? "survivor" : page === "team" ? "teams" : page === "trade" || page === "trades" ? "players" : page)));
+    dedupeTitles(NAV.sectionOf(r));
     if (page === "schedule") centerWeek();
-    nav.classList.remove("open");
     if (page === "home") startClock();
     if (page === "live" && window.B5Live) window.B5Live.start(document.getElementById("lvRoot"), r);
     if (page === "board" && window.B5Board) window.B5Board.start(document.getElementById("bdRoot"), r);
@@ -370,11 +373,26 @@
     }
     if ((page === "survivor" || page === "confidence") && window.B5Pools) window.B5Pools.start(page, document.getElementById("plRoot"), r.week);
     if ((page === "payouts" || page === "commish-payouts") && window.B5Payouts) window.B5Payouts.start(page === "payouts" ? "public" : "admin", document.getElementById("poRoot"));
-    if (page === "myteam" && window.B5MyTeam) window.B5MyTeam.start(document.getElementById("mtRoot"));
+    if (page === "myteam" && window.B5MyTeam) window.B5MyTeam.start(document.getElementById("mtRoot"), { tab: r.tab === "roster" ? "roster" : "lineup" });
     if ((page === "account" || page === "commish" || page === "admin") && window.B5Account) window.B5Account.start(page, document.getElementById("acctRoot"));
     if (page === "treasury" && window.B5Treasury) window.B5Treasury.start(document.getElementById("trRoot"));
     if (page === "unsubscribe" && window.B5Account) window.B5Account.unsubscribe(document.getElementById("acctRoot"), r.token);
     window.scrollTo(0, 0);
+  }
+  // A page's own first heading that repeats the big title or the open tab ("Live" under Scores,
+  // "Messages" under Messages · Private) is hidden; pages render late, so watch for it a while.
+  const ALIAS = { live: ["Live"], board: ["Board"], dm: ["Messages"], chat: ["Chat"], players: ["Players"], account: ["Account"] };
+  let titleWatch = null;
+  function dedupeTitles(s) {
+    if (titleWatch) titleWatch.disconnect();
+    const tab = head.querySelector(".page-tabs a.active");
+    const same = [s.title, tab && tab.firstChild && tab.firstChild.textContent].concat(ALIAS[curPage] || []).filter(Boolean).map(x => x.trim().toLowerCase());
+    const run = () => view.querySelectorAll("section > h2:first-child, .bd-head > h2:first-child").forEach(h => {
+      const t = h.textContent.trim().toLowerCase();
+      if (same.includes(t)) h.classList.add("dup-title");
+    });
+    run();
+    if (window.MutationObserver) { titleWatch = new MutationObserver(run); titleWatch.observe(view, { childList: true, subtree: true }); }
   }
   window.addEventListener("hashchange", route);
   // Week picker on the schedule page (only there: other pages have their own week buttons)

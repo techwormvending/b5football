@@ -149,17 +149,20 @@ test("scoring-play feed: the two teams' starters only, newest first, 6+ point pl
   assert.deepEqual(plain(out.map((e: { player_id: string; team: string; big: boolean }) => [e.player_id, e.team, e.big])), [["RB9", "0002", false], ["QB1", "0001", true]]);
 });
 
-test("one page: week links stay on Live; #live/<week>/<franchiseId> selects that matchup; old matchup links redirect", () => {
+test("one page: week links stay on Scores; #scores/<week>/<franchiseId> selects that matchup; old #live and matchup links redirect", () => {
   const known = (k: string) => ["home", "live", "schedule"].includes(k);
   const html = V.weekChipsHtml(7);
   const links = [...html.matchAll(/<a [^>]*href="([^"]+)"[^>]*>(\d+)<\/a>/g)];
   assert.equal(links.length, 17);
   for (const [, href, label] of links) assert.deepEqual({ ...R.parse(href!, known) }, { page: "live", week: Number(label) });
   assert.doesNotMatch(read("live.js"), /data-sched-week|data-week=/, "the Schedule's week handler can't grab these");
-  assert.deepEqual({ ...R.parse("#live", known) }, { page: "live", week: null });
-  assert.deepEqual({ ...R.parse("#live/7/0002", known) }, { page: "live", week: 7, team: "0002" });
-  assert.deepEqual({ ...R.parse("#live/7/0001-0002", known) }, { page: "live", week: 7, team: "0001", redirect: "#live/7/0001" });
-  assert.deepEqual({ ...R.parse("#matchup/3/0005-0006", known) }, { page: "live", week: 3, team: "0005", redirect: "#live/3/0005" });
+  assert.deepEqual({ ...R.parse("#scores", known) }, { page: "live", week: null });
+  assert.deepEqual({ ...R.parse("#scores/7/0002", known) }, { page: "live", week: 7, team: "0002" });
+  assert.deepEqual({ ...R.parse("#live", known) }, { page: "live", week: null, redirect: "#scores" });
+  assert.deepEqual({ ...R.parse("#live/7", known) }, { page: "live", week: 7, redirect: "#scores/7" });
+  assert.deepEqual({ ...R.parse("#live/7/0002", known) }, { page: "live", week: 7, team: "0002", redirect: "#scores/7/0002" });
+  assert.deepEqual({ ...R.parse("#live/7/0001-0002", known) }, { page: "live", week: 7, team: "0001", redirect: "#scores/7/0001" });
+  assert.deepEqual({ ...R.parse("#matchup/3/0005-0006", known) }, { page: "live", week: 3, team: "0005", redirect: "#scores/3/0005" });
   assert.match(read("app.js"), /r\.redirect && history\.replaceState/, "the router rewrites old links in place");
 });
 
@@ -180,8 +183,8 @@ test("cards: one per matchup, each a deep link to itself, the selected one highl
     matchups: [{ away_team: "0001", home_team: "0002", away_score: 40.5, home_score: 38 }, { away_team: "0003", home_team: "0004", away_score: 0, home_score: 0 }],
     slots: [{ team_id: "0001", slot: 0, player_id: "QB1", nfl_team: "DET", revealed: true }, { team_id: "0002", slot: 0, player_id: null, revealed: false }] };
   const html = V.cardsHtml(d, "0004");
-  assert.match(html, /<a class="card-cover" href="#live\/7\/0001" data-lv-team="0001" aria-label="Show this matchup"><\/a>/, "the card opens its matchup (cover link)");
-  assert.match(html, /class="card lv-card has-cover lv-upcoming sel" aria-current="true"><a class="card-cover" href="#live\/7\/0003" data-lv-team="0003"/);
+  assert.match(html, /<a class="card-cover" href="#scores\/7\/0001" data-lv-team="0001" aria-label="Show this matchup"><\/a>/, "the card opens its matchup (cover link)");
+  assert.match(html, /class="card lv-card has-cover lv-upcoming sel" aria-current="true"><a class="card-cover" href="#scores\/7\/0003" data-lv-team="0003"/);
   assert.match(html, /lv-row lead"><div class="logo sm">N<\/div><div class="lv-name"><a class="team-link" href="#team\/0001"><span class="tl-name"><b>NSFW<\/b>/, "team names are TeamLinks");
   assert.doesNotMatch(html, /<a [^>]*>[^<]*<a /, "no link inside a link");
   assert.match(html, /0 done · 1 playing · 0 to go · 0 bye/);

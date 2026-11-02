@@ -54,12 +54,14 @@ test("mentions of you, and grouping a person's quick messages", () => {
   assert.equal(C.continues(a, { ...a, is_bot: true }), false);
 });
 
-test("routes: #chat, #chat/<room>, big-screen #chat/draft/tv", () => {
+test("routes: #messages/chat, #messages/chat/<room>, big-screen .../draft/tv; old #chat links redirect", () => {
   const known = (k: string) => ["home", "chat"].includes(k);
-  assert.deepEqual({ ...R.parse("#chat", known) }, { page: "chat", week: null });
-  assert.deepEqual({ ...R.parse("#chat/draft", known) }, { page: "chat", week: null, room: "draft", tv: false });
-  assert.deepEqual({ ...R.parse("#chat/draft/tv", known) }, { page: "chat", week: null, room: "draft", tv: true });
-  assert.deepEqual({ ...R.parse("#chat/<script>", known) }, { page: "home", week: null });
+  assert.deepEqual({ ...R.parse("#messages/chat", known) }, { page: "chat", week: null });
+  assert.deepEqual({ ...R.parse("#messages/chat/draft", known) }, { page: "chat", week: null, room: "draft", tv: false });
+  assert.deepEqual({ ...R.parse("#messages/chat/draft/tv", known) }, { page: "chat", week: null, room: "draft", tv: true });
+  assert.deepEqual({ ...R.parse("#chat", known) }, { page: "chat", week: null, redirect: "#messages/chat" });
+  assert.deepEqual({ ...R.parse("#chat/draft/tv", known) }, { page: "chat", week: null, room: "draft", tv: true, redirect: "#messages/chat/draft/tv" });
+  assert.equal(R.parse("#messages/chat/<script>", known).page, "home");
 });
 
 test("messages use the board's sanitizer: no raw HTML", () => {

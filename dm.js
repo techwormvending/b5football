@@ -1,4 +1,4 @@
-/* Direct messages (#dm, #dm/<conversationId>; window.B5DM). Private 1-to-1 conversations, 1-to-team
+/* Direct messages (#dm, #messages/private/<conversationId>; window.B5DM). Private 1-to-1 conversations, 1-to-team
    (you and that team's owners) and one per trade (both teams' owners; B5 Bot posts each step).
    Built on the chat pieces: the shared Realtime socket (realtime.js; postgres_changes on dm_messages /
    dm_conversations, RLS per subscriber, so each member only receives his own conversations), Board's
@@ -107,7 +107,7 @@
     var rows = st.convs.map(function (c) {
       var p = partner(c, me, mine), last = st.last[c.id], n = st.unread[c.id] || 0;
       var preview = last ? (last.is_bot ? "B5 Bot: " : last.author_id === me ? "You: " : "") + (last.body || "📷 Image") : "No messages yet";
-      return '<div class="bd-row has-cover' + (n ? " unread" : "") + '"><a class="card-cover" href="#dm/' + c.id + '" aria-label="Open the conversation"></a>' +
+      return '<div class="bd-row has-cover' + (n ? " unread" : "") + '"><a class="card-cover" href="#messages/private/' + c.id + '" aria-label="Open the conversation"></a>' +
         (p.kind === "user" ? TL().logo((st.people[p.user] || {}).team) : TL().logo(p.team || (p.teams || [])[0])) +
         '<div class="bd-row-main"><b>' + titleHtml(p, st.people) + (c.reported_at ? ' <span class="tag">reported</span>' : "") + "</b>" +
         '<span class="muted small">' + esc(preview.slice(0, 90)) + (last ? " · " + esc(time(last.created_at)) : "") + "</span></div>" +
@@ -131,7 +131,7 @@
   }
   function threadHtml() {
     var c = convOf(st.conv);
-    if (!c) return '<section class="dm"><p><a href="#dm">← Messages</a></p><div class="card muted">That conversation isn\'t available.</div></section>';
+    if (!c) return '<section class="dm"><p><a href="#messages/private">← Messages</a></p><div class="card muted">That conversation isn\'t available.</div></section>';
     var me = myId(), mine = (st.me.teams || []).map(function (t) { return t.team_id; }), p = partner(c, me, mine), part = amParticipant(c);
     var reportBox = c.reported_at
       ? '<p class="acct-msg err">🚩 Reported to the commissioner' + (c.report_reason && (isCommish() || part) ? ": " + esc(c.report_reason) : "") + "." +
@@ -158,7 +158,7 @@
       '<div class="bd-ta"><textarea name="body" rows="1" maxlength="2000" placeholder="Message" enterkeyhint="send"></textarea></div>' +
       '<button class="btn ch-send" type="submit"' + (k.busy ? " disabled" : "") + ">" + (k.busy ? "…" : "Send") + "</button></div>" +
       (k.err ? '<p class="acct-msg err">' + esc(k.err) + "</p>" : "") + "</form>" : '<p class="muted small">You\'re reading this because it was reported. Only its participants can post.</p>';
-    return '<section class="dm"><p class="dm-back"><a href="#dm">← Messages</a></p><div class="dm-head"><h2 class="dm-title">' + titleHtml(p, st.people) + "</h2>" +
+    return '<section class="dm"><p class="dm-back"><a href="#messages/private">← Messages</a></p><div class="dm-head"><h2 class="dm-title">' + titleHtml(p, st.people) + "</h2>" +
       (part && !c.reported_at ? '<button class="linkish" type="button" data-dm="report">Report</button>' : "") + "</div>" + reportBox +
       (st.msg ? '<p class="acct-msg ' + (st.msg.err ? "err" : "ok") + '">' + esc(st.msg.err || st.msg.ok) + "</p>" : "") +
       '<div class="card dm-log ch-log" data-dm-log>' + (log || '<p class="muted ch-empty">No messages yet. Say hi.</p>') + "</div>" + compose + "</section>";
@@ -198,7 +198,7 @@
       rpc("dm_report", { p_conv: st.conv, p_reason: why || null }).then(function (r) { st.msg = r.ok ? { ok: "Reported. The commissioner can read this conversation now." } : { err: r.error }; return loadThread(st.conv); }).then(function () { render(true); });
       return;
     }
-    if (k === "resolve") { rpc("dm_resolve", { p_conv: st.conv }).then(function (r) { st.msg = r.ok ? null : { err: r.error }; if (r.ok) root.location.hash = "#dm"; else render(true); }); return; }
+    if (k === "resolve") { rpc("dm_resolve", { p_conv: st.conv }).then(function (r) { st.msg = r.ok ? null : { err: r.error }; if (r.ok) root.location.hash = "#messages/private"; else render(true); }); return; }
     if (k === "edit") { st.editing = id; st.menu = null; render(true); return; }
     if (k === "cancel") { st.editing = null; render(true); return; }
     if (k === "del" && root.confirm("Delete this message?")) {
@@ -256,12 +256,13 @@
     return who.then(function (m) {
       st.me = m;
       if (nav) nav.hidden = !isMember();
-      if (!isMember()) { if (el) el.hidden = true; if (rt.sub) { rt.sub.close(); rt.sub = null; } return; }
+      if (!isMember()) { if (el) el.hidden = true; if (root.B5Nav) root.B5Nav.setCount("dm", 0); if (rt.sub) { rt.sub.close(); rt.sub = null; } return; }
       if (!rt.sub || rt.user !== myId()) startRealtime();
       return rpc("dm_unread").then(function (r) {
         var total = 0;
         ok(r).forEach(function (x) { st.unread[x.conversation_id] = x.unread; if (!(st.el && x.conversation_id === st.conv)) total += x.unread; });
         if (el) { el.textContent = total > 99 ? "99+" : String(total); el.hidden = !total; }
+        if (root.B5Nav) root.B5Nav.setCount("dm", total);
       });
     }).catch(function () {});
   }
@@ -271,7 +272,7 @@
     return root.B5Account.load().then(function (m) {
       st.me = m;
       return A.api(cfg, m && m.session, "rpc/dm_open", { method: "POST", body: JSON.stringify({ p_user: to.user || null, p_team: to.team || null }) }, f);
-    }).then(function (r) { if (r.ok) root.location.hash = "#dm/" + r.data; return r; });
+    }).then(function (r) { if (r.ok) root.location.hash = "#messages/private/" + r.data; return r; });
   }
 
   function start(rootEl, r) {

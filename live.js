@@ -1,5 +1,5 @@
-/* Live Scoring page, one page: #live, #live/<week>, #live/<week>/<franchiseId> (that matchup selected;
-   old #live/<week>/<away>-<home> and #matchup/... links redirect here, see route.js).
+/* Live Scoring page, one page: #live, #scores/<week>, #scores/<week>/<franchiseId> (that matchup selected;
+   old #scores/<week>/<away>-<home> and #matchup/... links redirect here, see route.js).
    Top to bottom: week links (stay on Live), the week's NFL games strip, all matchup cards (totals,
    leader, "X done · Y playing · Z to go · N bye", status, a bye warning), then the selected
    matchup below the cards: both lineups in slot order (QB RB RB WR WR WR TE K DEF), the bench
@@ -321,8 +321,8 @@
   var unofficial = function () { return season < Number(L.lineupsFrom || 0) ? '<p class="lv-unofficial"><b>Unofficial — MFL is official for ' + esc(season) + ".</b></p>" : ""; };
   function weekChips() {
     var n = (L.schedule && L.schedule.weeks && L.schedule.weeks.length) || 17, out = "";
-    // Links, not buttons: the week lives in the URL (#live/7), so it never leaves this page.
-    for (var w = 1; w <= n; w++) out += '<a class="wk' + (w === st.week ? " active" : "") + '" href="#live/' + w + '" aria-label="Week ' + w + '">' + w + "</a>";
+    // Links, not buttons: the week lives in the URL (#scores/7), so it never leaves this page.
+    for (var w = 1; w <= n; w++) out += '<a class="wk' + (w === st.week ? " active" : "") + '" href="#scores/' + w + '" aria-label="Week ' + w + '">' + w + "</a>";
     return '<div class="weeks" aria-label="Week">' + out + "</div>";
   }
   function freshHtml(d) {
@@ -429,7 +429,7 @@
       var isSel = pairKey(m) === sel;
       // The card selects the matchup (a cover link under it); the team names on top open the teams.
       return '<div class="card lv-card has-cover lv-' + cs.key + (isSel ? " sel" : "") + '"' + (isSel ? ' aria-current="true"' : "") + '>' +
-        '<a class="card-cover" href="#live/' + esc(d.week) + "/" + esc(a) + '" data-lv-team="' + esc(a) + '" aria-label="Show this matchup"></a>' +
+        '<a class="card-cover" href="#scores/' + esc(d.week) + "/" + esc(a) + '" data-lv-team="' + esc(a) + '" aria-label="Show this matchup"></a>' +
         '<span class="tag lv-st">' + esc(cs.text) + "</span>" + row(a, sa, pa, lead === "a") + row(h, sh, ph, lead === "h") + "</div>";
     }).join("");
     return cards ? '<div class="lv-board">' + cards + "</div>" : '<div class="card muted">No matchups for week ' + esc(d.week) + ".</div>";
@@ -561,7 +561,7 @@
   function select(team) {
     st.sel = team; st.open = {};
     var m = selected();
-    if (root.history && root.history.replaceState) root.history.replaceState(null, "", "#live/" + st.week + "/" + team);
+    if (root.history && root.history.replaceState) root.history.replaceState(null, "", "#scores/" + st.week + "/" + team);
     render();
     var el = st.el;
     loadDetail(st.d, m).then(function (dd) {

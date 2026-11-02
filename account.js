@@ -75,13 +75,20 @@
     return [add.length ? "add " + add.join(", ") : "", rem.length ? "remove " + rem.join(", ") : ""].filter(Boolean).join("; ");
   }
 
-  function refreshNav() {
-    var acct = document.getElementById("navAccount"), com = document.getElementById("navCommish"), adm = document.getElementById("navAdmin");
-    if (acct) acct.textContent = me ? "Account" : "Sign in";
-    if (com) com.hidden = !(me && me.profile && me.profile.is_commissioner);
-    if (adm) adm.hidden = !(me && me.profile && me.profile.is_admin);
-    var tr = document.getElementById("navTreasury");   // treasurers keep the books; commissioners read them
-    if (tr) tr.hidden = !(me && me.profile && (me.profile.is_treasurer || me.profile.is_commissioner));
+  /** The nav (nav.js) shows the person's name and only the tools of the roles he holds. */
+  function viewer() {
+    if (!me) return { signedIn: false, name: "", roles: [] };
+    var p = me.profile || {}, email = (me.session && me.session.user && me.session.user.email) || "";
+    return { signedIn: true, name: p.display_name || email.split("@")[0] || "My Account", roles: (p.roles || []).slice() };
+  }
+  function refreshNav() { if (window.B5Nav) window.B5Nav.setViewer(viewer()); }
+  /** Sign out from anywhere (the account menu, the More page). */
+  function signOut() {
+    if (!ready()) return Promise.resolve();
+    return A.signOut(cfg, opts()).then(function () {
+      me = null; refreshNav();
+      if (location.hash === "#account") window.dispatchEvent(new Event("hashchange")); else location.hash = "#account";
+    });
   }
 
   // ---- #account ------------------------------------------------------------
@@ -616,7 +623,7 @@
     var anns = (L.announcements || []).map(function (a) {
       var key = annKey(a), t = cm.crossposted[key];
       return "<li><b>" + esc(a.title) + '</b> <span class="muted small">' + esc(a.date) + "</span> " +
-        (t ? '<a href="#board/' + esc(t) + '">On the board</a>' : '<button class="btn ghost" data-cm="crosspost" data-key="' + esc(key) + '">Cross-post to board</button>') + "</li>";
+        (t ? '<a href="#messages/board/' + esc(t) + '">On the board</a>' : '<button class="btn ghost" data-cm="crosspost" data-key="' + esc(key) + '">Cross-post to board</button>') + "</li>";
     }).join("");
     return '<div class="card"><h3>Message board</h3><p class="muted small">B5 Bot posts after the nightly job: the weekly recap once a week is final, and payout awards as they become final.</p>' +
       tog("auto_recap", "Weekly results recap (high score, guillotine, biggest blowout, closest game)") + tog("auto_awards", "Payout awards as they become final") +
@@ -890,7 +897,7 @@
     },
     unsubscribe: unsubscribe,
     presence: presence,
-    refreshNav: refreshNav,
+    refreshNav: refreshNav, signOut: signOut, viewer: viewer,
     rolesText: rolesText, roleBadges: roleBadges, defaultsSummary: defaultsSummary, nextRoles: nextRoles, roleChangeText: roleChangeText,
     managerNames: managerNames,
     load: load
