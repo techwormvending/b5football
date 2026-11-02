@@ -500,10 +500,10 @@ describe("live scoring tick (pg_cron every minute -> Edge Function)", () => {
 describe("payouts (ledger only)", () => {
   beforeEach(async () => {
     await db.exec(`
-      insert into public.season_settings (season, team_count, buy_in, prizes) values (${S}, 12, 360, '{}');
-      insert into public.team_fees (season, team_id, amount_due, paid) values (${S}, '0001', 360, true), (${S}, '0002', 360, false);
-      insert into public.payout_payments (season, team_id, amount, paid_at) values (${S}, '0001', 35, '2026-10-01'), (${S}, '0002', 70, '2026-10-02');
-      insert into public.awards (season, kind, week, label, team_id, amount, status, source) values (${S}, 'weekly_high', 1, 'Week 1 high score', '0001', 35, 'final', 'auto');
+      insert into public.season_settings (season, team_count, buy_in, prizes) values (${S}, 12, 100, '{}');
+      insert into public.team_fees (season, team_id, amount_due, paid) values (${S}, '0001', 100, true), (${S}, '0002', 100, false);
+      insert into public.payout_payments (season, team_id, amount, paid_at) values (${S}, '0001', 20, '2026-10-01'), (${S}, '0002', 70, '2026-10-02');
+      insert into public.awards (season, kind, week, label, team_id, amount, status, source) values (${S}, 'weekly_high', 1, 'Week 1 high score', '0001', 20, 'final', 'auto');
       insert into public.payout_flags (season, flags) values (${S}, '[{"kind":"tie"}]');`);
   });
 
@@ -525,8 +525,8 @@ describe("payouts (ledger only)", () => {
     assert.equal((await rowsT(db, user(NOBODY), `select public.season_money(${S}) as m`))[0]!.m, null);
     // Members (and officers) see amounts as before
     assert.equal((await rows(db, user(ALICE), `select * from public.awards`)).length, 1);
-    assert.equal(Number((await rowsT(db, user(ALICE), `select public.season_money(${S}) as m`))[0]!.m.buy_in), 360);
-    assert.equal(Number((await rowsT(db, user(COMMISH), `select public.season_money(${S}) as m`))[0]!.m.buy_in), 360);
+    assert.equal(Number((await rowsT(db, user(ALICE), `select public.season_money(${S}) as m`))[0]!.m.buy_in), 100);
+    assert.equal(Number((await rowsT(db, user(COMMISH), `select public.season_money(${S}) as m`))[0]!.m.buy_in), 100);
     await denied(db, anon, `insert into public.awards (season, kind, label, team_id, amount, status, source) values (${S}, 'manual', 'x', '0001', 1, 'final', 'manual')`, /permission denied/);
     await denied(db, user(ALICE), `insert into public.awards (season, kind, label, team_id, amount, status, source) values (${S}, 'manual', 'x', '0001', 1, 'final', 'manual')`);
     assert.equal(await affected(db, user(ALICE), `update public.awards set amount = 1000`), 0);
@@ -545,25 +545,25 @@ describe("payouts (ledger only)", () => {
 
   test("league totals: members get sums only; anon can't call it", async () => {
     const [r] = await rows(db, user(ALICE), `select public.payout_league_totals(${S}) as t`);
-    assert.deepEqual((r as { t: unknown }).t, { fees_due: 720, fees_paid: 360, teams_paid: 1, teams_unpaid: 1, paid_out: 105 });
+    assert.deepEqual((r as { t: unknown }).t, { fees_due: 200, fees_paid: 100, teams_paid: 1, teams_unpaid: 1, paid_out: 90 });
     await denied(db, anon, `select public.payout_league_totals(${S})`, /permission denied/);
   });
 
   test("commissioner changes are audited; an override needs a reason", async () => {
     await as(db, user(COMMISH), tx => tx.query(`update public.team_fees set paid = true, paid_at = '2026-10-20' where team_id = '0002'`));
-    await as(db, user(COMMISH), tx => tx.query(`insert into public.payout_payments (season, team_id, amount, paid_at) values (${S}, '0002', 35, '2026-10-20')`));
-    await denied(db, user(COMMISH), `insert into public.awards (season, kind, week, label, team_id, amount, status, source) values (${S}, 'weekly_high', 2, 'Week 2 high score', '0002', 35, 'final', 'override')`, /check constraint/);
-    await as(db, user(COMMISH), tx => tx.query(`insert into public.awards (season, kind, week, label, team_id, amount, status, source, note) values (${S}, 'weekly_high', 2, 'Week 2 high score', '0002', 35, 'final', 'override', 'stat correction after lock')`));
+    await as(db, user(COMMISH), tx => tx.query(`insert into public.payout_payments (season, team_id, amount, paid_at) values (${S}, '0002', 20, '2026-10-20')`));
+    await denied(db, user(COMMISH), `insert into public.awards (season, kind, week, label, team_id, amount, status, source) values (${S}, 'weekly_high', 2, 'Week 2 high score', '0002', 20, 'final', 'override')`, /check constraint/);
+    await as(db, user(COMMISH), tx => tx.query(`insert into public.awards (season, kind, week, label, team_id, amount, status, source, note) values (${S}, 'weekly_high', 2, 'Week 2 high score', '0002', 20, 'final', 'override', 'stat correction after lock')`));
     const a = (await db.query<{ action: string }>(`select action from public.audit_log where action like 'payouts:%' order by id`)).rows.map(r => r.action);
     assert.deepEqual(a, ["payouts:team_fees:update", "payouts:payout_payments:insert", "payouts:awards:insert"]);
   });
 
   test("the job replaces auto awards and eliminations atomically, never touching manual awards or overrides; only server jobs may call it", async () => {
     await db.exec(`
-      insert into public.awards (season, kind, label, team_id, amount, status, source) values (${S}, 'manual', 'Survivor', '0002', 240, 'final', 'manual');
+      insert into public.awards (season, kind, label, team_id, amount, status, source) values (${S}, 'manual', 'Survivor', '0002', 50, 'final', 'manual');
       insert into public.guillotine (season, week, team_id, status, source, note) values (${S}, 3, '0002', 'final', 'override', 'tie broken by bench points');`);
     const call = `select public.replace_auto_payouts(${S},
-      '[{"kind":"weekly_high","week":1,"label":"Week 1 high score","team_id":"0002","amount":35,"status":"projected"}]',
+      '[{"kind":"weekly_high","week":1,"label":"Week 1 high score","team_id":"0002","amount":20,"status":"projected"}]',
       '[{"week":2,"team_id":"0001","points":50,"status":"final"},{"week":3,"team_id":"0001","points":40,"status":"final"}]',
       '[{"kind":"seed_mismatch"}]')`;
     await denied(db, user(COMMISH), call, /permission denied/);
@@ -579,7 +579,7 @@ describe("payouts (ledger only)", () => {
 describe("pools: survivor and confidence picks", () => {
   // Week 6: DET@ARI later this week, KC@LV already kicked off (seed). Picking open for the test season.
   beforeEach(async () => {
-    await db.exec(`insert into public.season_settings (season, team_count, buy_in, prizes, pools) values (${S}, 12, 360, '{}', '{"mode": "official"}');
+    await db.exec(`insert into public.season_settings (season, team_count, buy_in, prizes, pools) values (${S}, 12, 100, '{}', '{"mode": "official"}');
       insert into public.nfl_games (season, week, game_key, home, away, kickoff) values (${S}, 7, 'DET@ARI', 'ARI', 'DET', now() + interval '9 days');`);
   });
   const sv = (who: Who, team: string, week: number, nfl: string) => as(db, who, tx => tx.query(`insert into public.survivor_picks (season, week, team_id, nfl_team) values (${S}, ${week}, '${team}', '${nfl}') on conflict (season, week, team_id) do update set nfl_team = excluded.nfl_team`));
@@ -1249,7 +1249,7 @@ describe("add/drop and waivers", () => {
   });
 
   test("lock timing (ET): preseason FCFS from 2 days before the first game; each player locks at his own kickoff until the week's last game; Monday 10 PM waivers until Wednesday 5 PM; then FCFS; closed after the season", async () => {
-    await db.exec(`insert into public.season_settings (season, team_count, buy_in, prizes, waivers) values (2027, 12, 360, '{}', '{"live": true, "closeAt": "2028-01-02T13:00:00-05:00"}');
+    await db.exec(`insert into public.season_settings (season, team_count, buy_in, prizes, waivers) values (2027, 12, 100, '{}', '{"live": true, "closeAt": "2028-01-02T13:00:00-05:00"}');
       insert into public.nfl_games (season, week, game_key, home, away, kickoff) values
         (2027, 1, 'BUF@NYJ', 'NYJ', 'BUF', '2027-09-10T00:15:00Z'),   -- Thursday 8:15 PM ET
         (2027, 1, 'DET@MIA', 'MIA', 'DET', '2027-09-12T17:00:00Z'),   -- Sunday 1:00 PM ET
@@ -1282,7 +1282,7 @@ describe("add/drop and waivers", () => {
   const liveSeason = async (extra = {}) => {
     const d = Number((await db.query<{ d: number }>(`select extract(isodow from now() at time zone 'America/New_York')::int as d`)).rows[0]!.d);
     const settings = { live: true, rosterMax: 3, waiversStart: { isodow: ((d + 1) % 7) + 1, time: "00:00" }, process: { isodow: ((d + 2) % 7) + 1, time: "00:00" }, ...extra };
-    await db.query(`insert into public.season_settings (season, team_count, buy_in, prizes, waivers) values (2028, 12, 360, '{}', $1::jsonb)`, [JSON.stringify(settings)]);
+    await db.query(`insert into public.season_settings (season, team_count, buy_in, prizes, waivers) values (2028, 12, 100, '{}', $1::jsonb)`, [JSON.stringify(settings)]);
     await db.exec(`insert into public.nfl_games (season, week, game_key, home, away, kickoff) values
         (2028, 1, 'KC@LV', 'LV', 'KC', now() - interval '1 hour'),        -- kicked off: KC and LV players are locked
         (2028, 1, 'NYG@MIA', 'MIA', 'NYG', now() + interval '2 days'),
@@ -1385,7 +1385,7 @@ describe("add/drop and waivers", () => {
   });
 
   test("the schedule processes once per week after Wednesday 5 PM ET, only for live seasons", async () => {
-    await db.exec(`insert into public.season_settings (season, team_count, buy_in, prizes, waivers) values (2027, 12, 360, '{}', '{"live": true}');
+    await db.exec(`insert into public.season_settings (season, team_count, buy_in, prizes, waivers) values (2027, 12, 100, '{}', '{"live": true}');
       insert into public.nfl_games (season, week, game_key, home, away, kickoff) values (2027, 1, 'KC@LV', 'LV', 'KC', '2027-09-10T00:15:00Z'), (2027, 2, 'NYG@MIA', 'MIA', 'NYG', '2027-09-19T17:00:00Z')`);
     const tick = (at: string) => db.query<{ r: string }>(`select private.waivers_tick('${at}'::timestamptz) as r`).then(r => r.rows[0]!.r);
     assert.equal(await tick("2027-09-15T20:05:00Z"), "nothing to do", "Wednesday 4:05 PM ET: not yet");
@@ -1556,7 +1556,7 @@ describe("trades", () => {
       insert into public.team_managers values ('0003', '${CAROL}'), ('0001', '${AL}'), ('0004', '${COMMISH}');
       insert into public.nfl_players (id, name, position, nfl_team) values
         ('WR-BUF', 'Buf WR', 'WR', 'BUF'), ('WR-MIA', 'Mia WR', 'WR', 'MIA'), ('WR-KC1', 'KC WR', 'WR', 'KC'), ('RB-NYG', 'NYG RB', 'RB', 'NYG'), ('TE-NYG', 'NYG TE', 'TE', 'NYG'), ('RB-MIA', 'Mia RB', 'RB', 'MIA');
-      insert into public.season_settings (season, team_count, buy_in, prizes, waivers, trades) values (${T}, 12, 360, '{}', '{"live": true, "rosterMax": 3}', '{"live": true}');
+      insert into public.season_settings (season, team_count, buy_in, prizes, waivers, trades) values (${T}, 12, 100, '{}', '{"live": true, "rosterMax": 3}', '{"live": true}');
       insert into public.nfl_games (season, week, game_key, home, away, kickoff) values
         (${T}, 1, 'KC@LV', 'LV', 'KC', now() - interval '1 hour'),
         (${T}, 1, 'NYG@MIA', 'MIA', 'NYG', now() + interval '2 days'),
@@ -1676,7 +1676,7 @@ describe("trades", () => {
   });
 
   test("2026 (MFL is official): test trades, labelled, and approval changes nothing", async () => {
-    await db.exec(`insert into public.season_settings (season, team_count, buy_in, prizes) values (${S}, 12, 360, '{}') on conflict (season) do nothing;
+    await db.exec(`insert into public.season_settings (season, team_count, buy_in, prizes) values (${S}, 12, 100, '{}') on conflict (season) do nothing;
       update public.season_settings set trades = '{"live": false}' where season = ${S}`);
     const id = await propose(user(ALICE), "0001", "0002", ["QB-DET"], ["QB-ARI"], { season: S });
     assert.equal((await db.query<{ test: boolean }>(`select test from public.trades where id = ${id}`)).rows[0]!.test, true);
@@ -1857,7 +1857,7 @@ describe("email notifications", () => {
   });
 
   test("lineup reminders: starters on bye or out, from 3 hours before the deadline; off unless turned on; not for 2026", async () => {
-    await db.exec(`insert into public.season_settings (season, team_count, buy_in, prizes) values (2028, 12, 360, '{}');
+    await db.exec(`insert into public.season_settings (season, team_count, buy_in, prizes) values (2028, 12, 100, '{}');
       insert into public.nfl_players (id, name, position, nfl_team) values ('WR-BYE', 'Bye Guy', 'WR', 'SEA'), ('RB-OUT', 'Hurt Guy', 'RB', 'NYG');
       insert into public.nfl_games (season, week, game_key, home, away, kickoff) values (2028, 3, 'NYG@MIA', 'MIA', 'NYG', now() + interval '2 hours');
       insert into public.roster_entries (season, team_id, player_id) values (2028, '0002', 'WR-BYE'), (2028, '0002', 'RB-OUT');
@@ -2082,7 +2082,7 @@ describe("roles: administrator and commissioner", () => {
     assert.ok((await call(user(ADMIN), `select * from public.audit_log`)).length >= 1);
     assert.ok((await call(user(ADMIN), `select public.keepalive_status() as k`))[0]!.k);
     assert.equal((await call(user(ADMIN), `select user_id, email from public.admin_accounts() where user_id = '${ALICE}'`))[0]!.email, "alice@example.com");
-    await db.exec(`insert into public.season_settings (season, team_count, buy_in, prizes, trades) values (${T}, 12, 360, '{}', '{"live": false}')`);
+    await db.exec(`insert into public.season_settings (season, team_count, buy_in, prizes, trades) values (${T}, 12, 100, '{}', '{"live": false}')`);
     assert.equal((await call(user(ADMIN), `select public.admin_set_mode(${T}, 'trades.live', 'true') as r`))[0]!.r, "trades.live = true");
     assert.equal((await db.query<{ v: boolean }>(`select (trades ->> 'live')::boolean as v from public.season_settings where season = ${T}`)).rows[0]!.v, true);
     assert.equal(await affected(db, user(ADMIN), `update public.feature_flags set enabled = false where key = 'email_notifications'`), 1);
@@ -2090,7 +2090,7 @@ describe("roles: administrator and commissioner", () => {
     // League: nothing.
     assert.equal(await affected(db, user(ADMIN), `update public.standings set wins = 9`), 0);
     await denied(db, user(ADMIN), `insert into public.score_overrides (season, week, target_key, type, points, reason) values (${S}, ${W}, 'DEF:PHI', 'points', 10, 'x')`);
-    await denied(db, user(ADMIN), `insert into public.team_fees (season, team_id, amount_due) values (${S}, '0001', 360)`);
+    await denied(db, user(ADMIN), `insert into public.team_fees (season, team_id, amount_due) values (${S}, '0001', 100)`);
     await denied(db, user(ADMIN), `insert into public.roster_entries (season, team_id, player_id) values (${S}, '0001', 'QB-FA')`, /row-level|permission/);
     assert.equal(await affected(db, user(ADMIN), `update public.season_settings set buy_in = 1 where season = ${T}`), 0, "league settings are the commissioner's");
     await assert.rejects(as(db, user(ADMIN), tx => tx.query(`select public.trade_decide(1, true)`)), /Only the commissioner/);
@@ -2100,7 +2100,7 @@ describe("roles: administrator and commissioner", () => {
 
   test("a commissioner runs the league but sees only email status, not the log; can't flip season modes", async () => {
     await db.exec(`insert into public.email_log (user_id, kind, ref, status) values ('${ALICE}', 'dm', 'conv:1', 'sent');
-      insert into public.season_settings (season, team_count, buy_in, prizes, trades) values (${T}, 12, 360, '{}', '{"live": false}')`);
+      insert into public.season_settings (season, team_count, buy_in, prizes, trades) values (${T}, 12, 100, '{}', '{"live": false}')`);
     assert.deepEqual(await call(user(COM2), `select * from public.email_log`), [], "no log rows");
     assert.equal((await call(user(COM2), `select today from public.notify_usage() where priority = 1`))[0]!.today, 1, "but today's counts");
     await assert.rejects(as(db, user(COM2), tx => tx.query(`select public.admin_health()`)), /Administrators only/);
@@ -2164,7 +2164,7 @@ describe("roles: administrator and commissioner", () => {
         insert into public.teams (id, name, division) values ('0004', 'Mac Daddies', 'Black');
         insert into public.team_managers values ('0004', '${COMMISH}');
         insert into public.nfl_players (id, name, position, nfl_team) values ('WR-MD', 'Mac WR', 'WR', 'NYG'), ('WR-ST', 'Steel WR', 'WR', 'NYG');
-        insert into public.season_settings (season, team_count, buy_in, prizes, waivers, trades) values (${T}, 12, 360, '{}', '{"live": true}', '{"live": true}');
+        insert into public.season_settings (season, team_count, buy_in, prizes, waivers, trades) values (${T}, 12, 100, '{}', '{"live": true}', '{"live": true}');
         insert into public.nfl_games (season, week, game_key, home, away, kickoff) values (${T}, 1, 'NYG@MIA', 'MIA', 'NYG', now() + interval '2 days');
         insert into public.roster_entries (season, team_id, player_id) values (${T}, '0004', 'WR-MD'), (${T}, '0002', 'WR-ST');`);
     });
@@ -2235,7 +2235,7 @@ describe("test lineups (2026 test mode)", () => {
   const stored = () => db.query<{ players: string[]; status: string }>(`select players, status from public.test_lineups where team_id = '0001'`).then(r => r.rows);
   beforeEach(async () => {
     await db.exec(`
-      insert into public.season_settings (season, team_count, buy_in, prizes, pools) values (${S}, 12, 360, '{}', '{"mode": "test"}');
+      insert into public.season_settings (season, team_count, buy_in, prizes, pools) values (${S}, 12, 100, '{}', '{"mode": "test"}');
       update public.profiles set display_name = 'Mike' where id = '${ALICE}';
       insert into public.nfl_players (id, name, position, nfl_team) values
         ('RB-DET2', 'David Montgomery', 'RB', 'DET'), ('WR-DET', 'Amon-Ra St. Brown', 'WR', 'DET'), ('WR-DET2', 'Jameson Williams', 'WR', 'DET'),
@@ -2399,12 +2399,12 @@ describe("player schedule pop-up: points allowed", () => {
 describe("treasurer (league money)", () => {
   // Bob (owns Stealers, 0002) becomes treasurer; the commissioner (no team in the seed) confirms.
   const grant = (who: Who, user: string, role = "treasurer") => as(db, who, tx => tx.query(`select public.grant_role($1::uuid, $2) as r`, [user, role]));
-  const payout = (who: Who, team: string, amount = 35) => as(db, who, tx => tx.query<{ id: number; status: string }>(
+  const payout = (who: Who, team: string, amount = 20) => as(db, who, tx => tx.query<{ id: number; status: string }>(
     `insert into public.payout_payments (season, team_id, amount, paid_at, method, note) values (${S}, $1, $2, '2026-10-25', 'Venmo', 'week 7 high') returning id, status`, [team, amount])).then(r => r.rows[0]!);
-  const fee = (who: Who, team: string, amount = 360) => as(db, who, tx => tx.query<{ id: number; status: string }>(
+  const fee = (who: Who, team: string, amount = 100) => as(db, who, tx => tx.query<{ id: number; status: string }>(
     `insert into public.fee_payments (season, team_id, amount, paid_at, method) values (${S}, $1, $2, '2026-09-01', 'cash') returning id, status`, [team, amount])).then(r => r.rows[0]!);
   beforeEach(async () => {
-    await db.exec(`insert into public.season_settings (season, team_count, buy_in, prizes) values (${S}, 12, 360, '{}') on conflict (season) do nothing;
+    await db.exec(`insert into public.season_settings (season, team_count, buy_in, prizes) values (${S}, 12, 100, '{}') on conflict (season) do nothing;
       delete from public.notify_queue`);
   });
 
@@ -2424,13 +2424,13 @@ describe("treasurer (league money)", () => {
     assert.equal((await fee(user(BOB), "0001")).status, "confirmed");
     assert.deepEqual(await rowsT(db, user(BOB), `select paid, paid_at::text from public.team_fees where season = ${S} and team_id = '0001'`), [{ paid: true, paid_at: "2026-09-01" }],
       "the fee row follows the payments");
-    await as(db, user(BOB), tx => tx.query(`insert into public.empire_ledger (season, kind, amount, note) values (${S}, 'carry_in', 240, 'from 2025')`));
-    await denied(db, user(BOB), `insert into public.awards (season, kind, week, label, team_id, amount, status, source) values (${S}, 'manual', null, 'Survivor', '0001', 240, 'final', 'manual')`);
+    await as(db, user(BOB), tx => tx.query(`insert into public.empire_ledger (season, kind, amount, note) values (${S}, 'carry_in', 90, 'from 2025')`));
+    await denied(db, user(BOB), `insert into public.awards (season, kind, week, label, team_id, amount, status, source) values (${S}, 'manual', null, 'Survivor', '0001', 50, 'final', 'manual')`);
     assert.equal(await affected(db, user(BOB), `update public.awards set amount = 0`), 0);
     assert.equal(await affected(db, user(BOB), `update public.season_settings set buy_in = 1`), 0);
     assert.equal(await affected(db, user(BOB), `update public.standings set wins = 99`), 0);
     const b = await rowsT(db, user(BOB), `select team_id, fee_paid::float as f, paid_out::float as p from public.treasury_balances(${S})`);
-    assert.deepEqual(b.filter(x => x.team_id === "0001").map(x => [x.f, x.p]), [[360, 35]], "the treasurer sees every team");
+    assert.deepEqual(b.filter(x => x.team_id === "0001").map(x => [x.f, x.p]), [[100, 20]], "the treasurer sees every team");
     assert.equal(b.length, 2);
     assert.ok((await rowsT(db, service, `select 1 from public.audit_log where actor = '${BOB}' and action = 'payouts:payout_payments:insert'`)).length, "audited");
   });
@@ -2475,12 +2475,12 @@ describe("treasurer (league money)", () => {
     const f = await fee(user(BOB), "0002");
     assert.equal(f.status, "confirmed");
     // Audit: who, when, amount; own-team entries tagged, others not
-    await payout(user(BOB), "0001", 35);
+    await payout(user(BOB), "0001", 20);
     const log = await rowsT(db, service, `select actor, action, at, details from public.audit_log where action like '%payouts:%' order by id`);
     assert.deepEqual(log.map(x => [x.actor, x.action, x.details.tag ?? null, Number(x.details.new.amount)]), [
       [BOB, "own_team:payouts:payout_payments:insert", "own team", 70],
-      [BOB, "own_team:payouts:fee_payments:insert", "own team", 360],
-      [BOB, "payouts:payout_payments:insert", null, 35]]);
+      [BOB, "own_team:payouts:fee_payments:insert", "own team", 100],
+      [BOB, "payouts:payout_payments:insert", null, 20]]);
     assert.ok(log.every(x => x.at), "when");
     // His own team's entries can be corrected or removed too (still audited and tagged)
     assert.equal(await affected(db, user(BOB), `update public.payout_payments set amount = 75 where id = ${p.id}`), 1);
@@ -2496,21 +2496,21 @@ describe("treasurer (league money)", () => {
   test("emails: an award becoming final tells the treasurer whom to pay (once); Monday's who's-owed summary", async () => {
     await grant(user(COMMISH), BOB);
     await db.exec(`delete from public.notify_queue`);
-    await as(db, service, tx => tx.query(`insert into public.awards (season, kind, week, label, team_id, amount, status, source) values (${S}, 'weekly_high', 8, 'Week 8 high score', '0001', 35, 'projected', 'auto')`));
+    await as(db, service, tx => tx.query(`insert into public.awards (season, kind, week, label, team_id, amount, status, source) values (${S}, 'weekly_high', 8, 'Week 8 high score', '0001', 20, 'projected', 'auto')`));
     assert.deepEqual(await rowsT(db, service, `select * from public.notify_queue`), [], "projected: nothing yet");
     await as(db, service, tx => tx.query(`update public.awards set status = 'final' where week = 8`));
     const q = await rowsT(db, service, `select user_id, kind, payload from public.notify_queue`);
-    assert.deepEqual(q.map(x => [x.user_id, x.kind, x.payload.type, x.payload.team, Number(x.payload.amount), x.payload.label]), [[BOB, "account", "pay", "NSFW", 35, "Week 8 high score"]]);
+    assert.deepEqual(q.map(x => [x.user_id, x.kind, x.payload.type, x.payload.team, Number(x.payload.amount), x.payload.label]), [[BOB, "account", "pay", "NSFW", 20, "Week 8 high score"]]);
     // The nightly job replaces auto awards: the same final award doesn't notify again
-    await as(db, service, tx => tx.query(`select public.replace_auto_payouts(${S}, '[{"kind":"weekly_high","week":8,"place":null,"label":"Week 8 high score","team_id":"0001","amount":35,"status":"final","note":null}]'::jsonb, '[]'::jsonb, '[]'::jsonb)`));
+    await as(db, service, tx => tx.query(`select public.replace_auto_payouts(${S}, '[{"kind":"weekly_high","week":8,"place":null,"label":"Week 8 high score","team_id":"0001","amount":20,"status":"final","note":null}]'::jsonb, '[]'::jsonb, '[]'::jsonb)`));
     assert.equal((await rowsT(db, service, `select * from public.notify_queue`)).length, 1);
-    // Monday 9 AM ET: who's owed (NSFW is owed $35; fees unpaid), once a week
+    // Monday 9 AM ET: who's owed (NSFW is owed its winnings; fees unpaid), once a week
     const tick = (at: string) => db.query<{ r: string }>(`select private.treasury_weekly_tick('${at}'::timestamptz) as r`).then(x => x.rows[0]!.r);
     assert.match(await tick("2026-10-26T12:00:00Z"), /not Monday 9 AM/, "8 AM EDT");
     assert.equal(await tick("2026-10-26T13:05:00Z"), "sent");
     assert.equal(await tick("2026-10-26T14:05:00Z"), "already sent");
     const w = (await rowsT(db, service, `select payload from public.notify_queue where payload ->> 'type' = 'owed'`))[0]!.payload;
-    assert.deepEqual(w.teams.map((t: { team: string; owed: number }) => [t.team, Number(t.owed)]), [["NSFW", 35], ["Stealers", 0]]);
+    assert.deepEqual(w.teams.map((t: { team: string; owed: number }) => [t.team, Number(t.owed)]), [["NSFW", 20], ["Stealers", 0]]);
   });
 });
 
@@ -2522,7 +2522,7 @@ describe("several roles per person (set_roles)", () => {
       insert into auth.users (id, email, raw_user_meta_data) values ('${ADMIN}', 'admin@example.com', '{"display_name":"Ada"}'), ('${COM2}', 'com2@example.com', '{"display_name":"Cy"}');
       update public.profiles set is_admin = true where id = '${ADMIN}';
       update public.profiles set is_commissioner = true where id = '${COM2}';
-      insert into public.season_settings (season, team_count, buy_in, prizes) values (${S}, 12, 360, '{}') on conflict (season) do nothing;
+      insert into public.season_settings (season, team_count, buy_in, prizes) values (${S}, 12, 100, '{}') on conflict (season) do nothing;
       delete from public.notify_queue; delete from public.audit_log where action like 'roles:%';`);
   });
   const roles = (u: string) => db.query<{ role: string }>(`select role from public.user_roles where user_id = '${u}' order by role`).then(r => r.rows.map(x => x.role));
@@ -2549,7 +2549,7 @@ describe("several roles per person (set_roles)", () => {
     assert.ok((await rowsT(db, user(BOB), `select public.admin_health() as h`))[0]!.h);
     assert.ok((await rowsT(db, user(BOB), `select * from public.audit_log`)).length > 0, "reads the audit log");
     // Treasurer tools
-    const p = await as(db, user(BOB), tx => tx.query<{ status: string }>(`insert into public.payout_payments (season, team_id, amount, paid_at) values (${S}, '0001', 35, '2026-10-25') returning status`));
+    const p = await as(db, user(BOB), tx => tx.query<{ status: string }>(`insert into public.payout_payments (season, team_id, amount, paid_at) values (${S}, '0001', 20, '2026-10-25') returning status`));
     assert.equal(p.rows[0]!.status, "confirmed");
     await as(db, user(ALICE), tx => tx.query(`insert into public.payment_prefs (venmo) values ('@alice')`));
     assert.equal((await rowsT(db, user(BOB), `select * from public.payment_prefs`)).length, 1, "admin + treasurer sees prefs through the treasurer role");

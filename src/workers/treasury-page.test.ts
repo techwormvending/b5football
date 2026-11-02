@@ -11,7 +11,7 @@ vm.runInNewContext(fs.readFileSync(path.resolve(import.meta.dirname, "../../trea
 const T = ctx.B5Treasury as any;
 
 test("Empire pot balance counts confirmed entries; header text by role", () => {
-  assert.equal(T.empireBalance([{ amount: 240 }, { amount: 120 }, { amount: -360 }]), 0, "every entry counts (no pending state)");
+  assert.equal(T.empireBalance([{ amount: 90 }, { amount: 70 }, { amount: -160 }]), 0, "every entry counts (no pending state)");
   assert.equal(T.roleText({ is_treasurer: true, keeps_books: true, treasurers: 1 }), "You keep the books as treasurer.");
   assert.equal(T.roleText({ is_treasurer: false, keeps_books: true, treasurers: 0 }), "No treasurer is assigned, so commissioners keep the books.");
   assert.equal(T.roleText({ is_treasurer: false, keeps_books: false, treasurers: 1 }), "Read-only: the treasurer keeps the books.");
@@ -19,14 +19,14 @@ test("Empire pot balance counts confirmed entries; header text by role", () => {
 
 test("ledger CSV: balances, fees, payouts and the Empire pot, quoted where needed", () => {
   const rows = T.ledgerRows({
-    balances: [{ team_id: "0001", fee_due: 360, fee_paid: 360, won: 70, projected: 35, paid_out: 35, owed: 35, pending: 0 }],
-    fees: [{ team_id: "0001", amount: 360, paid_at: "2026-09-01", method: "Venmo", status: "confirmed", note: null }],
-    payouts: [{ team_id: "0001", amount: 35, paid_at: "2026-10-25", method: "Cash", status: "pending", note: 'wk 7, "high"' }],
-    empire: [{ season: 2026, kind: "carry_in", team_id: null, amount: 240, entry_date: "2026-09-01", status: "confirmed", note: null }]
+    balances: [{ team_id: "0001", fee_due: 100, fee_paid: 100, won: 40, projected: 20, paid_out: 20, owed: 20, pending: 0 }],
+    fees: [{ team_id: "0001", amount: 100, paid_at: "2026-09-01", method: "Venmo", status: "confirmed", note: null }],
+    payouts: [{ team_id: "0001", amount: 20, paid_at: "2026-10-25", method: "Cash", status: "pending", note: 'wk 7, "high"' }],
+    empire: [{ season: 2026, kind: "carry_in", team_id: null, amount: 90, entry_date: "2026-09-01", status: "confirmed", note: null }]
   }, (id: string) => (id === "0001" ? "NSFW" : id));
   const text = String(T.csv(rows));
   assert.match(text, /^Balances,/);
-  assert.match(text, /NSFW,360,360,70,35,35,35\n/);
-  assert.match(text, /,NSFW,35,2026-10-25,Cash,"wk 7, ""high"""/);
-  assert.match(text, /,2026,Carried in,,240,2026-09-01,/);
+  assert.match(text, /NSFW,100,100,40,20,20,20\n/);
+  assert.match(text, /,NSFW,20,2026-10-25,Cash,"wk 7, ""high"""/);
+  assert.match(text, /,2026,Carried in,,90,2026-09-01,/);
 });

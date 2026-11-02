@@ -132,7 +132,7 @@ test("new types: lineup confirmation, other teams' lineups, league waivers and m
     matchups: [{ away: "Stealers", away_score: 80, home: "NSFW", home_score: 90 }], high: { team: "NSFW", points: 90 }, danger: { team: "Stealers", points: 80 },
     corrections: [{ was: "NSFW", now: "Stealers" }] }));
   assert.equal(sc.subject, "Week 7 scores after Sunday (unofficial)");
-  assert.deepEqual(sc.lines, ["Your matchup: Stealers 80.0, NSFW 90.0", "Stealers 80.0 @ NSFW 90.0", "Weekly high ($35 race): NSFW, 90.0",
+  assert.deepEqual(sc.lines, ["Your matchup: Stealers 80.0, NSFW 90.0", "Stealers 80.0 @ NSFW 90.0", "Weekly high score race: NSFW, 90.0",
     "Guillotine danger (lowest so far): Stealers, 80.0", "Stat correction changed a result: NSFW → Stealers now wins.", "Scores are unofficial until the week is finalized."]);
   assert.equal(content(item("league_trades", { status: "approved", from_team: "A", to_team: "B", summary: "A get X; B get Y" })).subject, "League trade completed: A and B");
 });
@@ -156,10 +156,10 @@ test("account notices (role changes, test email): always sent, no unsubscribe li
   assert.match(sg.lines[0]!, /used the administrator role/);
   // Treasurer notices
   assert.equal(content(item("account", { type: "role", role: "treasurer", action: "grant", by: "Adam" })).lines[1], "Your tools are on the Treasury page.");
-  const pay = renderEmail(item("account", { type: "pay", team: "Mac Daddies", amount: 35, label: "Week 8 high score", link: "#account" }), O);
-  assert.equal(pay.subject, "Pay Mac Daddies $35 — Week 8 high score");
+  const pay = renderEmail(item("account", { type: "pay", team: "Mac Daddies", amount: 20, label: "Week 8 high score", link: "#account" }), O);
+  assert.equal(pay.subject, "Pay Mac Daddies $20 — Week 8 high score");
   assert.match(pay.html, /href="https:\/\/b5football\.win\/#treasury"/, "opens the Treasury page");
-  const owed = content(item("account", { type: "owed", teams: [{ team: "NSFW", owed: 70, fee_unpaid: 0, pending: 0 }, { team: "Stealers", owed: 0, fee_unpaid: 360, pending: 1 }] }));
+  const owed = content(item("account", { type: "owed", teams: [{ team: "NSFW", owed: 70, fee_unpaid: 0, pending: 0 }, { team: "Stealers", owed: 0, fee_unpaid: 100, pending: 1 }] }));
   assert.equal(owed.subject, "Who's owed: 1 team, $70");
-  assert.deepEqual(owed.lines, ["Winnings owed:", "NSFW: $70", "League fees still due:", "Stealers: $360"]);
+  assert.deepEqual(owed.lines, ["Winnings owed:", "NSFW: $70", "League fees still due:", "Stealers: $100"]);
 });

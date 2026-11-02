@@ -157,7 +157,7 @@ export function content(item: NotifyItem): Body {
       const lines: string[] = [];
       if (d.mine) lines.push(`Your matchup: ${d.mine.team} ${pts(d.mine.us)}, ${d.mine.opp} ${pts(d.mine.them)}`);
       lines.push(...((d.matchups || []) as { away: string; away_score: number; home: string; home_score: number }[]).map(m => `${m.away} ${pts(m.away_score)} @ ${m.home} ${pts(m.home_score)}`));
-      if (d.high) lines.push(`Weekly high ($35 race): ${d.high.team}, ${pts(d.high.points)}`);
+      if (d.high) lines.push(`Weekly high score race: ${d.high.team}, ${pts(d.high.points)}`);
       if (d.danger) lines.push(`Guillotine danger (lowest so far): ${d.danger.team}, ${pts(d.danger.points)}`);
       for (const c of (d.corrections || []) as { was: string; now: string }[]) lines.push(`Stat correction changed a result: ${c.was} → ${c.now} now wins.`);
       if (d.unofficial) lines.push("Scores are unofficial until the week is finalized.");

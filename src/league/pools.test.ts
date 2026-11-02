@@ -103,22 +103,22 @@ describe("confidence", () => {
 });
 
 describe("payout handoff", () => {
-  const S26: SeasonSettings = { season: 2026, team_count: 12, buy_in: 360, website_fee: 80, empire_contribution: 120, empire_carry_in: 240, empire_defending_team: null,
-    prizes: { weekly_high: { amount: 35, first_week: 1, last_week: 17 }, playoffs: { r1: 60, r1_games: 4, r2: 120, r2_games: 2, champion: 240, weeks: [15, 16, 17] },
-      season_points: { amounts: [1075, 740, 390], first_week: 1, last_week: 17 }, guillotine: { amount: 120, start_week: 2 }, survivor: { amount: 240 }, pickem: { amounts: [180, 60] }, manual: [] } };
+  const S26: SeasonSettings = { season: 2026, team_count: 12, buy_in: 100, website_fee: 50, empire_contribution: 70, empire_carry_in: 90, empire_defending_team: null,   // example amounts
+    prizes: { weekly_high: { amount: 20, first_week: 1, last_week: 17 }, playoffs: { r1: 30, r1_games: 4, r2: 50, r2_games: 2, champion: 100, weeks: [15, 16, 17] },
+      season_points: { amounts: [110, 50, 30], first_week: 1, last_week: 17 }, guillotine: { amount: 40, start_week: 2 }, survivor: { amount: 50 }, pickem: { amounts: [100, 40] }, manual: [] } };
   const run = (pools: Parameters<typeof computePayouts>[0]["pools"], overrides: Parameters<typeof computePayouts>[0]["overrides"] = []) =>
     computePayouts({ settings: S26, teams: ["0001", "0002", "0003"], scores: [], weekStatus: new Map(), matchups: [], pools, overrides });
-  test("the restructured 2026 prizes still add up to the $4,120 pot", () => assert.equal(prizeTotal(S26.prizes), pot(S26)));
-  test("Survivor pays its winner $240, or splits it", () => {
-    assert.deepEqual(run({ survivor: { winners: ["0002"], decided: true } }).awards.map(a => [a.kind, a.team_id, a.amount, a.status]), [["survivor", "0002", 240, "final"]]);
-    assert.deepEqual(run({ survivor: { winners: ["0003", "0001"], decided: true } }).awards.map(a => [a.team_id, a.amount]), [["0001", 120], ["0003", 120]]);
+  test("the restructured 2026 prizes still add up to the pot", () => assert.equal(prizeTotal(S26.prizes), pot(S26)));
+  test("Survivor pays its winner, or splits it", () => {
+    assert.deepEqual(run({ survivor: { winners: ["0002"], decided: true } }).awards.map(a => [a.kind, a.team_id, a.amount, a.status]), [["survivor", "0002", 50, "final"]]);
+    assert.deepEqual(run({ survivor: { winners: ["0003", "0001"], decided: true } }).awards.map(a => [a.team_id, a.amount]), [["0001", 25], ["0003", 25]]);
     assert.deepEqual(run({ survivor: { winners: ["0002"], decided: false } }).awards, []);
   });
-  test("Pick'em pays 1st $180 and 2nd $60 from the confidence standings; ties split; projected until complete", () => {
+  test("Pick'em pays 1st and 2nd from the confidence standings; ties split; projected until complete", () => {
     const r = run({ pickem: { totals: [{ team_id: "0001", points: 300 }, { team_id: "0002", points: 280 }, { team_id: "0003", points: 280 }], complete: false } });
-    assert.deepEqual(r.awards.map(a => [a.place, a.team_id, a.amount, a.status]), [[1, "0001", 180, "projected"], [2, "0002", 30, "projected"], [2, "0003", 30, "projected"]]);
+    assert.deepEqual(r.awards.map(a => [a.place, a.team_id, a.amount, a.status]), [[1, "0001", 100, "projected"], [2, "0002", 20, "projected"], [2, "0003", 20, "projected"]]);
     const tie1 = run({ pickem: { totals: [{ team_id: "0001", points: 300 }, { team_id: "0002", points: 300 }, { team_id: "0003", points: 10 }], complete: true } });
-    assert.deepEqual(tie1.awards.map(a => [a.team_id, a.amount, a.status]), [["0001", 120, "final"], ["0002", 120, "final"]]);
+    assert.deepEqual(tie1.awards.map(a => [a.team_id, a.amount, a.status]), [["0001", 70, "final"], ["0002", 70, "final"]]);
   });
   test("the commissioner's Survivor decision (2026: Stealers, from the spreadsheet) replaces the computed one", () => {
     const r = run({ survivor: { winners: ["0001"], decided: true } }, [{ kind: "survivor", week: null, place: null, team_id: "0002" }]);
