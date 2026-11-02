@@ -350,6 +350,8 @@
     // Rendered by team.js (team profile), dm.js (direct messages), trades.js (trades)
     team() { return `<div id="tpRoot"></div>`; },
     dm() { return `<div id="dmRoot"></div>`; },
+    // Rendered by draft.js (the Draft Room, practice drafts, the big-screen board)
+    draft() { return `<div id="drRoot"></div>`; },
     trade() { return `<div id="trRoot"></div>`; },
     trades() { return `<div id="trRoot"></div>`; },
     // Email links: #unsubscribe/<token> (account.js; works without signing in)
@@ -397,6 +399,7 @@
     if (window.B5TeamPage) window.B5TeamPage.stop();
     if (window.B5DM) window.B5DM.stop();
     if (window.B5Trades) window.B5Trades.stop();
+    if (window.B5Draft) window.B5Draft.stop();
     document.body.dataset.page = page;   // lets a page restyle the frame (the chat hides the footer)
     // Big page title and the page's tabs under the bar (none on Home: its own heading says it)
     head.innerHTML = page === "home" ? "" : NAV.route(r);
@@ -415,6 +418,7 @@
     if (page === "team" && window.B5TeamPage) window.B5TeamPage.start(document.getElementById("tpRoot"), r);
     if ((page === "trade" || page === "trades") && window.B5Trades) window.B5Trades.start(document.getElementById("trRoot"), r);
     if (page === "dm" && window.B5DM) window.B5DM.start(document.getElementById("dmRoot"), r);
+    if (page === "draft" && window.B5Draft) window.B5Draft.start(document.getElementById("drRoot"), r);
     if (window.B5DM) window.B5DM.badge();   // unread direct messages on the ✉ nav item
     if (page === "teams" && window.B5Payouts) {
       window.B5Payouts.teamWinnings().then(w => {

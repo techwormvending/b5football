@@ -18,7 +18,7 @@ const N = ctx.B5Nav as any;
 const R = ctx.B5Route as { parse(h: string, k: (x: string) => boolean): Record<string, unknown> };
 const plain = <T>(x: T): T => JSON.parse(JSON.stringify(x));
 const PAGES = new Set(["home", "myteam", "live", "board", "chat", "dm", "players", "trades", "trade", "team", "survivor", "confidence", "schedule", "teams",
-  "payouts", "history", "rules", "traditions", "account", "commish", "commish-payouts", "treasury", "admin", "unsubscribe", "more"]);
+  "payouts", "history", "rules", "traditions", "account", "commish", "commish-payouts", "treasury", "admin", "unsubscribe", "more", "draft"]);
 const known = (k: string) => PAGES.has(k);
 
 const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
@@ -43,7 +43,7 @@ test("top bar: exactly Home · My Team · Scores · Pools · Messages · League 
   const html = N.topHtml(MANAGER, { sec: "scores" });
   assert.deepEqual(hrefs(html).slice(0, 5), ["#home", "#myteam", "#scores", "#pools", "#messages"]);
   assert.match(html, /<a href="#scores" class="active" aria-current="page" data-sec="scores">Scores<\/a>/, "the page you're on is filled");
-  assert.deepEqual(menuLinks(html, "league"), ["Standings & Schedule", "Teams", "Players", "Payouts", "History", "Rules", "Traditions"]);
+  assert.deepEqual(menuLinks(html, "league"), ["Standings & Schedule", "Teams", "Players", "Payouts", "History", "Rules", "Traditions", "Draft Room"]);
   // Menus are buttons (click/tap), closed until clicked, with aria
   assert.match(html, /<button type="button" class="menu-btn" aria-haspopup="true" aria-expanded="false" aria-controls="menu-league">/);
   assert.match(html, /id="menu-league" hidden/);
@@ -91,8 +91,8 @@ test("phones: a bottom bar of 5 (icon + word): Home · My Team · Scores · Mess
   assert.match(N.bottomHtml({ sec: "league" }), /<a href="#more" class="active"/, "League pages light up More");
   assert.match(N.bottomHtml({ sec: "pools" }), /<a href="#more" class="active"/);
   const tiles = (html: string) => [...html.matchAll(/class="tile[^"]*"[^>]*>([^<]+)</g)].map(m => text(m[1]!));
-  assert.deepEqual(tiles(N.moreHtml(OUT)), ["Pools", "Standings & Schedule", "Teams", "Players", "History", "Rules", "Traditions", "Sign in"], "no Payouts signed out");
-  assert.deepEqual(tiles(N.moreHtml(MANAGER)), ["Pools", "Standings & Schedule", "Teams", "Players", "Payouts", "History", "Rules", "Traditions", "My Account", "Sign out"]);
+  assert.deepEqual(tiles(N.moreHtml(OUT)), ["Pools", "Standings & Schedule", "Teams", "Players", "History", "Rules", "Traditions", "Draft Room", "Sign in"], "no Payouts signed out");
+  assert.deepEqual(tiles(N.moreHtml(MANAGER)), ["Pools", "Standings & Schedule", "Teams", "Players", "Payouts", "History", "Rules", "Traditions", "Draft Room", "My Account", "Sign out"]);
   assert.deepEqual(tiles(N.moreHtml(as("commissioner", "admin"))).slice(-5), ["My Account", "Commissioner", "Treasury", "Admin", "Sign out"]);
   // No hamburger in the page any more
   assert.doesNotMatch(read("index.html"), /nav-toggle|☰<\/button>/);

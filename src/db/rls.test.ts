@@ -2628,7 +2628,7 @@ describe("league default settings (from an admin's own settings)", () => {
     await mine();
     await as(db, user(COMMISH), tx => tx.query(`insert into public.payment_prefs (venmo) values ('@admin')`));
     const r = (await rowsT(db, user(COMMISH), `select public.admin_save_defaults('{"liveShowOfficial": true, "email": "x@y.z", "phone": "1"}'::jsonb) as r`))[0]!.r;
-    assert.deepEqual(Object.keys(r.notify).sort(), ["announcements", "dm", "league_lineups", "league_lineups_opponent", "league_moves", "league_trades", "league_waivers",
+    assert.deepEqual(Object.keys(r.notify).sort(), ["announcements", "dm", "draft", "league_lineups", "league_lineups_opponent", "league_moves", "league_trades", "league_waivers",
       "lineup", "lineup_saved", "mentions", "scoring", "trades", "waivers"], "only the notification choices");
     assert.equal(r.notify.mentions, true); assert.equal(r.notify.league_lineups, "digest"); assert.equal(r.notify.lineup, true);
     assert.equal("paused" in r.notify, false, "Pause all email is never copied");
@@ -2802,5 +2802,171 @@ describe("announcements: author, posted-as role, pins; the feedback thread (2026
     assert.deepEqual(q, [], "not an announcement: cross-post, so no email to every member");
     await denied(db, anon, `select 1 from public.board_threads`, /permission denied/);
     await denied(db, user(ALICE), `select private.create_feedback_thread()`, /permission denied/);
+  });
+});
+
+describe("draft room (2026-11-02)", () => {
+  const CAROL = "00000000-0000-0000-0000-0000000000c3";   // Alice's co-owner on 0001
+  beforeEach(async () => {
+    await db.exec(`insert into public.teams (id, name, division) values ('0003', 'Third', 'Gold');
+      insert into auth.users (id, email) values ('${CAROL}', 'carol@example.com');
+      insert into public.team_managers values ('0001', '${CAROL}');
+      insert into public.nfl_players (id, name, position, nfl_team) select 'P' || lpad(g::text, 2, '0'), 'Player ' || lpad(g::text, 2, '0'), 'WR', 'DET' from generate_series(1, 30) g;`);
+  });
+  const call = (who: Who, sql: string) => rowsT(db, who, sql).then(r => r[0]);
+  const mock = async (settings: Record<string, unknown> = {}) =>
+    Number((await call(user(COMMISH), `select public.draft_create(${S}, 'mock', 'Practice', '${JSON.stringify({ rounds: 4, timer_seconds: 60, ...settings })}'::jsonb) as id`))!.id);
+  const draft = (id: number) => db.query<Record<string, any>>(`select * from public.drafts where id = ${id}`).then(r => r.rows[0]!); // eslint-disable-line @typescript-eslint/no-explicit-any
+  const order = (id: number, round: number, teams: string[] | null) =>
+    call(user(COMMISH), `select public.draft_set_order(${id}, ${round}, ${teams ? `array[${teams.map(t => `'${t}'`).join(",")}]` : "null"}) as o`);
+  const pick = (who: Who, id: number, player: string, overall?: number) => call(who, `select public.draft_pick(${id}, '${player}'${overall ? ", " + overall : ""}) as r`);
+  const onClock = async (id: number) => (await db.query<{ owner: string }>(`select (private.draft_slot(${id}, (select current_overall from public.drafts where id = ${id}))).owner`)).rows[0]!.owner;
+
+  test("redraw serpentine: odd rounds get their own order, even rounds are the exact reverse; live orders pause the draft until drawn", async () => {
+    const id = await mock();
+    await assert.rejects(order(id, 1, ["0001", "0002"]), /needs all 3 teams/);
+    await assert.rejects(order(id, 1, ["0001", "0001", "0002"]), /twice/);
+    await assert.rejects(order(id, 2, ["0001", "0002", "0003"]), /odd rounds/);
+    await assert.rejects(as(db, user(ALICE), tx => tx.query(`select public.draft_set_order(${id}, 1, null)`)), /Only the commissioner/);
+    await order(id, 1, ["0002", "0003", "0001"]);
+    await call(user(COMMISH), `select public.draft_control(${id}, 'start')`);
+    let d = await draft(id);
+    assert.deepEqual([d.status, d.current_overall, await onClock(id)], ["live", 1, "0002"]);
+    // Round 1: 0002, 0003 (Third: the commissioner picks for it), 0001; round 2: the reverse
+    await pick(user(BOB), id, "P01");
+    await pick(user(COMMISH), id, "P02");
+    await pick(user(ALICE), id, "P03");
+    assert.equal(await onClock(id), "0001", "round 2 starts with round 1's last team");
+    await pick(user(CAROL), id, "P04");   // either co-owner
+    await pick(user(COMMISH), id, "P05");
+    await pick(user(BOB), id, "P06");
+    // Round 3 needs a new order: the draft waits for it
+    d = await draft(id);
+    assert.deepEqual([d.status, d.current_overall, d.clock_ends_at], ["awaiting_order", 7, null]);
+    await assert.rejects(pick(user(ALICE), id, "P07"), /isn't live/);
+    const drawn = (await order(id, 3, null))!.o as string[];
+    assert.deepEqual([...drawn].sort(), ["0001", "0002", "0003"], "a fair draw of every team");
+    const log = await rowsT(db, service, `select details from public.audit_log where action = 'draft:order_drawn'`);
+    assert.equal(log.length, 1); assert.equal(log[0]!.details.keys.length, 3, "each team's random key is kept"); assert.ok(log[0]!.details.at);
+    d = await draft(id);
+    assert.equal(d.status, "live", "drawing the order resumes the draft");
+    assert.equal(await onClock(id), drawn[0]);
+    // Redo before any pick in the round: allowed (logged); after: refused
+    await order(id, 3, ["0003", "0002", "0001"]);
+    assert.equal((await rowsT(db, service, `select 1 from public.audit_log where action = 'draft:order_redone'`)).length, 1);
+    await pick(user(COMMISH), id, "P07");
+    await assert.rejects(order(id, 3, null), /already has picks/);
+    const sel = await rowsT(db, user(ALICE), `select overall, team_id, player_id, picked_by from public.draft_selections where draft_id = ${id} order by overall`);
+    assert.deepEqual(sel.map(x => x.team_id), ["0002", "0003", "0001", "0001", "0003", "0002", "0003"]);
+    assert.equal(sel[3]!.picked_by, CAROL, "who made the pick is kept");
+  });
+
+  test("picks are validated: right team, available player; two co-owners racing: only one wins", async () => {
+    const id = await mock();
+    await order(id, 1, ["0001", "0002", "0003"]);
+    await call(user(COMMISH), `select public.draft_control(${id}, 'start')`);
+    await assert.rejects(pick(user(BOB), id, "P01"), /NSFW is on the clock, not your team/);
+    await pick(user(ALICE), id, "P01", 1);
+    await assert.rejects(pick(user(CAROL), id, "P02", 1), /already made/, "the co-owner who's a moment late");
+    await assert.rejects(pick(user(BOB), id, "P01"), /already drafted/);
+    await assert.rejects(pick(user(BOB), id, "nope"), /Unknown player/);
+    await denied(db, anon, `select * from public.draft_selections`, /permission denied/);
+    await denied(db, anon, `select public.draft_pick(${id}, 'P05')`, /permission denied/);
+    await denied(db, user(ALICE), `insert into public.draft_selections (draft_id, overall, round, pick, team_id, original_team, player_id) values (${id}, 9, 3, 3, '0001', '0001', 'P09')`, /permission denied/);
+  });
+
+  test("traded picks land in their original team's slot (real draft, before the order is drawn)", async () => {
+    const id = Number((await call(user(COMMISH), `select public.draft_create(2027, 'real', '2027 Draft', '{"rounds": 2}'::jsonb) as id`))!.id);
+    await db.exec(`update public.draft_picks set owner_team = '0001' where season = 2027 and round = 1 and original_team = '0003'`);   // a trade
+    await order(id, 1, ["0003", "0002", "0001"]);
+    await call(user(COMMISH), `select public.draft_control(${id}, 'start')`);
+    assert.equal(await onClock(id), "0001", "Third's pick, owned by NSFW, is first");
+    await pick(user(ALICE), id, "P01");
+    const s = await rowsT(db, user(ALICE), `select team_id, original_team from public.draft_selections where draft_id = ${id}`);
+    assert.deepEqual([s[0]!.team_id, s[0]!.original_team], ["0001", "0003"]);
+    assert.equal((await db.query<{ used: boolean }>(`select used from public.draft_picks where season = 2027 and round = 1 and original_team = '0003'`)).rows[0]!.used, true);
+  });
+
+  test("timer expiry: auto-pick the top of the queue (else best ranked); skip mode lets the team pick late; bots pick on their own", async () => {
+    const id = await mock();
+    await order(id, 1, ["0001", "0002", "0003"]);
+    await as(db, user(ALICE), tx => tx.query(`insert into public.draft_queue (draft_id, team_id, player_id, rank) values (${id}, '0001', 'P09', 1), (${id}, '0001', 'P08', 2)`));
+    await denied(db, user(BOB), `insert into public.draft_queue (draft_id, team_id, player_id, rank) values (${id}, '0001', 'P07', 3)`, /row-level security/);
+    assert.equal((await rowsT(db, user(BOB), `select * from public.draft_queue`)).length, 0, "a queue is private to its team");
+    await db.exec(`insert into public.draft_rankings (season, player_id, rank, source) values (${S}, 'P20', 1, 'test'), (${S}, 'P21', 2, 'test')`);
+    await call(user(COMMISH), `select public.draft_control(${id}, 'start')`);
+    assert.equal((await call(user(ALICE), `select public.draft_tick(${id}) as n`))!.n, 0, "nothing happens before the clock runs out");
+    await db.exec(`update public.drafts set clock_ends_at = now() - interval '1 second' where id = ${id}`);
+    await call(user(ALICE), `select public.draft_tick(${id})`);
+    await db.exec(`update public.drafts set clock_ends_at = now() - interval '1 second' where id = ${id}`);
+    await call(user(ALICE), `select public.draft_tick(${id})`);
+    let sel = await rowsT(db, user(ALICE), `select team_id, player_id, auto from public.draft_selections where draft_id = ${id} order by overall`);
+    assert.deepEqual(sel.map(x => [x.team_id, x.player_id, x.auto]), [["0001", "P09", true], ["0002", "P20", true]], "queue first, then rankings");
+    // Skip mode
+    const id2 = await mock({ expiry: "skip" });
+    await order(id2, 1, ["0001", "0002", "0003"]);
+    await call(user(COMMISH), `select public.draft_control(${id2}, 'start')`);
+    await db.exec(`update public.drafts set clock_ends_at = now() - interval '1 second' where id = ${id2}`);
+    await call(user(BOB), `select public.draft_tick(${id2})`);
+    assert.equal(await onClock(id2), "0002", "the clock moved on");
+    sel = await rowsT(db, user(ALICE), `select overall, skipped from public.draft_selections where draft_id = ${id2}`);
+    assert.deepEqual(sel.map(x => [x.overall, x.skipped]), [[1, true]]);
+    await pick(user(ALICE), id2, "P05", 1);   // catching up
+    assert.equal((await rowsT(db, user(ALICE), `select player_id from public.draft_selections where draft_id = ${id2} and overall = 1`))[0]!.player_id, "P05");
+    assert.equal(await onClock(id2), "0002", "catching up doesn't move the clock");
+    // Bots: a bot seat comes on the clock with a short clock and auto-picks
+    const id3 = await mock({ bots: ["0003"] });
+    await order(id3, 1, ["0003", "0001", "0002"]);
+    await call(user(COMMISH), `select public.draft_control(${id3}, 'start')`);
+    const d3 = await draft(id3);
+    assert.ok(Date.parse(d3.clock_ends_at) - Date.now() < 5000, "a bot's clock is a couple of seconds");
+  });
+
+  test("commissioner: pause/resume/extend, undo puts the pick back on the clock, edit a pick, complete leaves mock rosters alone; all logged", async () => {
+    const id = await mock();
+    await order(id, 1, ["0001", "0002", "0003"]);
+    await call(user(COMMISH), `select public.draft_control(${id}, 'start')`);
+    await pick(user(ALICE), id, "P01");
+    await pick(user(BOB), id, "P02");
+    await call(user(COMMISH), `select public.draft_control(${id}, 'pause')`);
+    assert.equal((await draft(id)).status, "paused");
+    await assert.rejects(pick(user(COMMISH), id, "P03"), /isn't live/);
+    await call(user(COMMISH), `select public.draft_control(${id}, 'resume')`);
+    const before = Date.parse((await draft(id)).clock_ends_at);
+    await call(user(COMMISH), `select public.draft_control(${id}, 'extend', 30)`);
+    assert.equal(Date.parse((await draft(id)).clock_ends_at) - before, 30000);
+    assert.equal((await call(user(COMMISH), `select public.draft_undo(${id}, 1) as n`))!.n, 1);
+    assert.equal(await onClock(id), "0002", "Bob is back on the clock");
+    await pick(user(BOB), id, "P04");
+    await call(user(COMMISH), `select public.draft_edit_pick(${id}, 1, 'P10')`);
+    await assert.rejects(call(user(COMMISH), `select public.draft_edit_pick(${id}, 1, 'P04')`), /already drafted/);
+    await assert.rejects(as(db, user(ALICE), tx => tx.query(`select public.draft_undo(${id}, 1)`)), /Only the commissioner/);
+    const actions = (await rowsT(db, service, `select action from public.audit_log where action like 'draft:%' order by id`)).map(x => x.action);
+    for (const a of ["draft:create", "draft:order_set", "draft:start", "draft:pause", "draft:resume", "draft:extend", "draft:undo", "draft:edit_pick"]) assert.ok(actions.includes(a), a);
+    for (const p of ["P11", "P12", "P13", "P14", "P15", "P16", "P17", "P18", "P19", "P22"]) {
+      const d = await draft(id);
+      if (d.status === "done") break;
+      if (d.status === "awaiting_order") await order(id, 3, ["0001", "0002", "0003"]);
+      await pick(user(COMMISH), id, p);
+    }
+    assert.equal((await draft(id)).status, "done");
+    await call(user(COMMISH), `select public.draft_control(${id}, 'complete')`);
+    assert.equal((await rowsT(db, service, `select 1 from public.roster_entries where player_id like 'P%'`)).length, 0, "practice drafts never touch rosters");
+    await call(user(COMMISH), `select public.draft_delete(${id})`);
+    assert.equal((await db.query(`select 1 from public.draft_selections where draft_id = ${id}`)).rows.length, 0);
+  });
+
+  test("real draft complete: picks populate rosters; on-the-clock emails go to the team's owners", async () => {
+    const id = Number((await call(user(COMMISH), `select public.draft_create(2027, 'real', '2027 Draft', '{"rounds": 1}'::jsonb) as id`))!.id);
+    await order(id, 1, ["0001", "0002", "0003"]);
+    await db.exec(`delete from public.notify_queue`);
+    await call(user(COMMISH), `select public.draft_control(${id}, 'start')`);
+    const q = await rowsT(db, service, `select user_id, payload ->> 'type' as t from public.notify_queue where kind = 'draft' order by user_id`);
+    assert.deepEqual(q.filter(x => x.t === "clock").map(x => x.user_id).sort(), [ALICE, CAROL].sort(), "both owners of the team on the clock");
+    await pick(user(ALICE), id, "P01"); await pick(user(BOB), id, "P02"); await pick(user(COMMISH), id, "P03");
+    await call(user(COMMISH), `select public.draft_control(${id}, 'complete')`);
+    const r = await rowsT(db, service, `select team_id, player_id, acquired from public.roster_entries where season = 2027 order by player_id`);
+    assert.deepEqual(r.map(x => [x.team_id, x.player_id, x.acquired]), [["0001", "P01", "1.01"], ["0002", "P02", "1.02"], ["0003", "P03", "1.03"]]);
+    assert.ok((await rowsT(db, service, `select 1 from public.notify_queue where kind = 'draft' and payload ->> 'type' = 'results'`)).length >= 2);
   });
 });

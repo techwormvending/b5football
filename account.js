@@ -147,7 +147,7 @@
 
   // Email notifications (notify_settings: your row only). Defaults match the database's.
   var NOTIFY_DEFAULTS = { paused: false, dm: true, mentions: false, trades: true, league_trades: false, waivers: true, league_waivers: false, league_moves: false,
-    lineup_saved: true, lineup: false, league_lineups: "off", league_lineups_opponent: false, scoring: false, announcements: true };
+    lineup_saved: true, lineup: false, league_lineups: "off", league_lineups_opponent: false, scoring: false, announcements: true, draft: true };
   var NOTIFY_GROUPS = [
     ["Messages", [["dm", "Direct messages", "5 minutes after a message you haven't read (not while you're on the site); at most one per conversation every 30 minutes"],
       ["mentions", "@mentions in Chat or on the Message Board", ""]]],
@@ -157,6 +157,7 @@
     ["Lineups", [["lineup_saved", "My lineup confirmation", "10 minutes after your team's lineup is saved, by you or your co-owner"],
       ["lineup", "Lineup reminders", "starters on bye or out, about 3 hours before kickoff"]]],
     ["Scores", [["scoring", "Daily scoring update", "after each game day's final scoring: your matchup, every score, the weekly high score race, guillotine danger"]]],
+    ["Draft", [["draft", "Draft alerts", "you're on the clock, you're 2 picks away, the draft starts in an hour, and your results"]]],
     ["League", [["announcements", "Commissioner announcements and messages", ""]]]];
   var NOTIFY_BOOLS = [];
   NOTIFY_GROUPS.forEach(function (g) { g[1].forEach(function (t) { NOTIFY_BOOLS.push(t[0]); }); });

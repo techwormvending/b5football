@@ -163,3 +163,16 @@ test("account notices (role changes, test email): always sent, no unsubscribe li
   assert.equal(owed.subject, "Who's owed: 1 team, $70");
   assert.deepEqual(owed.lines, ["Winnings owed:", "NSFW: $70", "League fees still due:", "Stealers: $100"]);
 });
+
+test("draft alerts: on the clock, 2 picks away, start reminder, results", () => {
+  const O = { site: "https://b5football.win", functionsUrl: "https://x.supabase.co/functions/v1" };
+  const it = (data: Record<string, unknown>) => renderEmail({ id: 1, user_id: "u", kind: "draft", email: "a@b.c", token: "t", data: { link: "#draft/3", ...data } }, O);
+  assert.equal(it({ type: "clock", draft: "2027 Draft", team: "Mac Daddies", round: 3, pick: 7, seconds: 180 }).subject, "You're on the clock: Mac Daddies (Round 3, Pick 7)");
+  assert.equal(it({ type: "soon", draft: "2027 Draft", team: "Mac Daddies", round: 3, pick: 9 }).subject, "You're 2 picks away: Mac Daddies (Round 3, Pick 9)");
+  assert.match(it({ type: "start", draft: "2027 Draft", starts_at: "2027-08-28T23:00:00Z" }).subject, /2027 Draft starts at Sat 7:00 PM ET/);
+  const r = it({ type: "results", draft: "Practice", team: "NSFW", mock: true, picks: [{ round: 1, pick: 3, player: "Ja'Marr Chase", pos: "WR", nfl: "CIN" }] });
+  assert.equal(r.subject, "Practice results: NSFW (practice)");
+  assert.match(r.text, /1\.03 Ja'Marr Chase, WR CIN/);
+  assert.match(r.text, /"Draft alerts" is on/);
+  assert.match(r.html, /#draft\/3/);
+});

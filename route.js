@@ -28,6 +28,8 @@
     var dm = /^messages\/private\/(\d{1,12})$/.exec(key);
     if (dm) return { page: "dm", week: null, conv: Number(dm[1]) };
     if (key === "messages/private") return { page: "dm", week: null };
+    var dr = /^draft\/(\d{1,9})(\/tv)?$/.exec(key);   // the Draft Room and its big-screen board
+    if (dr) return { page: "draft", week: null, draft: Number(dr[1]), tv: !!dr[2] };
     if (key === "myteam/roster") return { page: "myteam", week: null, tab: "roster" };
     var tm = /^team\/(\w{1,12})$/.exec(key);
     if (tm) return { page: "team", week: null, team: tm[1] };

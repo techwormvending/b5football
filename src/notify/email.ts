@@ -5,7 +5,7 @@
    one-click "Turn off these emails" link (signed token, no sign-in) and the List-Unsubscribe headers. */
 
 export type NotifyKind = "dm" | "mentions" | "trades" | "waivers" | "announcements" | "lineup"
-  | "lineup_saved" | "league_lineups" | "league_trades" | "league_waivers" | "league_moves" | "scoring" | "account";
+  | "lineup_saved" | "league_lineups" | "league_trades" | "league_waivers" | "league_moves" | "scoring" | "account" | "draft";
 export interface Person { name?: string | null; team?: string | null }
 export interface NotifyItem { id: number; user_id: string; kind: NotifyKind; email: string; token: string; data: Record<string, any> }   // eslint-disable-line @typescript-eslint/no-explicit-any
 export interface Rendered { subject: string; html: string; text: string; headers: Record<string, string> }
@@ -16,13 +16,13 @@ export const SETTING: Record<NotifyKind, string> = {
   dm: "Direct messages", mentions: "@mentions", trades: "My trades", league_trades: "All league trades",
   waivers: "My waiver results", league_waivers: "League-wide waiver results", league_moves: "League first-come adds/drops",
   lineup_saved: "My lineup confirmation", league_lineups: "Other teams' lineups", lineup: "Lineup reminders (bye/out starters)",
-  scoring: "Daily scoring update", announcements: "Commissioner announcements and messages", account: "Account notices"
+  scoring: "Daily scoring update", announcements: "Commissioner announcements and messages", account: "Account notices", draft: "Draft alerts"
 };
 /** Short label for "You won't get <label> emails anymore". */
 export const KIND_LABEL: Record<NotifyKind, string> = {
   dm: "direct message", mentions: "@mention", trades: "trade", league_trades: "league trade", waivers: "waiver result",
   league_waivers: "league waiver result", league_moves: "league add/drop", lineup_saved: "lineup confirmation",
-  league_lineups: "other teams' lineup", lineup: "lineup reminder", scoring: "daily scoring", announcements: "commissioner", account: "account notice"
+  league_lineups: "other teams' lineup", lineup: "lineup reminder", scoring: "daily scoring", announcements: "commissioner", account: "account notice", draft: "draft alert"
 };
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 const who = (p: Person | null | undefined) => !p ? "A league member" : p.team ? `${p.name || "A league member"} (${p.team})` : p.name || "A league member";
@@ -162,6 +162,18 @@ export function content(item: NotifyItem): Body {
       for (const c of (d.corrections || []) as { was: string; now: string }[]) lines.push(`Stat correction changed a result: ${c.was} → ${c.now} now wins.`);
       if (d.unofficial) lines.push("Scores are unofficial until the week is finalized.");
       return { subject: `Week ${d.week} scores after ${day}${tag}`, heading: `Week ${d.week} scores after ${day}${tag}`, lines, button: "Open Live scoring" };
+    }
+    case "draft": {
+      const at = `Round ${d.round}, Pick ${d.pick}`;
+      if (d.type === "clock") return { subject: `You're on the clock: ${d.team} (${at})`, heading: "You're on the clock",
+        lines: [`${d.team} is on the clock in ${d.draft}: ${at}.`, `You have ${Math.round(Number(d.seconds || 0) / 60 * 10) / 10} minutes. When time runs out the draft picks for you (your queue first).`], button: "Open the Draft Room" };
+      if (d.type === "soon") return { subject: `You're 2 picks away: ${d.team} (${at})`, heading: "You're 2 picks away",
+        lines: [`${d.team} picks in 2 picks in ${d.draft} (${at}).`, "Line up your queue now."], button: "Open the Draft Room" };
+      if (d.type === "start") return { subject: `${d.draft} starts at ${et(String(d.starts_at))}`, heading: `${d.draft} starts soon`,
+        lines: [`${d.draft} starts at ${et(String(d.starts_at))}.`, "Rank your queue so you're ready; you can pick from your phone."], button: "Open the Draft Room" };
+      const picks = (d.picks || []) as { round: number; pick: number; player: string; pos: string; nfl: string }[];
+      return { subject: `${d.draft} results: ${d.team}${d.mock ? " (practice)" : ""}`, heading: `Your ${d.draft} picks`,
+        lines: [`${d.team}${d.mock ? " (practice draft: rosters weren't changed)" : ""}:`, ...picks.map(p => `${p.round}.${String(p.pick).padStart(2, "0")} ${p.player}, ${p.pos} ${p.nfl || ""}`.trim())], button: "See the full board" };
     }
   }
 }

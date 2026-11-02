@@ -13,7 +13,7 @@
   /** The League pages; Payouts (dollar amounts) only for league members. */
   function leagueLinks(v) { return LEAGUE_LINKS.filter(function (x) { return x[0] !== "#payouts" || (v && v.member); }); }
   var LEAGUE_LINKS = [["#schedule", "Standings & Schedule"], ["#teams", "Teams"], ["#players", "Players"], ["#payouts", "Payouts"],
-    ["#history", "History"], ["#rules", "Rules"], ["#traditions", "Traditions"]];
+    ["#history", "History"], ["#rules", "Rules"], ["#traditions", "Traditions"], ["#draft", "Draft Room"]];
   /** Role tools, in menu order, for the roles a person holds (Treasury also for commissioners: they read the books). */
   function roleLinks(v) {
     var r = (v && v.roles) || [];
@@ -35,7 +35,7 @@
     live: ["scores", "Scores"], confidence: ["pools", "Pools"], survivor: ["pools", "Pools"],
     board: ["messages", "Messages"], chat: ["messages", "Messages"], dm: ["messages", "Messages"],
     schedule: ["league", "Standings & Schedule"], teams: ["league", "Teams"], team: ["league", "Team"], payouts: ["league", "Payouts"],
-    history: ["league", "History"], rules: ["league", "Rules"], traditions: ["league", "Traditions"],
+    history: ["league", "History"], draft: ["league", "Draft Room"], rules: ["league", "Rules"], traditions: ["league", "Traditions"],
     account: ["user", "My Account"], unsubscribe: ["user", "Email settings"], commish: ["user", "Commissioner"], "commish-payouts": ["user", "Commissioner"],
     treasury: ["user", "Treasury"], admin: ["user", "Admin"], more: ["more", "More"]
   };

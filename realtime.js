@@ -7,7 +7,7 @@
      private: true,                    // Realtime Authorization (policies on realtime.messages)
      presenceKey, onPresence(list),    // presence: list = [{ key, metas: [...] }]
      onBroadcast(event, payload),      // broadcast messages from others
-     getToken, onChange(record, table) })
+     getToken, onChange(record, table), onJoin() })
    -> { close(), joined(), track(meta), send(event, payload) }
    Heartbeat every 25 s; reconnects with backoff (2 s doubling, max 60 s), asking getToken again
    (fresh session) and rejoining every channel (and re-tracking presence).
@@ -58,6 +58,7 @@
     if (x.event === "phx_reply" && x.ref === ch.joinRef) {
       if (p.status === "ok") {
         ch.joined = true; S.tries = 0;
+        if (o.onJoin) o.onJoin();   // joined or rejoined after a drop: the page re-reads what it may have missed
         if (ch.meta) send({ topic: o.topic, event: "presence", payload: { type: "presence", event: "track", payload: ch.meta }, ref: nextRef(), join_ref: ch.joinRef });
       } else if (o.onError) o.onError(p.response || p);
     } else if (x.event === "postgres_changes" && p.data && o.onChange) {
