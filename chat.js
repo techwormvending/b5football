@@ -68,6 +68,47 @@
     return labels.some(function (l) { return l && s.indexOf("@" + l.toLowerCase()) >= 0; });
   }
   /** Same person, within 5 minutes: show the message without repeating the name. */
+  // ---- Draft dock helpers (2026-11-03) ------------------------------------------------------
+  var CAP = 500;   // messages kept in a long draft (older ones come back with "load more" / scrolling up)
+  var QUICK = ["🔥", "😂", "💀", "🗑️", "🏆"];
+  /** A B5 Bot draft event of a message ("pick", "on_clock", "timer", "paused", ...), or null. */
+  function eventKind(m) { return m && m.is_bot && m.event && m.event.kind ? String(m.event.kind) : null; }
+  /** Pick card text and badge: "Mac Daddies select Joe Burrow, QB CIN · Round 3 Pick 7" (+ by / auto-pick), value reach|steal. */
+  function pickCard(m) {
+    var t = String(m.body || "").replace(/^✅\s*/, "").replace(/\s*·\s*(📈 Reach|💎 Steal) \(ADP [\d.]+\)\s*$/, "");
+    t = t.replace(/ \(Round (\d+), Pick (\d+)\)/, " · Round $1 Pick $2");
+    var ev = m.event || {};
+    return { team: ev.team || null, text: t, value: ev.value === "reach" || ev.value === "steal" ? ev.value : null, adp: ev.adp == null ? null : Number(ev.adp) };
+  }
+  /** "9 of 12 teams here": distinct teams among the people online, out of the draft's teams. */
+  function teamsHere(online, teams) {
+    var seen = {};
+    (online || []).forEach(function (p) { if (p.team && (!teams || teams.indexOf(p.team) >= 0)) seen[p.team] = true; });
+    return { here: Object.keys(seen).length, of: teams ? teams.length : null };
+  }
+  /** Worth a highlight (and a sound when on): a pick, my team on the clock or warned, or an @mention of me. */
+  function alertFor(m, myTeamId, labels, myUserId) {
+    if (!m || (m.author_id && m.author_id === myUserId)) return null;
+    var k = eventKind(m), ev = m.event || {};
+    if (k === "pick") return ev.team === myTeamId ? "mine" : "pick";
+    if ((k === "on_clock" || k === "timer") && myTeamId && ev.team === myTeamId) return "my-turn";
+    if (!m.is_bot && mentionsMe(m.body, labels)) return "mention";
+    return null;
+  }
+  /** Keep the newest `cap` messages (a 3-hour draft has thousands); returns { list, trimmed }. */
+  function capMessages(list, cap) {
+    cap = cap || CAP;
+    return list.length > cap ? { list: list.slice(list.length - cap), trimmed: true } : { list: list, trimmed: false };
+  }
+  /** "▼ 5 new messages" / "▼ Latest". */
+  function jumpText(n) { return n ? "▼ " + n + " new message" + (n === 1 ? "" : "s") : "▼ Latest"; }
+  function beep() {
+    try {
+      var C = root.AudioContext || root.webkitAudioContext; if (!C) return;
+      var ctx = st.audio || (st.audio = new C()), o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.value = 880; g.gain.value = 0.08; o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 0.12);
+    } catch (e) { /* no audio: fine */ }
+  }
   function continues(prev, m) {
     return !!(prev && !m.is_bot && !prev.is_bot && prev.author_id === m.author_id && Date.parse(m.created_at) - Date.parse(prev.created_at) < 300000);
   }
@@ -165,7 +206,7 @@
     }).join("") + "</div>";
   }
   function messageHtml(m, prev, ctx, labels) {
-    var mine = m.author_id === myId() && !m.is_bot, cont = continues(prev, m), dayBreak = !prev || day(prev.created_at) !== day(m.created_at);
+    var mine = m.author_id === myId() && !m.is_bot, cont = !st.dock && continues(prev, m) && !eventKind(m) && !eventKind(prev), dayBreak = !prev || day(prev.created_at) !== day(m.created_at);
     var reacts = st.reactions[m.id] || [], byEmoji = {};
     reacts.forEach(function (r) { (byEmoji[r.emoji] = byEmoji[r.emoji] || []).push(r.user_id); });
     var chips = EMOJI.concat(Object.keys(byEmoji).filter(function (e) { return EMOJI.indexOf(e) < 0; })).filter(function (e) { return byEmoji[e]; }).map(function (e) {
@@ -183,14 +224,24 @@
       (mine || isCommish() ? '<button type="button" data-ch="del" data-id="' + m.id + '">Delete</button>' : "") +
       (isCommish() ? '<button type="button" data-ch="pin" data-id="' + m.id + '">Pin</button>' : "") +
       (isCommish() && !mine && m.author_id ? '<button type="button" data-ch="mute" data-user="' + esc(m.author_id) + '">Mute</button>' : "") + "</div>" : "";
+    var kind = eventKind(m), mt = st.myTeam || (me().team || null), al = alertFor(m, mt, labels, myId());
+    if (kind === "pick") {
+      var pc = pickCard(m);
+      body = '<div class="ch-pickcard">' + (pc.team ? logo(pc.team) : "") + '<div class="ch-pickt">' + (B() ? B().formatBody(pc.text, ctx) : esc(pc.text)) +
+        (pc.value ? ' <span class="dr-val dr-' + pc.value + '">' + (pc.value === "reach" ? "📈 Reach" : "💎 Steal") + (pc.adp != null ? " · ADP " + esc(Math.round(pc.adp * 10) / 10) : "") + "</span>" : "") + "</div></div>";
+      cont = false;
+    }
+    var quick = kind === "pick" && m.id === st.lastPick && !st.readOnly ? '<div class="ch-quick" aria-label="Quick reactions">' + QUICK.map(function (e) {
+      return '<button type="button" data-ch="react" data-id="' + m.id + '" data-emoji="' + esc(e) + '" aria-label="React ' + esc(e) + '">' + e + "</button>"; }).join("") + "</div>" : "";
     return (dayBreak ? '<div class="ch-day">' + esc(day(m.created_at)) + "</div>" : "") +
-      '<div class="ch-msg' + (cont && !dayBreak ? " cont" : "") + (m.is_bot ? " bot" : "") + (mine ? " mine" : "") + (!mine && mentionsMe(m.body, labels) ? " at-me" : "") + '" data-ch-msg="' + m.id + '">' +
+      '<div class="ch-msg' + (cont && !dayBreak ? " cont" : "") + (m.is_bot ? " bot" : "") + (kind ? " ev ev-" + esc(kind) : "") + (al === "my-turn" || al === "mine" ? " my-turn" : "") + (mine ? " mine" : "") + (!mine && mentionsMe(m.body, labels) ? " at-me" : "") + '" data-ch-msg="' + m.id + '">' +
       (cont && !dayBreak ? '<div class="ch-gut"></div>' : '<div class="ch-gut">' + logo(m.author_team, m.is_bot) + "</div>") +
       '<div class="ch-main">' + (cont && !dayBreak ? "" : '<div class="ch-by"><b>' + byHtml(m) + '</b> <span class="muted">' + esc(time(m.created_at)) + "</span></div>") +
-      body + (m.edited_at ? '<span class="muted ch-edited">edited</span>' : "") + (chips ? '<div class="ch-chips">' + chips + "</div>" : "") + acts + "</div></div>";
+      body + (m.edited_at ? '<span class="muted ch-edited">edited</span>' : "") + (chips ? '<div class="ch-chips">' + chips + "</div>" : "") + quick + acts + "</div></div>";
   }
   function logHtml() {
     var ctx = mentionCtx(), labels = myLabels();
+    st.lastPick = null; st.msgs.forEach(function (m) { if (eventKind(m) === "pick") st.lastPick = m.id; });
     return (st.hasMore ? '<div class="ch-more muted small">Scroll up for older messages</div>' : st.msgs.length ? '<div class="ch-more muted small">Start of the room</div>' : "") +
       st.msgs.map(function (m, i) { return messageHtml(m, st.msgs[i - 1], ctx, labels); }).join("") +
       (!st.msgs.length ? '<p class="muted ch-empty">No messages yet. Say something!</p>' : "");
@@ -212,6 +263,11 @@
   }
   function onlineHtml() {
     var list = st.online;
+    if (st.dock) {
+      var th = teamsHere(list, st.teams);
+      return '<div class="ch-online ch-here" aria-label="In the Draft Room">' + list.slice(0, 16).map(function (p) { return logo(p.team, false, p.name + " (here)"); }).join("") +
+        '<span class="ch-herecount">' + esc(th.here) + (th.of ? " of " + esc(th.of) : "") + " teams here</span></div>";
+    }
     if (!list.length) return "";
     return '<div class="ch-online" aria-label="Online now">' + list.slice(0, 14).map(function (p) { return logo(p.team, false, p.name + " (online)"); }).join("") +
       '<span class="muted small">' + list.length + " online</span></div>";
@@ -249,7 +305,7 @@
       '<div class="ch-top" data-ch-part="top"></div>' +
       '<div class="ch-pin" data-ch-part="pin"></div>' +
       '<div class="ch-log" data-ch-part="log" aria-live="polite"></div>' +
-      '<button type="button" class="ch-jump" data-ch="jump" hidden>↓ Latest</button>' +
+      '<button type="button" class="ch-jump" data-ch="jump" hidden>▼ Latest</button>' +
       '<div class="ch-typing muted small" data-ch-part="typing"></div>' +
       '<div data-ch-part="compose"></div></section>';
   }
@@ -259,7 +315,7 @@
     var part = function (k) { return st.el.querySelector('[data-ch-part="' + k + '"]'); };
     if (!part("log")) { st.el.innerHTML = shell(); fit(); parts = null; }
     var all = !parts;
-    if (all || parts.top) part("top").innerHTML = (st.tv ? "" : roomsHtml()) + onlineHtml();
+    if (all || parts.top) part("top").innerHTML = (st.tv || st.dock ? "" : roomsHtml()) + onlineHtml();
     if (all || parts.pin) part("pin").innerHTML = pinHtml();
     if (all || parts.log) {
       var log = part("log"), atBottom = st.atBottom, oldH = log.scrollHeight, oldTop = log.scrollTop;
@@ -283,7 +339,7 @@
       new root.ResizeObserver(function () { if (st.atBottom) lg.scrollTop = lg.scrollHeight; }).observe(lg);
     }
     var jump = st.el.querySelector(".ch-jump");
-    if (jump) { jump.hidden = st.atBottom; jump.textContent = st.newBelow ? "↓ " + st.newBelow + " new" : "↓ Latest"; }
+    if (jump) { jump.hidden = st.atBottom; jump.textContent = jumpText(st.newBelow); }
   }
   // The chat fills the screen above the phone keyboard (visualViewport shrinks when it opens).
   function fit() {
@@ -328,7 +384,13 @@
         var isNew = !st.msgs.some(function (m) { return m.id === rec.id; });
         signFor([rec]).then(function () {
           st.msgs = mergeMessages(st.msgs, [rec]);
+          if (st.atBottom) { var c = capMessages(st.msgs); st.msgs = c.list; if (c.trimmed) st.hasMore = true; }
           if (isNew && !st.atBottom) st.newBelow++;
+          if (isNew && rec.author_id !== myId()) {
+            var al = alertFor(rec, st.myTeam || me().team, myLabels(), myId());
+            if (al && (al !== "pick" || st.dock) && st.sound && st.sound()) beep();
+            if (st.onMessage) st.onMessage(rec, al);
+          }
           render({ log: true, typing: true, pin: true });
           if (st.atBottom) markRead();
         });
@@ -481,7 +543,8 @@
   function mount(el, opts) {
     stop();
     opts = opts || {};
-    st.el = el; st.room = opts.room || "league"; st.tv = !!opts.tv; st.readOnly = !!(opts.readOnly || opts.tv); st.mounted = !!opts.panel;
+    st.el = el; st.room = opts.room || "league"; st.tv = !!opts.tv; st.readOnly = !!(opts.readOnly || opts.tv); st.mounted = !!(opts.panel || opts.dock);
+    st.dock = !!(opts.dock || (opts.tv && opts.teams)); st.teams = opts.teams || null; st.myTeam = opts.myTeam || null; st.onMessage = opts.onMessage || null; st.sound = opts.sound || null;
     st.msgs = []; st.reactions = {}; st.menu = null; st.editing = null; st.atBottom = true; st.newBelow = 0; st.compose = { images: [], busy: false, err: null };
     if (!(cfg && cfg.configured && A)) { el.innerHTML = '<section><h2>Chat</h2><div class="card">Not set up yet.</div></section>'; return; }
     el.innerHTML = '<section class="ch-gate"><h2>Chat</h2><p class="muted">Loading…</p></section>';
@@ -528,7 +591,7 @@
       if (!log.classList || !log.classList.contains("ch-log")) return;
       st.atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
       if (st.atBottom && st.newBelow) { st.newBelow = 0; markRead(); }
-      var jump = st.el.querySelector(".ch-jump"); if (jump) { jump.hidden = st.atBottom; jump.textContent = st.newBelow ? "↓ " + st.newBelow + " new" : "↓ Latest"; }
+      var jump = st.el.querySelector(".ch-jump"); if (jump) { jump.hidden = st.atBottom; jump.textContent = jumpText(st.newBelow); }
       if (log.scrollTop < 80 && st.hasMore && !st.loadingOld && st.msgs.length) {
         st.loadingOld = true;
         loadHistory(st.msgs[0].id).then(function () { st.loadingOld = false; render({ log: true, older: true }); }, function () { st.loadingOld = false; });
@@ -564,5 +627,7 @@
   }
 
   root.B5Chat = { start: start, stop: function () { stop(); if (root.document) root.document.body.classList.remove("chat-tv"); }, mount: mount, badge: badge,
+    eventKind: eventKind, pickCard: pickCard, teamsHere: teamsHere, alertFor: alertFor, capMessages: capMessages, jumpText: jumpText, CAP: CAP, QUICK: QUICK,
+    jumpToLatest: function () { var log = st.el && st.el.querySelector(".ch-log"); if (log) { log.scrollTop = log.scrollHeight; st.atBottom = true; st.newBelow = 0; render({ log: true }); } },
     fmtClock: fmtClock, draftHeader: draftHeader, typingText: typingText, onlineList: onlineList, mergeMessages: mergeMessages, mentionsMe: mentionsMe, continues: continues };
 })(typeof globalThis !== "undefined" ? globalThis : this);

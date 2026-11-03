@@ -1032,3 +1032,108 @@ body.draft-tv { padding-bottom: 0; }
   .hs-table td[data-label]::before { content: attr(data-label) ": "; color: var(--chalk-dim); }
   .hs-table td[colspan] { grid-column: 1 / -1; }
 }
+
+/* Draft Room with an always-visible chat (2026-11-03): on-the-clock bar + last 6 picks on top, the board and
+   Player Pool / My Queue / My Team on the left, the Draft chat docked on the right (drag to 300-600 px,
+   Focus chat / Focus board, pop out); under 1100 px the chat is a bottom sheet that always peeks. */
+body.draft-room main.wrap, body.draft-popout main.wrap { max-width: none; padding: 10px 12px 0; }
+body.draft-room #pageHead, body.draft-popout #pageHead, body.draft-popout .top, body.draft-popout .foot, body.draft-popout .bottom-bar { display: none; }
+body.draft-room .foot { display: none; }
+.dr-links { margin: 0 0 6px; font-size: 15px; }
+.dr-room .dr-head { position: static; margin: 0; }
+.dr-topbar { background: var(--ink-deep); padding-bottom: 6px; }
+.dr-last { list-style: none; display: flex; gap: 6px; margin: 6px 0 0; padding: 0; overflow: hidden; }
+.dr-last li { display: flex; align-items: center; gap: 5px; padding: 4px 8px; border-left: 4px solid var(--band, var(--card-line)); background: var(--card); border-radius: 6px; white-space: nowrap; font-size: 15px; min-width: 0; flex: 0 1 auto; }
+.dr-last li:first-child { outline: 1px solid var(--gold); }
+.dr-last .dr-pk { color: var(--chalk-dim); font-variant-numeric: tabular-nums; }
+.dr-last .logo.sm { width: 24px; height: 24px; }
+.dr-last b { overflow: hidden; text-overflow: ellipsis; }
+.dr-last .pos { font-size: 15px; }
+.dr-layout .dr-board-wrap.full { width: 100%; margin-left: 0; max-height: 62vh; }
+.dr-mainz { container-type: inline-size; min-width: 0; }
+.dr-layout .dr-board { font-size: clamp(15px, 1.45cqi, 26px); }
+.dr-dtabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0; }
+.dr-dtabs button { flex: 1 1 auto; min-height: 48px; padding: 0 14px; border-radius: 8px; border: 2px solid var(--card-line); background: var(--card); color: var(--chalk); font: 600 17px var(--body); cursor: pointer; }
+.dr-dtabs button.active { background: var(--gold); color: var(--ink-deep); border-color: var(--gold); }
+.dr-dock { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--card); border: 1px solid var(--card-line); border-radius: var(--radius); padding: 8px; }
+.dr-dock.flash { animation: drFlash 1.4s ease-out 1; }
+@keyframes drFlash { 0% { box-shadow: 0 0 0 3px var(--gold); } 100% { box-shadow: 0 0 0 0 transparent; } }
+.dr-docktools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-bottom: 6px; flex: none; }
+.dr-dt { min-height: 44px; border-radius: 8px; border: 1px solid var(--card-line); background: var(--ink); color: var(--chalk); font: 600 15px var(--body); cursor: pointer; }
+.dr-dt.on { background: var(--gold); color: var(--ink-deep); border-color: var(--gold); }
+.dr-chatmount { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.dr-chatmount .ch, .dr-pop .ch, .dr-tv-chat .ch { height: 100%; max-width: none; margin: 0; flex: 1; min-height: 0; }
+.dr-dock .ch-body, .dr-dock .ch-by, .dr-pop .ch-body, .dr-pop .ch-by { font-size: 18px; }
+.dr-dock .ch-jump, .dr-pop .ch-jump { bottom: 90px; }
+.dr-popped { margin: 0; text-align: center; }
+.dr-handle { display: none; }
+.dr-resize { display: none; }
+.ch-here { flex-wrap: wrap; row-gap: 4px; }
+.ch-herecount { margin-left: 6px; font-size: 15px; color: var(--chalk); white-space: nowrap; }
+/* Draft events in the chat: pick cards, the clock, my turn */
+.ch-pickcard { display: flex; gap: 10px; align-items: center; background: rgba(255, 182, 18, .07); border: 1px solid var(--card-line); border-left: 4px solid var(--gold); border-radius: 8px; padding: 8px 10px; color: var(--chalk); font-weight: 500; }
+.ch-pickcard .logo.sm { width: 40px; height: 40px; flex: none; }
+.ch-pickt { min-width: 0; overflow-wrap: anywhere; line-height: 1.35; }
+.ch-msg.ev-timer .ch-body { color: #ffb3b3; }
+.ch-msg.ev-paused .ch-body, .ch-msg.ev-resumed .ch-body { color: var(--chalk); }
+.ch-msg.my-turn { background: rgba(255, 182, 18, .14); border-left: 3px solid var(--gold); }
+.ch-quick { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.ch-quick button { min-width: 48px; min-height: 44px; border-radius: 22px; border: 1px solid var(--card-line); background: var(--ink); font-size: 22px; cursor: pointer; }
+.ch-quick button:hover, .ch-quick button:focus-visible { border-color: var(--gold); }
+/* A 3-hour draft has thousands of messages: rows off screen aren't laid out (and at most ~500 are kept) */
+.ch-log .ch-msg { content-visibility: auto; contain-intrinsic-size: auto 60px; }
+@media (min-width: 761px) {
+  .dr-room .dr-tabs { display: none; }
+  .dr-room .dr-p-players, .dr-room .dr-p-queue, .dr-room .dr-p-team { display: none; }
+  .dr-room[data-dtab="players"] .dr-p-players, .dr-room[data-dtab="queue"] .dr-p-queue, .dr-room[data-dtab="team"] .dr-p-team { display: block; }
+}
+@media (max-width: 760px) { .dr-room .dr-dtabs { display: none; } .dr-last li:nth-child(n+4) { display: none; } }
+/* Desktop: three zones on one screen */
+@media (min-width: 1100px) {
+  .dr-room { height: calc(100dvh - var(--dr-top, 90px)); display: flex; flex-direction: column; }
+  .dr-room > .dr-links, .dr-room > .acct-msg, .dr-topbar { flex: none; }
+  .dr-layout { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 12px var(--chat-w, 380px); }
+  .dr-room[data-focus="chat"] .dr-layout { grid-template-columns: minmax(0, 1fr) 12px 50%; }
+  .dr-room[data-popped] .dr-layout { grid-template-columns: minmax(0, 1fr) 12px 260px; }
+  .dr-mainz { overflow-y: auto; padding-right: 4px; }
+  .dr-resize { display: block; cursor: col-resize; touch-action: none; position: relative; }
+  .dr-resize::after { content: ""; position: absolute; top: 0; bottom: 0; left: 5px; width: 2px; background: var(--card-line); }
+  .dr-resize:hover::after, .dr-resize:focus-visible::after { background: var(--gold); width: 4px; left: 4px; }
+  .dr-resize:focus-visible { outline: none; }
+  .dr-dock { height: 100%; }
+}
+/* Tablet and phone: the chat is a bottom sheet that always peeks */
+@media (max-width: 1099px) {
+  .dr-room { padding-bottom: 150px; }
+  .dr-dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; height: auto; border-radius: 14px 14px 0 0; border-width: 2px 0 0; border-color: var(--gold); padding: 0 8px 8px; box-shadow: 0 -8px 24px rgba(0, 0, 0, .55); }
+  .dr-handle { display: grid; gap: 2px; width: 100%; min-height: 64px; padding: 6px 4px 8px; border: 0; background: transparent; color: var(--chalk); text-align: left; font: 500 17px var(--body); cursor: pointer; touch-action: none; }
+  .dr-grip { width: 48px; height: 5px; border-radius: 3px; background: var(--chalk-dim); justify-self: center; margin-bottom: 4px; }
+  .dr-hl { display: flex; align-items: center; gap: 8px; }
+  .dr-latest { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--chalk-dim); font-size: 16px; }
+  .dr-room[data-sheet="peek"] .dr-chatmount, .dr-room[data-sheet="peek"] .dr-docktools, .dr-room[data-sheet="peek"] .dr-popped { display: none; }
+  .dr-room[data-sheet="full"] .dr-dock { top: 0; bottom: 0; border-radius: 0; z-index: 60; }
+  .dr-room[data-sheet="full"] .dr-latest { display: none; }
+  .dr-docktools { grid-template-columns: 1fr; }
+  .dr-docktools [data-dr-dock="focus-chat"], .dr-docktools [data-dr-dock="focus-board"], .dr-docktools [data-dr-dock="popout"] { display: none; }
+  body.dr-sheet-full .bottom-bar { display: none; }
+}
+@media (max-width: 759px) { .dr-room[data-sheet="peek"] .dr-dock { bottom: calc(64px + env(safe-area-inset-bottom)); } }
+/* Pop-out chat window */
+.dr-pop { height: calc(100dvh - 20px); display: flex; flex-direction: column; }
+/* Big screen: the read-only chat in a column on the right */
+.dr-tv-top { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
+.dr-tv-body { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 24vw; gap: 1vw; }
+.dr-tv-body .dr-board-wrap.full { height: 100%; }
+.dr-board-wrap.big .dr-board { font-size: clamp(15px, min(1.4vh, .8vw), 56px); }
+.dr-tv-chat { min-height: 0; overflow: hidden; display: flex; flex-direction: column; background: var(--card); border-radius: var(--radius); padding: .5vw; }
+.dr-tv-chat .ch-body, .dr-tv-chat .ch-by, .dr-tv-chat .ch-pickt { font-size: clamp(18px, 1.15vw, 44px); }
+.dr-tv-chat .ch-pickcard .logo.sm { width: 2.4vw; height: 2.4vw; min-width: 36px; min-height: 36px; }
+.dr-room .dr-commish { padding: 8px 12px; margin-bottom: 8px; }
+.dr-ctitle { align-self: center; margin-right: 6px; font: 700 16px var(--head); letter-spacing: .05em; text-transform: uppercase; }
+.dr-more > summary { cursor: pointer; min-height: 40px; display: flex; align-items: center; color: var(--chalk-dim); }
+.dr-dock .ch-draft { display: none; }
+.dr-dock .ch-row, .dr-pop .ch-row { flex-wrap: wrap; }
+.dr-dock .ch-row .bd-ta, .dr-pop .ch-row .bd-ta { flex: 1 1 100%; order: -1; }
+.dr-docktools { grid-template-columns: repeat(3, minmax(0, 1fr)) auto; }
+.dr-docktools .dr-dt { padding: 0 8px; }
+@media (min-width: 1100px) { .dr-room .dr-head { padding: 10px 14px; } .dr-room .dr-clock { font-size: 46px; } }

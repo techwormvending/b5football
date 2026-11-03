@@ -154,8 +154,9 @@ test("room helpers: who's on the clock and the next two; pool filters; my picks 
 test("routes: #draft, #draft/<id>, #draft/<id>/tv", () => {
   const known = (k: string) => ["home", "draft"].includes(k);
   assert.deepEqual(plain(R.parse("#draft", known)), { page: "draft", week: null });
-  assert.deepEqual(plain(R.parse("#draft/7", known)), { page: "draft", week: null, draft: 7, tv: false });
-  assert.deepEqual(plain(R.parse("#draft/7/tv", known)), { page: "draft", week: null, draft: 7, tv: true });
+  assert.deepEqual(plain(R.parse("#draft/7", known)), { page: "draft", week: null, draft: 7, tv: false, popout: false });
+  assert.deepEqual(plain(R.parse("#draft/7/tv", known)), { page: "draft", week: null, draft: 7, tv: true, popout: false });
+  assert.deepEqual(plain(R.parse("#draft/7/chat", known)), { page: "draft", week: null, draft: 7, tv: false, popout: true }, "the pop-out chat window");
   assert.equal(R.parse("#draft/x", known).page, "home");
 });
 

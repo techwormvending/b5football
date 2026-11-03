@@ -15,7 +15,7 @@
   var POS = ["QB", "RB", "WR", "TE", "K", "DEF"];
   var ROSTER_MAX = 18;
 
-  var st = { el: null, id: null, tv: false, me: null, d: null, orders: {}, orderRows: {}, sel: [], owners: {}, players: [], pmap: {}, rank: {}, rankInfo: null, adp: {}, adpInfo: [], adpSeason: null, sort: { by: "adp", dir: 1 }, sortSet: false, tip: null, btab: "round", bround: null, bteam: null, scrolledCur: null,
+  var st = { el: null, id: null, tv: false, me: null, d: null, orders: {}, orderRows: {}, sel: [], owners: {}, players: [], pmap: {}, rank: {}, rankInfo: null, adp: {}, adpInfo: [], adpSeason: null, sort: { by: "adp", dir: 1 }, sortSet: false, tip: null, focus: null, sheet: "peek", unread: 0, latest: null, chatW: null, popped: null, takeover: null, sound: false, popout: false, btab: "round", bround: null, bteam: null, scrolledCur: null,
     queue: [], byes: {}, tab: "players", q: "", pos: "", showDrafted: false, offset: 0, ticked: {}, sub: null, timer: null, msg: null, shown: 150, anim: null, seenOrders: {}, loading: false };
   var session = function () { return st.me && st.me.session; };
   var api = function (path, init) { return A.api(cfg, session(), path, init || {}, f); };
@@ -171,6 +171,22 @@
     if (d.status !== "live") return "–:––";
     return DL.clock(DL.secondsLeft(d.clock_ends_at, Date.now(), st.offset));
   }
+  // ---- Docked chat (2026-11-03) --------------------------------------------------------------
+  var CHAT_MIN = 300, CHAT_MAX = 600, CHAT_DEFAULT = 380;
+  /** The dock's width, kept between 300 and 600 px. */
+  function clampChatWidth(w) { w = Math.round(Number(w)); return isFinite(w) ? Math.max(CHAT_MIN, Math.min(CHAT_MAX, w)) : CHAT_DEFAULT; }
+  /** "Focus chat": the board shows the current round and the 2 before it. [from, to]. */
+  function focusRounds(cur, rounds) { cur = Math.max(1, Math.min(rounds, cur || 1)); return [Math.max(1, cur - 2), cur]; }
+  /** The phone sheet after a swipe on its handle (dy < 0 = up): peek <-> full; a short move or a tap toggles. */
+  function sheetAfter(state, dy) {
+    if (dy == null || Math.abs(dy) < 30) return state === "full" ? "peek" : "full";
+    return dy < 0 ? "full" : "peek";
+  }
+  /** The last n picks made, newest first. */
+  function lastPicks(sel, n) {
+    return (sel || []).filter(function (x) { return x.player_id; }).sort(function (a, b) { return b.overall - a.overall; }).slice(0, n || 6);
+  }
+  var store = function (k, v) { try { if (v === undefined) return root.localStorage.getItem(k); root.localStorage.setItem(k, v); } catch (e) { return null; } return null; };
   /** "Allen" from "Josh Allen", "Harrison" from "Marvin Harrison Jr."; defenses by their team code. */
   function lastName(p) {
     if (!p) return "";
@@ -203,8 +219,8 @@
       return '<th scope="col" class="' + (t === mineT ? "dr-mine" : "") + '"><button type="button" class="dr-thb" data-dr-tip="th:' + esc(t) + '" title="' + esc(T().name(t)) + '" aria-expanded="' + open + '">' + T().boardLabel(t) + "</button>" +
         (open ? '<div class="dr-tip" role="tooltip">' + T().link(t) + "</div>" : "") + "</th>";
     }).join("") + "</tr>";
-    var rows = "";
-    for (var r = 1; r <= d.rounds; r++) {
+    var rows = "", span = !big && st.focus === "chat" ? focusRounds(v.slot ? v.slot.round : DL.position(Math.min(v.total, (v.cur || v.total)), d.teams.length).round, d.rounds) : [1, d.rounds];
+    for (var r = span[0]; r <= span[1]; r++) {
       var order = DL.roundOrder(st.orders, r);
       rows += '<tr data-dr-round="' + r + '"><th class="dr-rd" scope="row">' + r + "</th>" + cols.map(function (orig) {
         if (!order) return '<td class="dr-cell empty' + (orig === mineT ? " dr-mine" : "") + '"></td>';
@@ -317,7 +333,7 @@
     var orderRound = needRound || (d.status === "setup" ? missing[0] || 1 : null);
     var picked = {}; st.sel.forEach(function (s) { picked[s.round] = true; });
     var redo = Object.keys(st.orders).map(Number).filter(function (r) { return !picked[r]; });
-    return '<div class="card dr-commish"><h3>Commissioner</h3><div class="dr-cacts">' +
+    return '<div class="card dr-commish"><div class="dr-cacts"><b class="dr-ctitle">Commissioner</b>' +
       (d.status === "setup" ? b("start", "Start the draft", "") : "") +
       (d.status === "live" ? b("pause", "Pause") + b("extend30", "+30 s") + b("extend60", "+1 min") : "") +
       (d.status === "paused" ? b("resume", "Resume", "") + b("extend60", "+1 min") : "") +
@@ -326,6 +342,7 @@
       (orderRound ? '<div class="dr-order"><h4>Round ' + esc(orderRound) + " order" + (needRound ? ' <span class="tag dr-st-awaiting_order">the draft is waiting</span>' : "") + "</h4>" +
         '<p class="muted small">Round ' + esc(orderRound + 1) + ' is the reverse. Draw at random (fair, logged with the time), or enter the order from the hat.</p>' +
         '<div class="dr-cacts">' + b("draw:" + orderRound, "🎩 Draw at random", "") + "</div>" + manualOrderHtml(orderRound) + "</div>" : "") +
+      '<details class="dr-more"' + (st.moreOpen ? ' open' : '') + ' data-dr="more-tools"><summary>More commissioner tools</summary>' +
       (redo.length ? '<p class="small">Redo a draw (only before that round\'s first pick): ' + redo.map(function (r) { return '<button type="button" class="linkish" data-dr-c="draw:' + r + '">Round ' + r + "</button>"; }).join(" · ") + "</p>" : "") +
       '<details><summary>Edit a past pick</summary><form class="acct-form" data-dr-form="edit"><label>Pick number (overall)<input name="overall" type="number" min="1" max="' + esc(v.total) + '" required></label>' +
         '<label>New player<input name="player" list="drPlayers" required placeholder="Start typing a name"></label><button class="btn" type="submit">Change the pick</button></form></details>' +
@@ -335,7 +352,7 @@
       '<label class="acct-check"><input type="checkbox" data-dr="ranks"' + (d.ranks === "custom" ? " checked" : "") + (Object.keys(st.rank).length ? "" : " disabled") + "> Custom ranks (the uploaded CSV instead of ADP, for sorting and auto-pick)" + (Object.keys(st.rank).length ? "" : ": upload a CSV first") + "</label>" +
       '<details><summary>Rankings (CSV)</summary><form class="acct-form" data-dr-form="rank"><p class="muted small">Columns rank, player (optional pos, team), or one player per line in order. Players are matched by name; anything ambiguous is listed, never guessed. Uploading turns Custom ranks on.</p>' +
         '<label>Source<input name="source" value="Commissioner upload" required></label><label>CSV<textarea name="csv" rows="5"></textarea></label><input type="file" accept=".csv,text/csv" data-dr="csvfile">' +
-        '<button class="btn" type="submit">Upload rankings</button></form></details>' +
+        '<button class="btn" type="submit">Upload rankings</button></form></details></details>' +
       '<datalist id="drPlayers">' + st.players.slice(0, 1500).map(function (p) { return '<option value="' + esc(p.name + " (" + p.pos + " " + (p.nfl || "FA") + ")") + '">'; }).join("") + "</datalist></div>";
   }
   function manualOrderHtml(round) {
@@ -358,17 +375,54 @@
     var teams = reveal ? a.teams : a.teams.slice().sort(function () { return Math.random() - 0.5; });
     return '<div class="dr-anim" role="status"><h3>🎩 Drawing names for round ' + esc(a.round) + "…</h3><ol>" + teams.map(function (t) { return "<li>" + T().logo(t) + T().link(t, { logo: false }) + "</li>"; }).join("") + "</ol></div>";
   }
+  /** The strip of the last 6 picks under the on-the-clock bar. */
+  function lastPicksHtml() {
+    var list = lastPicks(st.sel, 6);
+    if (!list.length) return "";
+    return '<ol class="dr-last" aria-label="Last picks">' + list.map(function (x) {
+      var p = st.pmap[x.player_id] || { name: x.player_id, pos: "" };
+      return '<li class="pos-band-' + esc(p.pos) + '"><span class="dr-pk">' + esc(pk(x.round, x.pick)) + "</span>" + T().logo(x.team_id) + "<b>" + esc(lastName(p)) + "</b>" + posTag(p.pos) + valueTag(x) + "</li>";
+    }).join("") + "</ol>";
+  }
+  function dockToolsHtml() {
+    var b = function (k, label, on) { return '<button type="button" class="dr-dt' + (on ? " on" : "") + '" data-dr-dock="' + k + '" aria-pressed="' + !!on + '">' + label + "</button>"; };
+    return '<div class="dr-docktools">' + b("focus-chat", "Focus chat", st.focus === "chat") + b("focus-board", "Focus board", st.focus === "board") +
+      b("popout", "Pop out ↗") + b("sound", st.sound ? "🔔" : "🔕", st.sound).replace("<button ", '<button title="' + (st.sound ? "Sound on for picks and mentions" : "Sound off") + '" aria-label="' + (st.sound ? "Sound on" : "Sound off") + '" ') + "</div>";
+  }
+  function handleHtml() {
+    var l = st.latest;
+    return '<button type="button" class="dr-handle" data-dr="sheet" aria-expanded="' + (st.sheet === "full") + '" aria-label="' + (st.sheet === "full" ? "Back to the board" : "Open the chat") + '">' +
+      '<span class="dr-grip" aria-hidden="true"></span><span class="dr-hl"><b>💬 Chat</b>' + (st.unread ? ' <span class="nav-badge" data-dr="unread">' + (st.unread > 99 ? "99+" : st.unread) + "</span>" : "") +
+      (st.sheet === "full" ? ' <span class="muted">▾ Back to the board</span>' : "") + "</span>" +
+      '<span class="dr-latest" data-dr="latest">' + (l ? esc(l) : '<span class="muted">Swipe up to chat</span>') + "</span></button>";
+  }
   function roomHtml() {
     var v = view(st.d, st.orders, st.owners, st.sel);
-    var tabs = [["players", "Players"], ["queue", "Queue"], ["team", "My team"], ["board", "Board"], ["chat", "Chat"]];
-    return '<section class="dr" data-tab="' + esc(st.tab) + '">' + '<p><a href="#draft">← All drafts</a> · <a href="#draft/' + esc(st.id) + '/tv">Big-screen board</a></p>' +
-      "<h2>" + esc(st.d.name) + (st.d.kind === "mock" ? ' <span class="tag">Practice</span>' : "") + "</h2>" +
+    var tabs = [["players", "Players"], ["queue", "Queue"], ["team", "My team"], ["board", "Board"]];
+    var dtab = st.tab === "board" ? "players" : st.tab;
+    var dtabs = [["players", "Player Pool"], ["queue", "My Queue"], ["team", "My Team"]];
+    var w = st.focus === "chat" ? null : st.focus === "board" ? CHAT_MIN : clampChatWidth(st.chatW);
+    var dock = st.popped
+      ? '<div class="card dr-popped"><p><b>The chat is open in its own window.</b></p><button type="button" class="btn" data-dr-dock="bring-back">Bring it back here</button></div>'
+      : '<div class="dr-chatmount" data-dr="chat"></div>';
+    return '<section class="dr dr-room" data-tab="' + esc(st.tab) + '" data-dtab="' + esc(dtab) + '" data-focus="' + esc(st.focus || "") + '" data-sheet="' + esc(st.sheet) + '"' + (st.popped ? ' data-popped="1"' : "") +
+      (w ? ' style="--chat-w:' + w + 'px"' : "") + ">" +
+      '<p class="dr-links"><a href="#draft">← All drafts</a> · <a href="#draft/' + esc(st.id) + '/tv">Big-screen board</a> · <span class="muted">' + esc(st.d.name) + (st.d.kind === "mock" ? " (practice)" : "") + "</span></p>" +
       (st.msg ? '<p class="acct-msg ' + (st.msg.err ? "err" : "ok") + '">' + esc(st.msg.err || st.msg.ok) + "</p>" : "") +
-      '<div data-dr="anim">' + animHtml() + "</div>" + headerHtml(v) + commishHtml(v) +
-      '<nav class="dr-tabs" aria-label="Draft room">' + tabs.map(function (t) { return '<button type="button" class="' + (st.tab === t[0] ? "active" : "") + '" data-dr-tab="' + t[0] + '">' + t[1] + "</button>"; }).join("") + "</nav>" +
-      '<div class="dr-pane dr-p-board">' + boardHtml(v) + "</div>" +
-      '<div class="dr-cols"><div class="dr-pane dr-p-players">' + playersHtml(v) + '</div><div class="dr-side"><div class="dr-pane dr-p-queue">' + queueHtml(v) + '</div><div class="dr-pane dr-p-team">' + teamHtml() + "</div></div>" +
-      '<div class="dr-pane dr-p-chat"><div class="card"><div data-dr="chat"></div></div></div></div></section>';
+      '<div data-dr="anim">' + animHtml() + "</div>" +
+      '<div class="dr-topbar">' + headerHtml(v) + lastPicksHtml() + "</div>" +
+      '<div class="dr-layout"><div class="dr-mainz">' + commishHtml(v) +
+        '<nav class="dr-tabs" aria-label="Draft room">' + tabs.map(function (t) { return '<button type="button" class="' + (st.tab === t[0] ? "active" : "") + '" data-dr-tab="' + t[0] + '">' + t[1] + "</button>"; }).join("") + "</nav>" +
+        '<div class="dr-pane dr-p-board">' + boardHtml(v) + (st.focus === "chat" ? '<p class="muted small">Showing the current round and the 2 before it. <button type="button" class="linkish" data-dr-dock="focus-chat">Show the whole board</button></p>' : "") + "</div>" +
+        '<nav class="dr-dtabs" aria-label="Players and teams">' + dtabs.map(function (t) { return '<button type="button" class="' + (dtab === t[0] ? "active" : "") + '" data-dr-tab="' + t[0] + '" aria-pressed="' + (dtab === t[0]) + '">' + t[1] + "</button>"; }).join("") + "</nav>" +
+        '<div class="dr-pane dr-p-players">' + playersHtml(v) + '</div><div class="dr-pane dr-p-queue">' + queueHtml(v) + '</div><div class="dr-pane dr-p-team">' + teamHtml() + "</div>" +
+      "</div>" +
+      '<div class="dr-resize" role="separator" aria-orientation="vertical" aria-label="Resize the chat" tabindex="0" aria-valuemin="' + CHAT_MIN + '" aria-valuemax="' + CHAT_MAX + '" aria-valuenow="' + (w || "") + '"></div>' +
+      '<aside class="dr-dock" aria-label="Draft chat">' + handleHtml() + dockToolsHtml() + dock + "</aside></div></section>";
+  }
+  /** Pop-out chat window (#draft/<id>/chat): just the Draft chat, full window, for a second monitor. */
+  function popoutHtml() {
+    return '<section class="dr-pop"><p class="dr-links"><b>' + esc(st.d.name) + '</b> · Draft chat <span class="muted">(close this window to bring the chat back to the room)</span></p><div class="dr-chatmount" data-dr="chat"></div></section>';
   }
   function tvHtml() {
     var v = view(st.d, st.orders, st.owners, st.sel), s = v.slot;
@@ -376,8 +430,8 @@
     return '<section class="dr-tv"><div class="dr-tv-top"><div class="dr-tv-now">' + (s ? '<div class="dr-tv-rp">Round ' + esc(s.round) + " · Pick " + esc(s.pick) + "</div><div class=\"dr-tv-team\">" + T().logo(s.owner) + T().link(s.owner, { logo: false }) + "</div>" : '<div class="dr-tv-rp">' + esc(st.d.name) + "</div>") +
       '<div class="dr-tv-clock" data-dr="clock">' + esc(clockText()) + "</div></div>" +
       '<ol class="dr-tv-last">' + last.map(function (x) { var p = st.pmap[x.player_id] || { name: x.player_id, pos: "" }; return "<li>" + esc(x.round + "." + ("0" + x.pick).slice(-2)) + " " + T().logo(x.team_id) + " <b>" + esc(p.name) + "</b> " + posTag(p.pos) + " " + valueTag(x) + "</li>"; }).join("") + "</ol>" +
-      '<div class="dr-tv-chat" data-dr="chat"></div></div>' +
-      '<div data-dr="anim">' + animHtml() + "</div>" + boardHtml(v, true) + "</section>";
+      "</div>" + '<div data-dr="anim">' + animHtml() + "</div>" +
+      '<div class="dr-tv-body">' + boardHtml(v, true) + '<aside class="dr-tv-chat" data-dr="chat" aria-label="Draft chat"></aside></div></section>';
   }
   function lobbyHtml(list) {
     var real = list.filter(function (d) { return d.kind === "real"; }), mocks = list.filter(function (d) { return d.kind === "mock"; });
@@ -435,17 +489,80 @@
     // a half-entered round order survives a refresh (Realtime, the clock)
     var kept = {}; if (!st.dropKept) st.el.querySelectorAll('form[data-dr-form="order"] select').forEach(function (x) { var d = x.querySelector('option[selected]'); if (d && x.value !== d.value) kept[x.id] = x.value; });
     st.dropKept = false;
-    st.el.innerHTML = st.tv ? tvHtml() : roomHtml();
+    var v0 = view(st.d, st.orders, st.owners, st.sel);
+    // My pick: the pick screen takes over on phones (the chat stays one swipe away), once per pick
+    if (!st.tv && !st.popout && canPickNow(v0) && v0.slot && v0.slot.owner === myTeam() && st.takeover !== v0.cur) { st.takeover = v0.cur; st.sheet = "peek"; st.tab = "players"; }
+    st.el.innerHTML = st.tv ? tvHtml() : st.popout ? popoutHtml() : roomHtml();
+    if (root.document) root.document.body.classList.toggle("dr-sheet-full", !st.tv && !st.popout && st.sheet === "full");
     Object.keys(kept).forEach(function (id) { var x = root.document.getElementById(id); if (x) x.value = kept[id]; });
     var slotEl = st.el.querySelector('[data-dr="chat"]');
     if (chatKeep && slotEl) slotEl.parentNode.replaceChild(chatKeep, slotEl);   // the chat panel keeps its state
-    else if (slotEl && root.B5Chat) root.B5Chat.mount(slotEl, st.tv ? { room: "draft", tv: true } : { room: "draft", panel: true });
+    else if (slotEl && root.B5Chat) root.B5Chat.mount(slotEl, chatOpts());
     if (fs != null) { var s = st.el.querySelector('[data-dr="search"]'); if (s) { s.focus(); s.setSelectionRange(fs, fs); } }
     if (root.scrollTo) root.scrollTo(0, y);
     st.el.querySelectorAll('form[data-dr-form="order"]').forEach(checkOrderForm);
     setViewportWidth();
+    var sec = st.el.querySelector(".dr-room, .dr-pop"); if (sec) sec.style.setProperty("--dr-top", Math.round(sec.getBoundingClientRect().top + (root.scrollY || 0) + 10) + "px");
     keepRoundInView();
     st.msg = null;
+  }
+  function chatOpts() {
+    var o = { room: "draft", dock: true, teams: st.d.teams, myTeam: myTeam(), sound: function () { return st.sound; }, onMessage: onChatMessage };
+    if (st.tv) { o.tv = true; delete o.onMessage; }
+    return o;
+  }
+  // A new Draft chat message: the phone sheet's preview and unread count (updated in place, no re-render)
+  function onChatMessage(rec, alert) {
+    var who = rec.is_bot ? "B5 Bot" : "";
+    st.latest = (who ? who + ": " : "") + String(rec.body || (rec.images && rec.images.length ? "📷 photo" : "")).slice(0, 140);
+    var narrow = root.matchMedia && root.matchMedia("(max-width: 1099px)").matches;
+    if (narrow && st.sheet !== "full") st.unread++;
+    var h = st.el && st.el.querySelector(".dr-handle");
+    if (h) h.outerHTML = handleHtml();
+    var dk = st.el && st.el.querySelector(".dr-dock");
+    if (dk && (alert === "my-turn" || alert === "mention" || alert === "mine")) { dk.classList.remove("flash"); void dk.offsetWidth; dk.classList.add("flash"); }
+  }
+  function setSheet(state) {
+    st.sheet = state;
+    if (state === "full") { st.unread = 0; if (root.B5Chat && root.B5Chat.jumpToLatest) setTimeout(root.B5Chat.jumpToLatest, 50); }
+    render();
+  }
+  function popOut() {
+    if (st.popped) return;
+    var w = root.open("#draft/" + st.id + "/chat", "b5-draft-chat-" + st.id, "width=440,height=860");
+    if (!w) { st.msg = { err: "Your browser blocked the new window. Allow pop-ups for this site and try again." }; render(); return; }
+    st.popped = w;
+    if (root.B5Chat) root.B5Chat.stop();
+    render();
+    st.popTimer = setInterval(function () { if (!st.popped || st.popped.closed) { clearInterval(st.popTimer); st.popped = null; if (st.el) render(); } }, 1500);
+  }
+  // Drag the separator (or use the arrow keys on it) to size the chat between 300 and 600 px
+  function bindResize(el) {
+    var drag = null;
+    el.addEventListener("pointerdown", function (e) {
+      var h = e.target.closest(".dr-resize"); if (!h) return;
+      var lay = h.closest(".dr-layout"); drag = { right: lay.getBoundingClientRect().right, sec: h.closest(".dr") };
+      h.setPointerCapture && h.setPointerCapture(e.pointerId); e.preventDefault();
+    });
+    el.addEventListener("pointermove", function (e) {
+      if (!drag) return;
+      st.focus = null; st.chatW = clampChatWidth(drag.right - e.clientX);
+      drag.sec.style.setProperty("--chat-w", st.chatW + "px"); drag.sec.dataset.focus = "";
+    });
+    var end = function () { if (!drag) return; drag = null; store("b5-draft-chat-w", String(st.chatW)); render(); };
+    el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end);
+    el.addEventListener("keydown", function (e) {
+      if (!e.target.classList || !e.target.classList.contains("dr-resize") || (e.key !== "ArrowLeft" && e.key !== "ArrowRight")) return;
+      e.preventDefault(); st.focus = null; st.chatW = clampChatWidth((st.chatW || CHAT_DEFAULT) + (e.key === "ArrowLeft" ? 20 : -20));
+      store("b5-draft-chat-w", String(st.chatW)); render(); var h = st.el.querySelector(".dr-resize"); if (h) h.focus();
+    });
+    // the phone sheet: swipe up/down on the handle (a tap toggles)
+    var sw = null;
+    el.addEventListener("touchstart", function (e) { if (e.target.closest(".dr-handle")) sw = { y: e.touches[0].clientY }; }, { passive: true });
+    el.addEventListener("touchend", function (e) {
+      if (!sw) return; var dy = e.changedTouches[0].clientY - sw.y; sw = null;
+      if (Math.abs(dy) >= 30) { st.swiped = Date.now(); setSheet(sheetAfter(st.sheet, dy)); }
+    });
   }
   // The board breaks out of the page's max width: --dr-vw = the real viewport width (no scrollbar).
   function setViewportWidth() {
@@ -517,6 +634,15 @@
       if (ds.drBtab) { st.btab = ds.drBtab; render(); return; }
       if (ds.drBround) { st.bround = Number(ds.drBround); render(); return; }
       if (ds.drTab) { st.tab = ds.drTab; render(); return; }
+      if (ds.dr === "sheet") { if (!st.swiped || Date.now() - st.swiped > 500) setSheet(sheetAfter(st.sheet, null)); return; }
+      if (ds.drDock) {
+        var k2 = ds.drDock;
+        if (k2 === "focus-chat" || k2 === "focus-board") { var f2 = k2.slice(6); st.focus = st.focus === f2 ? null : f2; render(); }
+        else if (k2 === "popout") popOut();
+        else if (k2 === "bring-back") { if (st.popped && !st.popped.closed) st.popped.close(); st.popped = null; clearInterval(st.popTimer); render(); }
+        else if (k2 === "sound") { st.sound = !st.sound; store("b5-draft-sound", st.sound ? "on" : "off"); render(); }
+        return;
+      }
       if (ds.drPos != null) { st.pos = ds.drPos; st.shown = 150; render(); return; }
       if (ds.dr === "more") { st.shown += 150; render(); return; }
       if (ds.drSort) {
@@ -558,6 +684,7 @@
       }
     });
     el.addEventListener("toggle", function (e) {
+      if (e.target.dataset && e.target.dataset.dr === "more-tools") st.moreOpen = e.target.open;
       if (e.target.dataset && e.target.dataset.dr === "guide") { try { root.localStorage.setItem(guideKey(), e.target.open ? "open" : "closed"); } catch (x) { /* private mode: just this visit */ } }
     }, true);
     el.addEventListener("input", function (e) {
@@ -637,7 +764,8 @@
   function stop() {
     clearInterval(st.timer); st.timer = null;
     if (st.sub) { st.sub.close(); st.sub = null; }
-    if (root.document) root.document.body.classList.remove("draft-tv");
+    if (root.document) ["draft-tv", "draft-room", "draft-popout", "dr-sheet-full"].forEach(function (c) { root.document.body.classList.remove(c); });
+    clearInterval(st.popTimer);
     if (st.el && root.B5Chat && st.el.querySelector('[data-dr="chat"]')) root.B5Chat.stop();
     st.el = null;
   }
@@ -666,11 +794,14 @@
   }
   function start(el, r) {
     stop();
-    st.el = el; st.id = r && r.draft ? Number(r.draft) : null; st.tv = !!(r && r.tv); st.d = null; st.ticked = {}; st.seenOrders = {}; st.orderRows = {}; st.anim = null;
+    st.el = el; st.id = r && r.draft ? Number(r.draft) : null; st.tv = !!(r && r.tv); st.popout = !!(r && r.popout); st.d = null;
+    st.chatW = clampChatWidth(store("b5-draft-chat-w") || CHAT_DEFAULT); st.sound = store("b5-draft-sound") === "on"; st.focus = null; st.sheet = "peek"; st.unread = 0;
+    if (root.document) { root.document.body.classList.toggle("draft-room", !!st.id && !st.tv); root.document.body.classList.toggle("draft-popout", st.popout); } st.ticked = {}; st.seenOrders = {}; st.orderRows = {}; st.anim = null;
     if (root.document) root.document.body.classList.toggle("draft-tv", st.tv);
     if (!(cfg && cfg.configured && A && DL)) { el.innerHTML = '<div class="card">Not set up yet.</div>'; return; }
     el.innerHTML = '<p class="muted">Loading…</p>';
     bind(el);
+    if (!el.dataset.drResize) { el.dataset.drResize = "1"; bindResize(el); }
     if (root.addEventListener && !st.rz) { st.rz = true; root.addEventListener("resize", setViewportWidth); }
     var who = root.B5Account ? root.B5Account.load().catch(function () { return null; }) : Promise.resolve(null);
     who.then(function (me) {
@@ -692,5 +823,5 @@
     });
   }
 
-  root.B5Draft = { start: start, stop: stop, technical: technical, errorText: errorText, videoHtml: videoHtml, SCRIBE: SCRIBE, view: view, poolRows: poolRows, rankCtx: rankCtx, valueTag: valueTag, lastName: lastName, myPicks: myPicks, byeWeeks: byeWeeks, pickedByText: pickedByText };
+  root.B5Draft = { start: start, stop: stop, clampChatWidth: clampChatWidth, focusRounds: focusRounds, sheetAfter: sheetAfter, lastPicks: lastPicks, technical: technical, errorText: errorText, videoHtml: videoHtml, SCRIBE: SCRIBE, view: view, poolRows: poolRows, rankCtx: rankCtx, valueTag: valueTag, lastName: lastName, myPicks: myPicks, byeWeeks: byeWeeks, pickedByText: pickedByText };
 })(typeof globalThis !== "undefined" ? globalThis : this);
