@@ -863,6 +863,14 @@ a.mention.team-link { display: inline; }
 .dr-list li, .dr-qlist li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--card-line); flex-wrap: wrap; }
 .dr-list li.drafted { opacity: .5; }
 .dr-rk { min-width: 32px; color: var(--chalk-dim); text-align: right; }
+.dr-adp { min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+.dr-prk { min-width: 46px; color: var(--chalk-dim); font-size: 15px; }
+.dr-sorts { align-items: center; }
+.dr-best { background: var(--ink-deep); border: 1px solid var(--card-line); border-radius: 8px; padding: 8px 10px; margin: 6px 0; }
+.dr-bestpos { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; font-size: 15px; }
+.dr-val { display: inline-block; font-size: 15px; font-weight: 700; border-radius: 6px; padding: 0 5px; }
+.dr-reach { color: #ff9a6e; } .dr-steal { color: #6ee0a0; }
+.dr-cell .dr-val { display: block; padding: 0; }
 .dr-pl { flex: 1 1 140px; display: grid; min-width: 0; }
 .dr-acts { display: flex; gap: 6px; margin-left: auto; }
 .dr-acts .btn { padding: 0 12px; }

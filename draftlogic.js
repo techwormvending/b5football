@@ -68,17 +68,74 @@
     }
     return null;
   }
-  /** Timer expiry / bots: the top available player in the queue, else the best available by rank,
-      else the first available player by name. taken = { player_id: true }. */
-  function autoPick(queue, rankings, pool, taken) {
-    var free = function (id) { return id && !taken[id]; };
-    var q = (queue || []).slice().sort(function (a, b) { return a.rank - b.rank; });
-    for (var i = 0; i < q.length; i++) if (free(q[i].player_id)) return { player_id: q[i].player_id, from: "queue" };
-    var r = (rankings || []).slice().sort(function (a, b) { return a.rank - b.rank; });
-    for (var j = 0; j < r.length; j++) if (free(r[j].player_id)) return { player_id: r[j].player_id, from: "rank" };
-    var p = (pool || []).slice().sort(function (a, b) { return String(a.name).localeCompare(String(b.name)); });
-    for (var k = 0; k < p.length; k++) if (free(p[k].id)) return { player_id: p[k].id, from: "pool" };
+  // ---- Rankings: custom (commissioner CSV, when the draft uses them), then ADP, then name ----------
+  // ctx = { custom: { id: rank } | null, adp: { id: number } }. Unranked players sort after ranked ones.
+  var num = function (m, id) { return m && m[id] != null && isFinite(m[id]) ? Number(m[id]) : Infinity; };
+  function byRanking(ctx) {
+    return function (a, b) {
+      return num(ctx.custom, a.id) - num(ctx.custom, b.id) || num(ctx.adp, a.id) - num(ctx.adp, b.id) ||
+        String(a.name).localeCompare(String(b.name)) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    };
+  }
+  var POS_ORDER = { QB: 1, RB: 2, WR: 3, TE: 4, K: 5, DEF: 6 };
+  /** Pool sort: by "rank" (custom), "adp" (default), "name", "pos" or "team"; dir 1 or -1. Ties: the ranking. */
+  function sortPool(players, by, dir, ctx) {
+    var base = byRanking(ctx), d = dir === -1 ? -1 : 1;
+    var key = {
+      rank: function (a, b) { return num(ctx.custom, a.id) - num(ctx.custom, b.id); },
+      adp: function (a, b) { return num(ctx.adp, a.id) - num(ctx.adp, b.id); },
+      name: function (a, b) { return String(a.name).localeCompare(String(b.name)); },
+      pos: function (a, b) { return (POS_ORDER[a.pos] || 9) - (POS_ORDER[b.pos] || 9); },
+      team: function (a, b) { return String(a.nfl || "~").localeCompare(String(b.nfl || "~")); }
+    }[by] || function () { return 0; };
+    return players.slice().sort(function (a, b) {
+      var k = key(a, b);
+      if (k !== k || k === Infinity || k === -Infinity) k = 0;   // both unranked
+      return (k ? k * d : 0) || base(a, b);
+    });
+  }
+  /** Best available: the top undrafted player overall and per position. taken = { id: truthy }. */
+  function bestAvailable(players, taken, ctx) {
+    var out = { overall: null, byPos: {} };
+    players.filter(function (p) { return !taken[p.id]; }).sort(byRanking(ctx)).forEach(function (p) {
+      if (!out.overall) out.overall = p;
+      if (!out.byPos[p.pos]) out.byPos[p.pos] = p;
+    });
+    return out;
+  }
+  /** "reach" (taken 12+ picks before his ADP), "steal" (12+ picks after), or null. */
+  function value(overall, adp) {
+    if (adp == null || !isFinite(adp) || overall == null) return null;
+    if (adp - overall >= 12) return "reach";
+    if (overall - adp >= 12) return "steal";
     return null;
+  }
+  /** Timer expiry / bots (the database does the same, private.draft_autopick_player): the top available
+      player in the team's queue, else the best available by the ranking, except a 2nd K or DEF before
+      round 14 (taken only when nothing else is left). opt = { round, has: { K: 1, DEF: 0, ... } }. */
+  function autoPick(queue, players, taken, ctx, opt) {
+    opt = opt || {};
+    var q = (queue || []).slice().sort(function (a, b) { return a.rank - b.rank; });
+    for (var i = 0; i < q.length; i++) if (q[i].player_id && !taken[q[i].player_id]) return { player_id: q[i].player_id, from: "queue" };
+    var has = opt.has || {}, early = (opt.round || 1) < 14;
+    var held = function (p) { return early && (p.pos === "K" || p.pos === "DEF") && has[p.pos] > 0; };
+    var free = (players || []).filter(function (p) { return !taken[p.id]; }).sort(byRanking(ctx || {}));
+    for (var j = 0; j < free.length; j++) if (!held(free[j])) return { player_id: free[j].id, from: "rank" };
+    return free.length ? { player_id: free[0].id, from: "last" } : null;
+  }
+  /** The ADP map for a draft season: MFL's, else FFC's. rows = player_adp rows of that season. */
+  function adpMap(rows) {
+    var out = {};
+    ["ffc", "mfl"].forEach(function (src) {
+      (rows || []).forEach(function (r) { if (r.source === src) out[r.player_id] = { adp: Number(r.adp), posRank: r.pos_rank, source: src }; });
+    });
+    return out;
+  }
+  /** The ADP season a draft uses: its own, else the latest before it, else the latest there is. */
+  function adpSeason(seasons, season) {
+    var s = (seasons || []).map(Number).filter(isFinite).sort(function (a, b) { return b - a; });
+    for (var i = 0; i < s.length; i++) if (s[i] <= season) return s[i];
+    return s.length ? s[0] : null;
   }
   /** "1:23" from seconds. */
   function clock(sec) { sec = Math.max(0, Math.ceil(sec)); return Math.floor(sec / 60) + ":" + ("0" + (sec % 60)).slice(-2); }
@@ -112,5 +169,6 @@
   }
 
   root.B5DraftLogic = { roundOrder: roundOrder, missingOrders: missingOrders, validateOrder: validateOrder, position: position, ownerOf: ownerOf,
-    slot: slot, board: board, currentOverall: currentOverall, picksAway: picksAway, autoPick: autoPick, clock: clock, secondsLeft: secondsLeft, parseRankings: parseRankings };
+    slot: slot, board: board, currentOverall: currentOverall, picksAway: picksAway, autoPick: autoPick, clock: clock, secondsLeft: secondsLeft, parseRankings: parseRankings,
+    byRanking: byRanking, sortPool: sortPool, bestAvailable: bestAvailable, value: value, adpMap: adpMap, adpSeason: adpSeason };
 })(typeof globalThis !== "undefined" ? globalThis : this);

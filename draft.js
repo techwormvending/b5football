@@ -15,7 +15,7 @@
   var POS = ["QB", "RB", "WR", "TE", "K", "DEF"];
   var ROSTER_MAX = 18;
 
-  var st = { el: null, id: null, tv: false, me: null, d: null, orders: {}, orderRows: {}, sel: [], owners: {}, players: [], pmap: {}, rank: {}, rankInfo: null,
+  var st = { el: null, id: null, tv: false, me: null, d: null, orders: {}, orderRows: {}, sel: [], owners: {}, players: [], pmap: {}, rank: {}, rankInfo: null, adp: {}, adpInfo: [], adpSeason: null, sort: { by: "adp", dir: 1 }, sortSet: false,
     queue: [], byes: {}, tab: "players", q: "", pos: "", showDrafted: false, offset: 0, ticked: {}, sub: null, timer: null, msg: null, shown: 150, anim: null, seenOrders: {}, loading: false };
   var session = function () { return st.me && st.me.session; };
   var api = function (path, init) { return A.api(cfg, session(), path, init || {}, f); };
@@ -56,17 +56,26 @@
     var next = cur ? [cur + 1, cur + 2].map(function (o) { return o <= total ? DL.slot(o, d.teams, orders, owners) : null; }) : [null, null];
     return { total: total, cur: cur, slot: slot, next: next, done: done, made: sel.filter(function (s) { return !s.skipped; }).length };
   }
-  /** Players for the pool list: search, position, drafted hidden (or shown greyed), sorted by rank then name. */
-  function poolRows(players, rank, takenBy, opt) {
+  /** The ranking the room uses: custom ranks when the draft is on them (and some were uploaded), then ADP. */
+  function rankCtx(d, rank, adp) {
+    var a = {}; Object.keys(adp || {}).forEach(function (id) { a[id] = adp[id].adp; });
+    return { custom: d && d.ranks === "custom" && Object.keys(rank || {}).length ? rank : null, adp: a };
+  }
+  /** Players for the pool list: search, position, drafted hidden (or shown greyed), sorted (default: the ranking). */
+  function poolRows(players, ctx, takenBy, opt) {
     var q = String(opt.q || "").trim().toLowerCase();
-    return players.filter(function (p) {
+    var list = players.filter(function (p) {
       if (opt.pos && p.pos !== opt.pos) return false;
       if (!opt.showDrafted && takenBy[p.id]) return false;
       return !q || p.name.toLowerCase().indexOf(q) >= 0 || String(p.nfl || "").toLowerCase() === q;
-    }).sort(function (a, b) {
-      var ra = rank[a.id] == null ? Infinity : rank[a.id], rb = rank[b.id] == null ? Infinity : rank[b.id];
-      return ra - rb || a.name.localeCompare(b.name);
     });
+    var by = opt.sort ? opt.sort.by : ctx.custom ? "rank" : "adp";
+    return DL.sortPool(list, by, opt.sort ? opt.sort.dir : 1, ctx);
+  }
+  /** "Reach" / "Steal" tag for a made pick (its ADP when it was made). */
+  function valueTag(s) {
+    var v = s && s.player_id ? DL.value(s.overall, s.adp == null ? null : Number(s.adp)) : null;
+    return v ? '<span class="dr-val dr-' + v + '" title="ADP ' + esc(Math.round(Number(s.adp) * 10) / 10) + '">' + (v === "reach" ? "📈 Reach" : "💎 Steal") + "</span>" : "";
   }
   /** My picks by position, and the roster count vs 18. */
   function myPicks(sel, team, pmap) {
@@ -95,8 +104,11 @@
       api("nfl_games?season=eq." + season + "&select=week,home,away&limit=400"),
       st.d.kind === "real" ? api("draft_picks?season=eq." + season + "&select=round,original_team,owner_team&limit=2000") : null,
       api("profiles?select=id,display_name"),
-      rpc("server_now")
+      rpc("server_now"),
+      api("adp_pulls?select=season,source,period,drafts,players,pulled_at")
     ]).then(function (r) {
+      st.adpInfo = ok(r[6]);
+      st.adpSeason = DL.adpSeason(st.adpInfo.map(function (x) { return x.season; }), season);
       if (r[0]) { st.players = ok(r[0]).map(function (p) { return { id: p.id, name: p.name, pos: p.position, nfl: p.nfl_team }; }); st.pmap = {}; st.players.forEach(function (p) { st.pmap[p.id] = p; }); }
       st.rank = {}; st.rankInfo = null;
       ok(r[1]).forEach(function (x) { st.rank[x.player_id] = Number(x.rank); st.rankInfo = st.rankInfo || { source: x.source, at: x.uploaded_at }; });
@@ -104,7 +116,8 @@
       st.owners = {}; ok(r[3]).forEach(function (x) { if (x.owner_team !== x.original_team) st.owners[x.round + ":" + x.original_team] = x.owner_team; });
       st.names = {}; ok(r[4]).forEach(function (p) { st.names[p.id] = p.display_name; });
       if (r[5] && r[5].ok) st.offset = Date.parse(r[5].data) - Date.now();
-    });
+      return st.adpSeason == null ? null : api("player_adp?season=eq." + st.adpSeason + "&select=source,player_id,adp,pos_rank&limit=3000");
+    }).then(function (r) { st.adp = r ? DL.adpMap(ok(r)) : {}; });
   }
   function loadDraft() {
     if (st.loading) { st.again = true; return Promise.resolve(); }
@@ -169,7 +182,7 @@
         var cls = "dr-cell" + (p ? " pos-bg-" + esc(p.pos) : "") + (overall === v.cur ? " now" : "") + (s && s.skipped ? " skipped" : "") + (owner === mineT ? " dr-mine" : "");
         return '<td class="' + cls + '" data-dr-cell="' + overall + '"' + (s && pickedByText(s, st.names || {}) ? ' title="by ' + esc(pickedByText(s, st.names || {})) + '"' : "") + '><span class="dr-pk">' + r + "." + ("0" + pick).slice(-2) + "</span>" +
           (owner !== orig ? '<span class="dr-via" title="Traded pick">→ ' + T().link(owner, { logo: false }) + "</span>" : "") +
-          (p ? '<b class="dr-pn">' + esc(p.name) + '</b><span class="dr-pp">' + esc(p.pos) + " " + esc(p.nfl || "") + "</span>" : s && s.skipped ? '<span class="muted">skipped</span>' : "") + "</td>";
+          (p ? '<b class="dr-pn">' + esc(p.name) + '</b><span class="dr-pp">' + esc(p.pos) + " " + esc(p.nfl || "") + "</span>" + valueTag(s) : s && s.skipped ? '<span class="muted">skipped</span>' : "") + "</td>";
       }).join("") + "</tr>";
     }
     return '<div class="dr-board-wrap' + (big ? " big" : "") + '"><table class="dr-board"><thead>' + head + "</thead><tbody>" + rows + "</tbody></table></div>";
@@ -178,7 +191,9 @@
   function myCatchUps() { return st.sel.filter(function (s) { return s.skipped && (s.team_id === myTeam() || isCommish()); }); }
   function playersHtml(v) {
     var taken = {}; st.sel.forEach(function (s) { if (s.player_id) taken[s.player_id] = s; });
-    var rows = poolRows(st.players, st.rank, taken, { q: st.q, pos: st.pos, showDrafted: st.showDrafted });
+    var ctx = rankCtx(st.d, st.rank, st.adp), rows = poolRows(st.players, ctx, taken, { q: st.q, pos: st.pos, showDrafted: st.showDrafted, sort: st.sortSet ? st.sort : null });
+    var sortBy = st.sortSet ? st.sort.by : ctx.custom ? "rank" : "adp";
+    var sortBtn = function (k, label) { return '<button type="button" class="wk' + (sortBy === k ? " active" : "") + '" data-dr-sort="' + k + '" aria-pressed="' + (sortBy === k) + '">' + label + (sortBy === k && st.sortSet && st.sort.dir === -1 ? " ↓" : "") + "</button>"; };
     var queued = {}; st.queue.forEach(function (q) { queued[q.player_id] = true; });
     var can = canPickNow(v), catchUp = myCatchUps()[0];
     var chips = ["", "QB", "RB", "WR", "TE", "K", "DEF"].map(function (p) { return '<button type="button" class="wk' + (st.pos === p ? " active" : "") + '" data-dr-pos="' + p + '">' + (p || "All") + "</button>"; }).join("");
@@ -186,16 +201,37 @@
       '<div class="dr-tools"><input type="search" data-dr="search" placeholder="Search name or NFL team" value="' + esc(st.q) + '" aria-label="Search players">' +
       '<label class="acct-check"><input type="checkbox" data-dr="drafted"' + (st.showDrafted ? " checked" : "") + "> Show drafted</label></div>" +
       '<div class="weeks pl-tabs">' + chips + "</div>" +
-      (st.rankInfo ? '<p class="muted small">Rankings: ' + esc(st.rankInfo.source) + ", as of " + esc(new Date(st.rankInfo.at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })) + "</p>" : '<p class="muted small">No rankings uploaded yet (players by name).</p>') +
+      '<div class="weeks pl-tabs dr-sorts"><span class="muted small">Sort:</span>' + (ctx.custom ? sortBtn("rank", "Rank") : "") + sortBtn("adp", "ADP") + sortBtn("name", "Name") + sortBtn("pos", "Position") + sortBtn("team", "Team") + "</div>" +
+      '<p class="muted small">' + rankText(ctx) + "</p>" + bestHtml(taken, ctx) +
       (catchUp && !can ? '<p class="pl-test small">You have a skipped pick to make (Round ' + esc(catchUp.round) + ", Pick " + esc(catchUp.pick) + "): tap Draft on a player.</p>" : "") +
       '<ol class="dr-list">' + rows.slice(0, st.shown).map(function (p) {
         var t = taken[p.id], bye = st.byes[p.nfl];
-        return '<li class="' + (t ? "drafted" : "") + '"><span class="dr-rk">' + esc(st.rank[p.id] != null ? st.rank[p.id] : "–") + "</span>" + posTag(p.pos) +
-          '<span class="dr-pl">' + pname(p) + '<span class="muted small">' + esc(p.nfl || "FA") + (bye ? " · bye " + bye : "") + "</span></span>" +
+        var a = st.adp[p.id];
+        return '<li class="' + (t ? "drafted" : "") + '">' + (ctx.custom ? '<span class="dr-rk" title="Custom rank">' + esc(st.rank[p.id] != null ? st.rank[p.id] : "–") + "</span>" : "") +
+          '<span class="dr-adp" title="ADP">' + esc(a ? fmtAdp(a.adp) : "–") + '</span><span class="dr-prk">' + esc(a && a.posRank ? a.posRank : p.pos) + "</span>" +
+          '<span class="dr-pl">' + pname(p) + '<span class="muted small">' + esc(p.nfl || "FA") + (bye ? " · bye " + esc(bye) : "") + "</span></span>" +
           (t ? '<span class="muted small">' + T().link(t.team_id, { logo: false }) + "</span>"
              : '<span class="dr-acts">' + (myTeam() ? '<button type="button" class="btn ghost" data-dr-queue="' + esc(p.id) + '"' + (queued[p.id] ? " disabled" : "") + ">" + (queued[p.id] ? "Queued" : "+ Queue") + "</button>" : "") +
                (can || catchUp ? '<button type="button" class="btn" data-dr-pick="' + esc(p.id) + '">Draft</button>' : "") + "</span>") + "</li>";
       }).join("") + "</ol>" + (rows.length > st.shown ? '<button type="button" class="btn ghost" data-dr="more">Show more (' + esc(rows.length - st.shown) + ")</button>" : "") + "</div>";
+  }
+  var fmtAdp = function (x) { return (Math.round(Number(x) * 10) / 10).toFixed(1); };
+  var SRC = { mfl: "MFL, 12-team PPR", ffc: "Fantasy Football Calculator, 12-team half-PPR" };
+  /** "ADP as of Nov 2, 2026 (MFL, 12-team PPR, 2026)" (+ custom ranks when on). */
+  function rankText(ctx) {
+    var day = function (iso) { return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }); };
+    var pulls = st.adpInfo.filter(function (x) { return x.season === st.adpSeason && x.players > 0; }).sort(function (a) { return a.source === "mfl" ? -1 : 1; });
+    var main = pulls[0];
+    var adp = main ? "ADP as of " + esc(day(main.pulled_at)) + " (" + esc(SRC[main.source] || main.source) + ", " + esc(st.adpSeason) + " drafts" + (st.adpSeason !== st.d.season ? "; " + esc(st.d.season) + " ADP isn't out yet" : "") + ")" : "No ADP yet (players by name).";
+    return (ctx.custom && st.rankInfo ? "Custom ranks: " + esc(st.rankInfo.source) + ", as of " + esc(day(st.rankInfo.at)) + ". " : "") + adp;
+  }
+  /** Best available: overall and per position. */
+  function bestHtml(taken, ctx) {
+    var b = DL.bestAvailable(st.players, taken, ctx);
+    if (!b.overall) return "";
+    var one = function (p) { var a = st.adp[p.id]; return pname(p) + (a ? ' <span class="muted small">' + esc(fmtAdp(a.adp)) + "</span>" : ""); };
+    return '<div class="dr-best"><b>Best available:</b> ' + one(b.overall) + '<div class="dr-bestpos">' +
+      POS.map(function (pos) { var p = b.byPos[pos]; return p ? "<span>" + posTag(pos) + " " + one(p) + "</span>" : ""; }).join("") + "</div></div>";
   }
   function queueHtml(v) {
     if (!myTeam()) return "";
@@ -238,7 +274,8 @@
       (redo.length ? '<p class="small">Redo a draw (only before that round\'s first pick): ' + redo.map(function (r) { return '<button type="button" class="linkish" data-dr-c="draw:' + r + '">Round ' + r + "</button>"; }).join(" · ") + "</p>" : "") +
       '<details><summary>Edit a past pick</summary><form class="acct-form" data-dr-form="edit"><label>Pick number (overall)<input name="overall" type="number" min="1" max="' + esc(v.total) + '" required></label>' +
         '<label>New player<input name="player" list="drPlayers" required placeholder="Start typing a name"></label><button class="btn" type="submit">Change the pick</button></form></details>' +
-      '<details><summary>Rankings (CSV)</summary><form class="acct-form" data-dr-form="rank"><p class="muted small">Columns rank, player (optional pos, team), or one player per line in order. Players are matched by name; anything ambiguous is listed, never guessed.</p>' +
+      '<label class="acct-check"><input type="checkbox" data-dr="ranks"' + (d.ranks === "custom" ? " checked" : "") + (Object.keys(st.rank).length ? "" : " disabled") + "> Custom ranks (the uploaded CSV instead of ADP, for sorting and auto-pick)" + (Object.keys(st.rank).length ? "" : ": upload a CSV first") + "</label>" +
+      '<details><summary>Rankings (CSV)</summary><form class="acct-form" data-dr-form="rank"><p class="muted small">Columns rank, player (optional pos, team), or one player per line in order. Players are matched by name; anything ambiguous is listed, never guessed. Uploading turns Custom ranks on.</p>' +
         '<label>Source<input name="source" value="Commissioner upload" required></label><label>CSV<textarea name="csv" rows="5"></textarea></label><input type="file" accept=".csv,text/csv" data-dr="csvfile">' +
         '<button class="btn" type="submit">Upload rankings</button></form></details>' +
       '<datalist id="drPlayers">' + st.players.slice(0, 1500).map(function (p) { return '<option value="' + esc(p.name + " (" + p.pos + " " + (p.nfl || "FA") + ")") + '">'; }).join("") + "</datalist></div>";
@@ -272,7 +309,7 @@
     var last = st.sel.filter(function (x) { return x.player_id; }).slice(-5).reverse();
     return '<section class="dr-tv"><div class="dr-tv-top"><div class="dr-tv-now">' + (s ? '<div class="dr-tv-rp">Round ' + esc(s.round) + " · Pick " + esc(s.pick) + "</div><div class=\"dr-tv-team\">" + T().logo(s.owner) + T().link(s.owner, { logo: false }) + "</div>" : '<div class="dr-tv-rp">' + esc(st.d.name) + "</div>") +
       '<div class="dr-tv-clock" data-dr="clock">' + esc(clockText()) + "</div></div>" +
-      '<ol class="dr-tv-last">' + last.map(function (x) { var p = st.pmap[x.player_id] || { name: x.player_id, pos: "" }; return "<li>" + esc(x.round + "." + ("0" + x.pick).slice(-2)) + " " + T().logo(x.team_id) + " <b>" + esc(p.name) + "</b> " + posTag(p.pos) + "</li>"; }).join("") + "</ol></div>" +
+      '<ol class="dr-tv-last">' + last.map(function (x) { var p = st.pmap[x.player_id] || { name: x.player_id, pos: "" }; return "<li>" + esc(x.round + "." + ("0" + x.pick).slice(-2)) + " " + T().logo(x.team_id) + " <b>" + esc(p.name) + "</b> " + posTag(p.pos) + " " + valueTag(x) + "</li>"; }).join("") + "</ol></div>" +
       '<div data-dr="anim">' + animHtml() + "</div>" + boardHtml(v, true) + '<div class="dr-tv-chat" data-dr="chat"></div></section>';
   }
   function lobbyHtml(list) {
@@ -300,7 +337,7 @@
       '<label>Time per pick (seconds)<input name="timer_seconds" type="number" min="10" max="3600" value="' + esc(d.timer_seconds) + '"></label>' +
       '<fieldset><legend>When are odd-round orders set?</legend><label class="acct-check"><input type="radio" name="order_mode" value="live"' + (d.order_mode === "live" ? " checked" : "") + "> Live at the start of each odd round (the draft waits for the draw)</label>" +
       '<label class="acct-check"><input type="radio" name="order_mode" value="before"' + (d.order_mode === "before" ? " checked" : "") + "> All before the draft (the board is known)</label></fieldset>" +
-      '<fieldset><legend>When a team\'s time runs out</legend><label class="acct-check"><input type="radio" name="expiry" value="autopick"' + (d.expiry === "autopick" ? " checked" : "") + "> Auto-pick (top of their queue, else best available by rank)</label>" +
+      '<fieldset><legend>When a team\'s time runs out</legend><label class="acct-check"><input type="radio" name="expiry" value="autopick"' + (d.expiry === "autopick" ? " checked" : "") + "> Auto-pick (top of their queue, else best available by ADP; no 2nd K or DEF before round 14)</label>" +
       '<label class="acct-check"><input type="radio" name="expiry" value="skip"' + (d.expiry === "skip" ? " checked" : "") + "> Skip; the team picks late</label></fieldset>" +
       '<label>Start time (ET; owners get a reminder an hour before)<input name="starts_at" type="datetime-local" value="' + esc(d.starts_at ? toLocalInput(d.starts_at) : "") + '"></label>' +
       (d.kind === "mock" ? '<fieldset><legend>Bots draft these seats</legend>' + teams.map(function (t) { return '<label class="acct-check"><input type="checkbox" name="bot" value="' + esc(t) + '"' + (d.bots.indexOf(t) >= 0 ? " checked" : "") + "> " + T().link(t, { logo: false }) + "</label>"; }).join("") + "</fieldset>" : "") +
@@ -387,6 +424,10 @@
       if (ds.drTab) { st.tab = ds.drTab; render(); return; }
       if (ds.drPos != null) { st.pos = ds.drPos; st.shown = 150; render(); return; }
       if (ds.dr === "more") { st.shown += 150; render(); return; }
+      if (ds.drSort) {
+        var cur = st.sortSet ? st.sort.by : null;
+        st.sort = { by: ds.drSort, dir: cur === ds.drSort ? -st.sort.dir : 1 }; st.sortSet = true; st.shown = 150; render(); return;
+      }
       if (ds.drPick) {
         var v = view(st.d, st.orders, st.owners, st.sel), catchUp = canPickNow(v) ? null : myCatchUps()[0];
         var p = st.pmap[ds.drPick] || { name: ds.drPick };
@@ -425,6 +466,7 @@
     });
     el.addEventListener("change", function (e) {
       if (e.target.dataset.dr === "drafted") { st.showDrafted = e.target.checked; render(); }
+      if (e.target.dataset.dr === "ranks") { st.sortSet = false; act(rpc("draft_settings", { p_draft: st.id, p_settings: { ranks: e.target.checked ? "custom" : "adp" } }), e.target.checked ? "Custom ranks on." : "Back to ADP."); }
       if (e.target.dataset.dr === "csvfile" && e.target.files && e.target.files[0]) {
         var ta = e.target.form.querySelector("textarea"); e.target.files[0].text().then(function (x) { ta.value = x; });
       }
@@ -510,5 +552,5 @@
     });
   }
 
-  root.B5Draft = { start: start, stop: stop, technical: technical, errorText: errorText, view: view, poolRows: poolRows, myPicks: myPicks, byeWeeks: byeWeeks, pickedByText: pickedByText };
+  root.B5Draft = { start: start, stop: stop, technical: technical, errorText: errorText, view: view, poolRows: poolRows, rankCtx: rankCtx, valueTag: valueTag, myPicks: myPicks, byeWeeks: byeWeeks, pickedByText: pickedByText };
 })(typeof globalThis !== "undefined" ? globalThis : this);

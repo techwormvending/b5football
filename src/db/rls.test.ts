@@ -1614,8 +1614,10 @@ describe("trades", () => {
     await as(db, user(BOB), tx => tx.query(`select public.trade_respond(${id}, true, '{RB-MIA}')`));
     await as(db, user(COMMISH), tx => tx.query(`select public.trade_decide(${id}, true)`));
     assert.deepEqual(await roster("0002"), ["TE-NYG", "WR-BUF", "WR-MIA"]);
-    const s = (await db.query<{ reason: string }>(`select reason from private.move_status(${T}, 'RB-MIA', now())`)).rows[0]!;
-    assert.match(s.reason, /Dropped in the last 24 hours/);
+    const s = (await db.query<{ status: string; reason: string }>(`select status, reason from private.move_status(${T}, 'RB-MIA', now())`)).rows[0]!;
+    // claims only: 'Dropped in the last 24 hours', or 'On waivers' when the test runs Monday 10 PM to Wednesday 5 PM ET
+    assert.equal(s.status, 'claims');
+    assert.match(s.reason, /Dropped in the last 24 hours|On waivers/);
   });
 
   test("locks, deadline, ownership and who may act", async () => {
@@ -2894,6 +2896,7 @@ describe("draft room (2026-11-02)", () => {
     await denied(db, user(BOB), `insert into public.draft_queue (draft_id, team_id, player_id, rank) values (${id}, '0001', 'P07', 3)`, /row-level security/);
     assert.equal((await rowsT(db, user(BOB), `select * from public.draft_queue`)).length, 0, "a queue is private to its team");
     await db.exec(`insert into public.draft_rankings (season, player_id, rank, source) values (${S}, 'P20', 1, 'test'), (${S}, 'P21', 2, 'test')`);
+    await call(user(COMMISH), `select public.draft_settings(${id}, '{"ranks": "custom"}'::jsonb)`);
     await call(user(COMMISH), `select public.draft_control(${id}, 'start')`);
     assert.equal((await call(user(ALICE), `select public.draft_tick(${id}) as n`))!.n, 0, "nothing happens before the clock runs out");
     await db.exec(`update public.drafts set clock_ends_at = now() - interval '1 second' where id = ${id}`);
@@ -3001,6 +3004,78 @@ describe("password sign-in (2026-11-02)", () => {
       return tx.query<{ r: { error?: { http_code: number; message: string } } }>(`select public.hook_before_user_created('{"user":{"email":"walk-in@example.com","app_metadata":{"provider":"email"}}}'::jsonb) as r`); });
     assert.equal(r.rows[0]!.r.error!.http_code, 403);
     assert.match(r.rows[0]!.r.error!.message, /invite-only/);
+  });
+});
+
+describe("draft ADP (2026-11-02)", () => {
+  beforeEach(async () => {
+    await db.exec(`insert into public.teams (id, name, division) values ('0003', 'Third', 'Gold');
+      insert into public.nfl_players (id, name, position, nfl_team) select 'P' || lpad(g::text, 2, '0'), 'Player ' || lpad(g::text, 2, '0'), 'WR', 'DET' from generate_series(1, 30) g;
+      insert into public.nfl_players (id, name, position, nfl_team) values ('K1', 'Kicker One', 'K', 'DAL'), ('K2', 'Kicker Two', 'K', 'BAL'), ('D1', 'Defense One', 'DEF', 'PIT'), ('D2', 'Defense Two', 'DEF', 'SF');`);
+  });
+  const call = (who: Who, sql: string) => rowsT(db, who, sql).then(r => r[0]);
+  const adp = (season: number, source: string, rows: [string, number][]) => call(service, `select public.replace_adp(${season}, '${source}', 'ALL', 700, '${JSON.stringify(rows.map(([player_id, a], i) => ({ player_id, adp: a, pos_rank: "WR" + (i + 1) })))}'::jsonb) as n`);
+  const mock = async (rounds = 4) => Number((await call(user(COMMISH), `select public.draft_create(${S}, 'mock', 'Practice', '{"rounds": ${rounds}, "timer_seconds": 60}'::jsonb) as id`))!.id);
+  const expire = (id: number) => db.exec(`update public.drafts set clock_ends_at = now() - interval '1 second' where id = ${id}`).then(() => call(user(ALICE), `select public.draft_tick(${id})`));
+  const picks = (id: number) => rowsT(db, service, `select team_id, player_id, adp::float as adp from public.draft_selections where draft_id = ${id} order by overall`);
+
+  test("stored by server jobs only; members read; anon nothing; a source's list is replaced as a whole", async () => {
+    assert.equal((await adp(S, "mfl", [["P05", 1.5], ["P03", 4], ["NOPE", 9]]))!.n, 2, "unknown players are dropped");
+    await adp(S, "ffc", [["P07", 2]]);
+    assert.equal((await adp(S, "mfl", [["P05", 1.2]]))!.n, 1);
+    assert.deepEqual((await rowsT(db, user(ALICE), `select source, player_id, adp::float as a from public.player_adp order by source, player_id`)).map(r => [r.source, r.player_id, r.a]), [["ffc", "P07", 2], ["mfl", "P05", 1.2]]);
+    assert.deepEqual((await rowsT(db, user(ALICE), `select source, players from public.adp_pulls order by source`)).map(r => [r.source, r.players]), [["ffc", 1], ["mfl", 1]]);
+    await denied(db, user(COMMISH), `select public.replace_adp(${S}, 'mfl', 'x', 1, '[]'::jsonb)`, /permission denied/);
+    await denied(db, user(ALICE), `insert into public.player_adp (season, source, player_id, adp) values (${S}, 'mfl', 'P01', 1)`, /permission denied|row-level/);
+    for (const t of ["player_adp", "adp_pulls"]) await denied(db, anon, `select * from public.${t}`, /permission denied/);
+  });
+
+  test("auto-pick takes the best available ADP (MFL, else FFC); a later draft uses the latest ADP before its season", async () => {
+    await adp(S - 1, "mfl", [["P30", 1]]);
+    await adp(S, "mfl", [["P10", 3], ["P11", 1]]);
+    await adp(S, "ffc", [["P12", 2], ["P11", 50]]);
+    const id = await mock();
+    await call(user(COMMISH), `select public.draft_set_order(${id}, 1, array['0001','0002','0003'])`);
+    await call(user(COMMISH), `select public.draft_control(${id}, 'start')`);
+    for (let i = 0; i < 4; i++) await expire(id);
+    assert.deepEqual((await picks(id)).map(p => p.player_id), ["P11", "P12", "P10", "D1"], "1 (MFL), 2 (FFC fills in), 3, then by name (Defense One)");
+    assert.equal((await rowsT(db, service, `select private.draft_adp_season(${S + 1}) as s`))[0]!.s, S, "2027 draft before 2027 ADP: 2026's");
+  });
+
+  test("no 2nd K or DEF before round 14 unless it's all that's left", async () => {
+    await adp(S, "mfl", [["K1", 1], ["K2", 2], ["D1", 3], ["D2", 4], ["P01", 40]]);
+    const id = await mock(4);
+    await call(user(COMMISH), `select public.draft_settings(${id}, '{"bots": ["0001", "0002", "0003"]}'::jsonb)`);
+    await call(user(COMMISH), `select public.draft_set_order(${id}, 1, array['0001','0002','0003'])`);
+    await call(user(COMMISH), `select public.draft_set_order(${id}, 3, array['0001','0002','0003'])`);
+    await call(user(COMMISH), `select public.draft_control(${id}, 'start')`);
+    for (let i = 0; i < 6; i++) await expire(id);
+    const p = (await picks(id)).map(x => x.team_id + ":" + x.player_id);
+    assert.deepEqual(p.slice(0, 5), ["0001:K1", "0002:K2", "0003:D1", "0003:P01", "0002:D2"], "a first K or DEF is fine; Third already has a DEF, so D2 waits and P01 goes");
+    assert.ok(!/:(K|D)[0-9]$/.test(p[5]!), "no second K for the first team");
+  });
+
+  test("each pick keeps its ADP; Reach / Steal in the B5 Bot post; custom ranks override ADP", async () => {
+    await adp(S, "mfl", [["P01", 30], ["P02", 1], ["P03", 2]]);
+    const id = await mock();
+    await call(user(COMMISH), `select public.draft_set_order(${id}, 1, array['0001','0002','0003'])`);
+    await call(user(COMMISH), `select public.draft_control(${id}, 'start')`);
+    await call(user(ALICE), `select public.draft_pick(${id}, 'P01')`);      // pick 1, ADP 30: a reach
+    assert.equal((await picks(id))[0]!.adp, 30);
+    const msg = (await rowsT(db, service, `select body from public.chat_messages where room_id = 'draft' order by id desc limit 5`)).map(r => r.body).find(b => /select Player 01/.test(b));
+    assert.match(msg!, /📈 Reach \(ADP 30\.0\)/);
+    assert.equal((await rowsT(db, service, `select private.draft_value(40, 25) as v`))[0]!.v, "steal");
+    assert.equal((await rowsT(db, service, `select private.draft_value(20, 25) as v`))[0]!.v, null);
+    // custom ranks: uploading switches open drafts; the toggle switches back
+    await call(user(COMMISH), `select public.draft_rankings_upload(${S}, '[{"player_id": "P09", "rank": 1}]'::jsonb, 'Commish')`);
+    assert.equal((await rowsT(db, service, `select ranks from public.drafts where id = ${id}`))[0]!.ranks, "custom");
+    await expire(id);
+    assert.equal((await picks(id))[1]!.player_id, "P09", "custom rank beats ADP");
+    await call(user(COMMISH), `select public.draft_settings(${id}, '{"ranks": "adp"}'::jsonb)`);
+    await expire(id);
+    assert.equal((await picks(id))[2]!.player_id, "P02", "back on ADP");
+    await assert.rejects(call(user(COMMISH), `select public.draft_settings(${id}, '{"ranks": "magic"}'::jsonb)`), /adp or custom/);
+    assert.equal((await rowsT(db, service, `select ranks from public.drafts where id = ${await mock()}`))[0]!.ranks, "custom", "a new draft starts on custom when rankings exist");
   });
 });
 

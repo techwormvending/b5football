@@ -58,13 +58,50 @@ test("on the clock and picks away: skipped picks count as passed; nothing past a
   assert.equal(D.picksAway(TEAMS, 4, orders, {}, 8, "A"), null, "round 3 not drawn yet");
 });
 
-test("timer expiry / bots: top available queued player, else best ranked, else by name", () => {
-  const pool = [{ id: "z", name: "Zed" }, { id: "a", name: "Abe" }, { id: "q1", name: "Q1" }, { id: "r1", name: "R1" }];
+test("timer expiry / bots: top available queued player, else best available by ADP (custom ranks when on), else by name", () => {
+  const pool = [{ id: "z", name: "Zed", pos: "WR" }, { id: "a", name: "Abe", pos: "RB" }, { id: "q1", name: "Q1", pos: "WR" }, { id: "r1", name: "R1", pos: "QB" }];
   const queue = [{ player_id: "q2", rank: 1 }, { player_id: "q1", rank: 2 }];
-  assert.deepEqual(plain(D.autoPick(queue, [{ player_id: "r1", rank: 1 }], pool, { q2: true })), { player_id: "q1", from: "queue" }, "q2 is gone: the next one in the queue");
-  assert.deepEqual(plain(D.autoPick([], [{ player_id: "r2", rank: 2 }, { player_id: "r1", rank: 1 }], pool, {})), { player_id: "r1", from: "rank" });
-  assert.deepEqual(plain(D.autoPick([], [], pool, { a: true })), { player_id: "q1", from: "pool" }, "by name: Abe taken, Q1 next");
-  assert.equal(D.autoPick([], [], [], {}), null);
+  const adp = { r1: 3.5, z: 1.2, a: 8 };
+  assert.deepEqual(plain(D.autoPick(queue, pool, { q2: true }, { adp })), { player_id: "q1", from: "queue" }, "q2 is gone: the next one in the queue");
+  assert.deepEqual(plain(D.autoPick([], pool, {}, { adp })), { player_id: "z", from: "rank" }, "lowest ADP");
+  assert.deepEqual(plain(D.autoPick([], pool, { z: true }, { adp })), { player_id: "r1", from: "rank" }, "best available ADP once Zed is gone");
+  assert.deepEqual(plain(D.autoPick([], pool, {}, { adp, custom: { a: 1 } })), { player_id: "a", from: "rank" }, "custom ranks first");
+  assert.deepEqual(plain(D.autoPick([], pool, { z: true, r1: true, a: true }, { adp })), { player_id: "q1", from: "rank" }, "no ADP: by name");
+  assert.equal(D.autoPick([], [], {}, {}), null);
+});
+
+test("auto-pick sanity rule: no 2nd K or DEF before round 14 unless that's all that's left", () => {
+  const pool = [{ id: "k2", name: "Kicker Two", pos: "K" }, { id: "d2", name: "Def Two", pos: "DEF" }, { id: "wr", name: "Wide Out", pos: "WR" }];
+  const adp = { k2: 100, d2: 101, wr: 180 };
+  assert.equal(D.autoPick([], pool, {}, { adp }, { round: 10, has: { K: 1, DEF: 1 } }).player_id, "wr", "both held back in round 10");
+  assert.equal(D.autoPick([], pool, {}, { adp }, { round: 10, has: { K: 0, DEF: 0 } }).player_id, "k2", "a first K is fine");
+  assert.equal(D.autoPick([], pool, {}, { adp }, { round: 10, has: { K: 1 } }).player_id, "d2", "a first DEF is fine");
+  assert.equal(D.autoPick([], pool, {}, { adp }, { round: 14, has: { K: 1, DEF: 1 } }).player_id, "k2", "round 14 on: allowed");
+  assert.deepEqual(plain(D.autoPick([], pool, { wr: true }, { adp }, { round: 3, has: { K: 1, DEF: 1 } })), { player_id: "k2", from: "last" }, "all that's left");
+  assert.equal(D.autoPick([{ player_id: "k2", rank: 1 }], pool, {}, { adp }, { round: 3, has: { K: 1 } }).player_id, "k2", "the team's own queue is its choice");
+});
+
+test("ADP: pool sort order, best available overall and per position, reach/steal math", () => {
+  const players = [{ id: "1", name: "Zed", pos: "WR", nfl: "DET" }, { id: "2", name: "Abe", pos: "QB", nfl: "KC" }, { id: "3", name: "Cal", pos: "RB", nfl: "BUF" }, { id: "4", name: "Dee", pos: "WR", nfl: "ARI" }];
+  const ctx = { adp: { 1: 5.5, 2: 30, 3: 2.1 }, custom: null };
+  const ids = (l: { id: string }[]) => plain(l).map((p: { id: string }) => p.id);
+  assert.deepEqual(ids(D.sortPool(players, "adp", 1, ctx)), ["3", "1", "2", "4"], "by ADP, no ADP last");
+  assert.deepEqual(ids(D.sortPool(players, "adp", -1, ctx)), ["2", "1", "3", "4"], "reversed; no ADP still last");
+  assert.deepEqual(ids(D.sortPool(players, "name", 1, ctx)), ["2", "3", "4", "1"]);
+  assert.deepEqual(ids(D.sortPool(players, "pos", 1, ctx)), ["2", "3", "1", "4"], "QB RB WR (ties by ADP)");
+  assert.deepEqual(ids(D.sortPool(players, "team", 1, ctx)), ["4", "3", "1", "2"]);
+  const b = D.bestAvailable(players, { 3: true }, ctx);
+  assert.deepEqual([b.overall.id, b.byPos.WR.id, b.byPos.QB.id, b.byPos.RB], ["1", "1", "2", undefined]);
+  assert.equal(D.value(10, 22), "reach", "12 picks before his ADP");
+  assert.equal(D.value(10, 21.9), null);
+  assert.equal(D.value(34, 22), "steal", "12 picks after");
+  assert.equal(D.value(33, 22), null);
+  assert.equal(D.value(5, null), null);
+  assert.deepEqual(plain(D.adpMap([{ source: "ffc", player_id: "a", adp: 9, pos_rank: "RB3" }, { source: "mfl", player_id: "a", adp: 7, pos_rank: "RB2" }, { source: "ffc", player_id: "b", adp: 4, pos_rank: "WR1" }])),
+    { a: { adp: 7, posRank: "RB2", source: "mfl" }, b: { adp: 4, posRank: "WR1", source: "ffc" } }, "MFL first, FFC fills in");
+  assert.equal(D.adpSeason([2025, 2026], 2027), 2026, "2027 draft before 2027 ADP exists: 2026");
+  assert.equal(D.adpSeason([2025, 2026, 2027], 2026), 2026);
+  assert.equal(D.adpSeason([], 2026), null);
 });
 
 test("the clock: server time with an offset; m:ss", () => {
@@ -92,8 +129,14 @@ test("room helpers: who's on the clock and the next two; pool filters; my picks 
   const v = P.view(d, { 1: ["C", "A", "D", "B"] }, {}, [{ overall: 1, player_id: "p1" }, { overall: 2, player_id: "p2" }]);
   assert.deepEqual(plain([v.cur, v.slot.owner, v.next.map((s: { owner: string }) => s.owner), v.made, v.total]), [3, "D", ["B", "B"], 2, 8]);
   const players = [{ id: "1", name: "Zed", pos: "WR", nfl: "DET" }, { id: "2", name: "Abe", pos: "QB", nfl: "KC" }, { id: "3", name: "Cal", pos: "WR", nfl: "KC" }];
-  const rows = (o: Record<string, unknown>) => plain(P.poolRows(players, { 3: 1 }, { 1: { team_id: "A" } }, o)).map((p: { id: string }) => p.id);
-  assert.deepEqual(rows({}), ["3", "2"], "drafted hidden; ranked first, then by name");
+  const rows = (o: Record<string, unknown>) => plain(P.poolRows(players, P.rankCtx({ ranks: "adp" }, {}, { 3: { adp: 1 } }), { 1: { team_id: "A" } }, o)).map((p: { id: string }) => p.id);
+  assert.deepEqual(rows({}), ["3", "2"], "drafted hidden; by ADP first, then by name");
+  const custom = P.rankCtx({ ranks: "custom" }, { 2: 1 }, { 3: { adp: 1 } });
+  assert.deepEqual(plain(P.poolRows(players, custom, {}, {})).map((p: { id: string }) => p.id), ["2", "3", "1"], "custom ranks on: rank, then ADP");
+  assert.equal(P.rankCtx({ ranks: "custom" }, {}, {}).custom, null, "custom on but nothing uploaded: ADP");
+  assert.match(P.valueTag({ overall: 10, player_id: "x", adp: 25 }), /Reach/);
+  assert.match(P.valueTag({ overall: 40, player_id: "x", adp: 25 }), /Steal/);
+  assert.equal(P.valueTag({ overall: 20, player_id: "x", adp: 25 }), "");
   assert.deepEqual(rows({ showDrafted: true }), ["3", "2", "1"]);
   assert.deepEqual(rows({ pos: "WR" }), ["3"]);
   assert.deepEqual(rows({ q: "kc" }), ["3", "2"], "an NFL team code");

@@ -432,6 +432,9 @@
       Q.seasons = get("season_settings?select=season,pools,waivers,trades,notify&order=season.desc&limit=3");
       Q.audit = get("audit_log?select=id,at,actor,actor_label,action,season,week,details&order=id.desc&limit=100");
       Q.invites = get("invites?select=email,team_id,invited_at,accepted_at&order=invited_at");
+      // Draft Room ADP: the last pulls and the players the sync couldn't map (never guessed)
+      Q.adpPulls = get("adp_pulls?select=season,source,period,drafts,players,pulled_at&order=season.desc");
+      Q.adpReview = get("review_queue?provider=in.(adp-mfl,adp-ffc)&status=eq.open&select=provider,provider_id,name,team,reason,last_seen&order=provider,name&limit=200");
     }
     var keys = Object.keys(Q);
     return Promise.all(keys.map(function (k) { return Q[k]; })).then(function (rs) {
@@ -440,6 +443,7 @@
       cm.roles = ok("roles"); cm.usage = ok("usage");
       var u = { day: 0, month: 0 }; cm.usage.forEach(function (x) { u.day += x.today; u.month += x.month; }); cm.emailCounts = u;
       cm.requests = ok("requests");
+      cm.adpPulls = ok("adpPulls"); cm.adpReview = ok("adpReview");
       cm.emailLog = ok("emailLog"); cm.health = R.health && R.health.ok ? R.health.data : null;
       cm.flags = ok("flags"); cm.seasons = ok("seasons"); cm.audit = ok("audit"); cm.defaults = ok("defaults")[0] || null;
       cm.week = window.B5TeamPage ? window.B5TeamPage.currentWeek(ok("games")) : null;
@@ -683,7 +687,7 @@
       return "<li><b>" + esc(a.action) + '</b> <span class="muted small">' + esc(et(a.at)) + " · " + esc(a.actor ? accountName(a.actor) : a.actor_label || "system") + "</span>" +
         '<br><span class="muted small">' + esc(JSON.stringify(a.details).slice(0, 220)) + "</span></li>";
     }).join("") + "</ul></details></div>";
-    root.innerHTML = "<section><h2>Admin</h2>" + m + health + emailLogHtml() + flags + defaultsHtml() + accts + officersHtml() + lineupImportHtml(cm.lineupImports || []) + poolImportHtml(cm.poolImports || []) + liveCompareHtml(cm.live || []) + shadowHtml(cm.shadow || []) + audit + "</section>";
+    root.innerHTML = "<section><h2>Admin</h2>" + m + health + emailLogHtml() + flags + defaultsHtml() + accts + officersHtml() + lineupImportHtml(cm.lineupImports || []) + adpHtml(cm.adpPulls || [], cm.adpReview || []) + poolImportHtml(cm.poolImports || []) + liveCompareHtml(cm.live || []) + shadowHtml(cm.shadow || []) + audit + "</section>";
   }
 
   // Confidence Pool official import (2026 test mode): one row per week, newest first.
@@ -703,6 +707,17 @@
       '<button class="btn" type="submit">Run import now</button></form>' + list + "</div>";
   }
 
+  // Draft Room ADP (Admin): when each source was last pulled, and the unmatched players.
+  function adpHtml(pulls, review) {
+    var SRC = { mfl: "MFL (12-team PPR)", ffc: "Fantasy Football Calculator (12-team half-PPR)" };
+    var p = pulls.length ? '<ul class="checks">' + pulls.slice(0, 4).map(function (x) {
+      return "<li><b>" + esc(x.season) + " " + esc(SRC[x.source] || x.source) + "</b>: " + esc(x.players) + " players, " + esc(x.drafts == null ? "?" : x.drafts) + " drafts (" + esc(x.period || "") + "), pulled " + esc(et(x.pulled_at)) + "</li>";
+    }).join("") + "</ul>" : '<p class="muted">No ADP pulled yet. The nightly job pulls it (nightly in the preseason, weekly otherwise).</p>';
+    var r = review.length ? "<details><summary>" + esc(review.length) + " unmatched player" + (review.length === 1 ? "" : "s") + " (not ranked by ADP until mapped)</summary><ul class=\"checks\">" + review.map(function (x) {
+      return "<li><b>" + esc(x.name) + "</b> " + esc(x.team || "") + ' <span class="muted small">' + esc(x.provider === "adp-mfl" ? "MFL " : "FFC ") + esc(x.provider_id) + ": " + esc(x.reason) + "</span></li>";
+    }).join("") + "</ul></details>" : '<p class="muted small">Every ADP player is matched.</p>';
+    return '<div class="card"><h3>Draft Room ADP</h3><p class="muted small">MFL\'s site-wide ADP is the primary source, Fantasy Football Calculator the fallback; players are matched by the nflverse ID crosswalk (FFC by exact name, position and team), never guessed.</p>' + p + r + "</div>";
+  }
   // 2026 test lineups, Tuesday: the official MFL lineups replace the test ones (Admin: did it work).
   function lineupImportHtml(rows) {
     var latest = rows.slice().sort(function (a, b) { return Date.parse(b.attempted_at) - Date.parse(a.attempted_at); })[0];

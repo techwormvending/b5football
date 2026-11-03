@@ -97,6 +97,16 @@ jobs:
           # TEMPORARY (2026): MFL's add/drops, waiver claims and trades into the site's transactions log.
           node scripts/import-mfl-transactions.mts 2026
 
+      # Draft Room ADP (MFL site-wide + Fantasy Football Calculator): nightly July 1 to the draft, weekly otherwise.
+      - name: Draft ADP
+        if: always()
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then echo "::warning::Supabase not configured; skipping ADP."; exit 0; fi
+          node scripts/sync-adp.mts || echo "::warning::ADP sync failed; the Draft Room keeps the last good ADP."
+
       # TEMPORARY (2026 shadow season): our engine vs MFL each week, and publish scores,
       # mirrored lineups, matchups and standings to Supabase. Delete after the migration.
       - name: Shadow scoring vs MFL; publish weeks to Supabase
