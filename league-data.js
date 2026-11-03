@@ -461,12 +461,7 @@ window.LEAGUE = {
   },
   // @mfl-end schedule
 
-  /* ---- History --------------------------------------------------------- */
-  // Newest first. MFL has league archives for every season back to 2000.
-  champions: [
-    { year: 2025, champion: "TBD", runnerUp: "TBD", lastPlace: "TBD", note: "" },
-    { year: 2024, champion: "TBD", runnerUp: "TBD", lastPlace: "TBD", note: "" }
-  ],
+  /* ---- History: in the database (public.league_history, history.js) ---- */
 
   /* ---- Traditions ------------------------------------------------------ */
   traditions: [

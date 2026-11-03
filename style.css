@@ -1011,3 +1011,24 @@ body.draft-tv { padding-bottom: 0; }
 .btn.big { min-height: 56px; font-size: 19px; }
 .linkish.big { font-size: 18px; min-height: 48px; text-align: left; padding: 0; }
 .pw-banner { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center; padding: 10px 16px; background: #2a2208; border-bottom: 2px solid var(--gold); font-size: 17px; }
+
+/* League history (history.js): champions since 2000, titles, runner-ups, back-to-backs, lineage */
+.hs-table td { vertical-align: top; }
+.hs-old { font-style: italic; }
+.hs-unv { background: rgba(255, 182, 18, .15); color: var(--gold); }
+.hs-unknown td { color: var(--chalk-dim); }
+.hs-note summary { cursor: pointer; color: var(--chalk-dim); }
+.hs-form { margin: 8px 0; }
+.hs-lin { list-style: none; margin: 0; padding: 0; }
+.hs-lin li { border-bottom: 1px solid var(--card-line); padding: 10px 0; }
+.hs-linrow { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.hs-linrow select { min-height: 48px; font-size: 16px; flex: 1 1 180px; min-width: 0; background: var(--ink-deep); color: var(--chalk); border: 2px solid rgba(255,255,255,.25); border-radius: 8px; }
+@media (max-width: 600px) {
+  .hs-table thead { display: none; }
+  .hs-table, .hs-table tbody { display: block; }
+  .hs-table tr { display: grid; grid-template-columns: 3.4em minmax(0, 1fr); column-gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--card-line); }
+  .hs-table td { display: block; border: 0; padding: 2px 0; min-width: 0; overflow-wrap: anywhere; }
+  .hs-table td.yr { grid-row: span 3; }
+  .hs-table td[data-label]::before { content: attr(data-label) ": "; color: var(--chalk-dim); }
+  .hs-table td[colspan] { grid-column: 1 / -1; }
+}

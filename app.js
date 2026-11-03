@@ -284,29 +284,8 @@
       }).join("") + (L.rosters ? `<p class="muted small rosters-asof">Rosters as of ${fmtDate(L.rosters.asOf)} (week ${esc(L.rosters.week)})</p>` : "");
     },
 
-    history() {
-      const rows = L.champions.map(c => `
-        <tr>
-          <td class="yr">${esc(c.year)}</td>
-          <td class="champ">🏆 ${T.linkName(c.champion, { logo: false })}</td>
-          <td>${T.linkName(c.runnerUp, { logo: false })}</td>
-          <td>${T.linkName(c.lastPlace, { logo: false })}</td>
-          <td class="muted">${esc(c.note)}</td>
-        </tr>`).join("");
-      // Title leaderboard computed from the champions list
-      const counts = {};
-      L.champions.forEach(c => { if (c.champion && c.champion !== "TBD") counts[c.champion] = (counts[c.champion] || 0) + 1; });
-      const board = Object.entries(counts).sort((a, b) => b[1] - a[1])
-        .map(([n, k]) => `<tr><td class="champ">${T.linkName(n)}</td><td class="yr">${k}</td></tr>`).join("");
-      return `
-        <section><h2>Champions</h2>
-          <div class="card table-wrap"><table>
-            <thead><tr><th>Year</th><th>Champion</th><th>Runner-up</th><th>Last place</th><th></th></tr></thead>
-            <tbody>${rows}</tbody></table></div>
-        </section>
-        ${board ? `<section><h2>Title Count</h2><div class="card table-wrap"><table>
-            <thead><tr><th>Team</th><th>Titles</th></tr></thead><tbody>${board}</tbody></table></div></section>` : ""}`;
-    },
+    // Champions since 2000, titles, runner-ups and back-to-backs from the database (history.js)
+    history() { return '<div id="hsRoot"><p class="muted">Loading…</p></div>'; },
 
     rules() {
       const groups = L.scoring.map(g => `
@@ -419,6 +398,7 @@
     if ((page === "trade" || page === "trades") && window.B5Trades) window.B5Trades.start(document.getElementById("trRoot"), r);
     if (page === "dm" && window.B5DM) window.B5DM.start(document.getElementById("dmRoot"), r);
     if (page === "draft" && window.B5Draft) window.B5Draft.start(document.getElementById("drRoot"), r);
+    if (page === "history" && window.B5History) window.B5History.start(document.getElementById("hsRoot"));
     if (window.B5DM) window.B5DM.badge();   // unread direct messages on the ✉ nav item
     if (page === "teams" && window.B5Payouts) {
       window.B5Payouts.teamWinnings().then(w => {

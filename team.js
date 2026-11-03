@@ -108,11 +108,12 @@
       member ? api("team_managers?team_id=eq." + encodeURIComponent(id) + "&select=user_id,profiles(display_name)", sess) : Promise.resolve(null),
       member ? A.api(cfg, sess, "rpc/team_contacts", { method: "POST", body: JSON.stringify({ p_team: id }) }, f) : Promise.resolve(null),
       member ? api("transactions?season=eq." + season + "&status=in.(processed,reversed)&or=(team_id.eq." + encodeURIComponent(id) + ",partner_team_id.eq." + encodeURIComponent(id) + ")&select=id,team_id,type,status,players_in,players_out,partner_team_id,via,created_at&order=created_at.desc&limit=10", sess) : Promise.resolve(null),
-      root.B5Payouts && root.B5Payouts.teamWinnings ? root.B5Payouts.teamWinnings().catch(function () { return {}; }) : Promise.resolve({})
+      root.B5Payouts && root.B5Payouts.teamWinnings ? root.B5Payouts.teamWinnings().catch(function () { return {}; }) : Promise.resolve({}),
+      root.B5History ? root.B5History.load().catch(function () { return null; }) : Promise.resolve(null)
     ]).then(function (r) {
       var d = { roster: ok(r[0]).map(function (x) { var n = x.nfl_players || {}; return { id: x.player_id, name: n.name || x.player_id, pos: n.position || "", nfl: n.nfl_team || "" }; }),
         owners: r[2] ? ok(r[2]).map(function (x) { return { user_id: x.user_id, name: x.profiles && x.profiles.display_name || "" }; }) : null,
-        contacts: r[3] ? ok(r[3]) : null, txns: r[4] ? ok(r[4]) : null, winnings: r[5] || {}, week: currentWeek(ok(r[1])), slots: [], names: {} };
+        contacts: r[3] ? ok(r[3]) : null, txns: r[4] ? ok(r[4]) : null, winnings: r[5] || {}, history: r[6], week: currentWeek(ok(r[1])), slots: [], names: {} };
       var order = { QB: 0, RB: 1, WR: 2, TE: 3, K: 4, DEF: 5 };
       d.roster.sort(function (a, b) { return (order[a.pos] - order[b.pos]) || a.name.localeCompare(b.name); });
       d.roster.forEach(function (p) { d.names[p.id] = p.name; });
@@ -137,8 +138,11 @@
     var showMoney = !!(root.B5Account && root.B5Account.seesMoney && root.B5Account.seesMoney(st.me));   // amounts: members only
     var w = d.winnings[id] || { final: 0, projected: 0 }, money = root.B5Payouts ? root.B5Payouts.money : function (x) { return "$" + x; };
     var div = ((L.divisions || []).filter(function (x) { return x.id === T.division(id); })[0] || {}).name;
-    var titleYears = (L.champions || []).filter(function (c) { return T.byName(c.champion) === id; }).map(function (c) { return c.year; });
-    var titles = Math.max(T.titles(id), titleYears.length);
+    // Titles from the league history (only names the commissioner has confirmed belong to this franchise)
+    var hist = d.history || { rows: [], lineage: [] }, H = root.B5History;
+    var titleYears = H ? H.titleYears(hist.rows, hist.lineage, id) : [];
+    var runnerYears = H ? hist.rows.filter(function (x) { return x.runner_up && H.teamOf(hist.lineage, x.runner_up_mfl, x.runner_up) === id; }).map(function (x) { return x.season; }) : [];
+    var titles = titleYears.length;
     var owners = d.owners ? d.owners.map(function (o) { return o.name || "Owner"; }).join(" & ") : (T.manager(id) && !/^(TODO|TBD)/i.test(T.manager(id)) ? T.manager(id) : "");
     var mine = myTeam() === id, member = isMember();
     var buttons = member && !mine ? '<div class="tp-acts"><button class="btn" type="button" data-tp="dm-team">Message</button>' +
@@ -170,8 +174,8 @@
         return "<li>" + (root.B5Players ? root.B5Players.txnText(t, d.names, true) : esc(t.type)) + ' <span class="muted small">' + esc(new Date(t.created_at).toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric" })) + "</span></li>";
       }).join("") + '</ul><a class="linkish" href="#players/log">All transactions</a>' : '<p class="muted">None yet.</p>') + "</div>";
 
-    var histHtml = '<div class="card"><h3>History</h3>' + (titleYears.length ? "<p>🏆 Champions: " + esc(titleYears.join(", ")) + "</p>" : "") +
-      '<p class="muted small">Past seasons, records and earlier team names are added with the league history import (2000 on).</p></div>';
+    var histHtml = '<div class="card"><h3>History</h3>' + (titleYears.length ? "<p>🏆 Champions: " + esc(titleYears.join(", ")) + "</p>" : '<p class="muted">No titles yet.</p>') +
+      (runnerYears.length ? "<p>🥈 Runner-up: " + esc(runnerYears.join(", ")) + "</p>" : "") + '<p class="small"><a href="#history">League history since 2000</a></p></div>';
 
     var contactHtml = "";
     if (member && d.contacts) {

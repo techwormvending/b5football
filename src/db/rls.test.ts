@@ -81,7 +81,7 @@ describe("every table is protected", () => {
 
 test("no default grants leak: anon only ever has SELECT, and only on public-data tables", async () => {
   const PUBLIC = new Set(["teams", "nfl_players", "nfl_games", "roster_entries", "score_weeks", "player_scores", "matchups", "standings", "announcements",
-    "season_settings", "team_scores", "awards", "guillotine", "survivor_status", "confidence_scores", "score_events", "player_injuries", "league_settings", "draft_picks", "lineup_slots", "test_lineups", "nfl_game_info", "league_defaults"]);
+    "season_settings", "team_scores", "awards", "guillotine", "survivor_status", "confidence_scores", "score_events", "player_injuries", "league_settings", "draft_picks", "lineup_slots", "test_lineups", "nfl_game_info", "league_defaults", "league_history", "history_franchises"]);
   const g = (await db.query<{ table_name: string; privilege_type: string }>(`
     select table_name, privilege_type from information_schema.role_table_grants
     where table_schema = 'public' and grantee = 'anon'`)).rows;
@@ -3103,6 +3103,47 @@ describe("draft board names and the practice-draft video guide (2026-11-02)", ()
     await call(user(COMMISH), `select public.set_practice_video(null)`);
     assert.equal((await rowsT(db, anon, `select practice_video_url as u from public.league_settings`))[0]!.u, null, "empty hides the guide");
     assert.equal((await rowsT(db, service, `select 1 from public.audit_log where action = 'settings:practice_video'`)).length, 2);
+  });
+});
+
+describe("league history: champions since 2000 and the franchise lineage (2026-11-02)", () => {
+  beforeEach(async () => {
+    await db.exec(`insert into public.teams (id, name, division) values ('0007', 'Sissy Boys', 'Gold') on conflict do nothing;
+      insert into public.history_franchises (mfl_id, name, status, team_id) values ('0007', 'Sissy Boys', 'approved', '0007'), ('0012', 'Stealers', 'proposed', '0002') on conflict do nothing;
+      insert into public.season_settings (season, team_count, buy_in, prizes) values (2026, 12, 100, '{}') on conflict (season) do nothing;`);
+  });
+  test("seeded 2000-2025: public read; 2000-2002 unknown, 2003 unverified, the rest verified with sources", async () => {
+    const rows = await rowsT(db, anon, `select season, champion, runner_up, verified, source from public.league_history order by season`);
+    assert.equal(rows.length, 26);
+    assert.deepEqual(rows.slice(0, 3).map(x => x.champion), [null, null, null]);
+    assert.deepEqual([rows[3]!.champion, rows[3]!.verified], ["The Phantom", false]);
+    assert.ok(rows.slice(4).every(x => x.verified && x.champion && x.runner_up && x.source), "2004-2025 verified with a runner-up and a source");
+    assert.deepEqual(rows.filter(x => [2008, 2021, 2025].includes(x.season)).map(x => [x.season, x.champion, x.runner_up]),
+      [[2008, "H.N.I.C", "Stealers"], [2021, "Stealers", "Sissy Boys"], [2025, "Sissy Boys", "H.N.I.C"]]);
+    assert.ok((await rowsT(db, anon, `select 1 from public.history_franchises`)).length > 0);
+  });
+  test("only the commissioner edits (audited, stamped); a manager or anon can't", async () => {
+    await as(db, user(COMMISH), tx => tx.query(`update public.league_history set champion = 'Old Timers', champion_mfl = '0005', verified = false, source = 'Commissioner' where season = 2001`));
+    const h = (await rowsT(db, anon, `select champion, updated_by from public.league_history where season = 2001`))[0]!;
+    assert.deepEqual([h.champion, h.updated_by], ["Old Timers", COMMISH]);
+    const a = await rowsT(db, service, `select actor, details from public.audit_log where action = 'history:league_history:update'`);
+    assert.deepEqual([a.length, a[0]!.actor, a[0]!.details.new.champion, a[0]!.details.old.champion], [1, COMMISH, "Old Timers", null]);
+    await as(db, user(ALICE), tx => tx.query(`update public.league_history set champion = 'Me' where season = 2002`));
+    assert.equal((await rowsT(db, anon, `select champion from public.league_history where season = 2002`))[0]!.champion, null, "a manager changes nothing");
+    await denied(db, anon, `update public.league_history set champion = 'x' where season = 2002`, /permission denied/);
+    await denied(db, user(ALICE), `insert into public.history_franchises (mfl_id, name, status) values ('0009', 'Mine', 'proposed')`, /row-level security/);
+    await as(db, user(COMMISH), tx => tx.query(`update public.history_franchises set status = 'approved' where mfl_id = '0012' and name = 'Stealers'`));
+    assert.equal((await rowsT(db, service, `select 1 from public.audit_log where action = 'history:history_franchises:update'`)).length, 1);
+    await assert.rejects(as(db, user(COMMISH), tx => tx.query(`update public.history_franchises set status = 'approved', team_id = null where mfl_id = '0012'`)), /check constraint/, "approved needs a team");
+  });
+  test("Empire pot: next season's defending champion follows the history (approved names only)", async () => {
+    const defending = async () => (await rowsT(db, service, `select empire_defending_team as t from public.season_settings where season = 2026`))[0]!.t;
+    await as(db, user(COMMISH), tx => tx.query(`update public.league_history set note = note where season = 2025`));
+    assert.equal(await defending(), "0007", "2025 Sissy Boys defend in 2026");
+    await as(db, user(COMMISH), tx => tx.query(`update public.league_history set champion = 'Stealers', champion_mfl = '0012' where season = 2025`));
+    assert.equal(await defending(), null, "an unapproved name defends nobody");
+    await as(db, user(COMMISH), tx => tx.query(`update public.history_franchises set status = 'approved' where mfl_id = '0012' and name = 'Stealers'`));
+    assert.equal(await defending(), "0002", "approving the name updates the Empire watch");
   });
 });
 
