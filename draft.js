@@ -524,7 +524,7 @@
   }
   function setSheet(state) {
     st.sheet = state;
-    if (state === "full") { st.unread = 0; if (root.B5Chat && root.B5Chat.jumpToLatest) setTimeout(root.B5Chat.jumpToLatest, 50); }
+    if (state === "full") { st.unread = 0; setTimeout(function () { if (st.vvFit) st.vvFit(); }, 0); if (root.B5Chat && root.B5Chat.jumpToLatest) setTimeout(root.B5Chat.jumpToLatest, 50); }
     render();
   }
   function popOut() {
@@ -556,6 +556,17 @@
       e.preventDefault(); st.focus = null; st.chatW = clampChatWidth((st.chatW || CHAT_DEFAULT) + (e.key === "ArrowLeft" ? 20 : -20));
       store("b5-draft-chat-w", String(st.chatW)); render(); var h = st.el.querySelector(".dr-resize"); if (h) h.focus();
     });
+    // Full-screen chat sheet on a phone: stay inside the visible area, so the composer sits above the keyboard
+    if (root.visualViewport && !st.vvBound) {
+      st.vvBound = true;
+      var vvFit = function () {
+        var dk = st.el && st.el.querySelector(".dr-room[data-sheet=full] .dr-dock"), vv = root.visualViewport;
+        root.document.querySelectorAll(".dr-dock").forEach(function (x) { if (x !== dk) { x.style.top = ""; x.style.height = ""; x.style.bottom = ""; } });
+        if (!dk || !(root.matchMedia && root.matchMedia("(max-width: 1099px)").matches)) return;
+        dk.style.top = vv.offsetTop + "px"; dk.style.height = vv.height + "px"; dk.style.bottom = "auto";
+      };
+      root.visualViewport.addEventListener("resize", vvFit); root.visualViewport.addEventListener("scroll", vvFit); st.vvFit = vvFit;
+    }
     // the phone sheet: swipe up/down on the handle (a tap toggles)
     var sw = null;
     el.addEventListener("touchstart", function (e) { if (e.target.closest(".dr-handle")) sw = { y: e.touches[0].clientY }; }, { passive: true });

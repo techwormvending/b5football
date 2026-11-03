@@ -132,13 +132,21 @@
     var p = s + text.length; ta.focus(); try { ta.setSelectionRange(p, p); } catch (err) { /* not focusable */ }
     ta.dispatchEvent(new Event("input", { bubbles: true }));
   }
+  /** One-row composers grow with the text up to about 4 lines, then scroll. */
+  function grow(ta) { ta.style.height = "auto"; ta.style.height = Math.min(116, ta.scrollHeight + 2) + "px"; }
   function addButtons(scope) {
     (scope || root.document).querySelectorAll(COMPOSER).forEach(function (ta) {
-      var host = ta.closest(".bd-ta") || ta;
+      var host = ta.closest(".bd-ta") || ta, row = host.parentNode && host.parentNode.classList && host.parentNode.classList.contains("ch-row") ? host.parentNode : null;
+      var btn = '<button type="button" class="ch-icon em-open" aria-haspopup="dialog" aria-label="Emoji" title="Emoji">😊</button>';
+      if (row) {   // one-row composer (Chat, Draft chat, DMs): an icon button right after the text box
+        if (row.querySelector(".em-open")) return;
+        host.insertAdjacentHTML("afterend", btn);
+        return;
+      }
       if (host.nextElementSibling && host.nextElementSibling.classList && host.nextElementSibling.classList.contains("em-bar")) return;
       var bar = root.document.createElement("div");
       bar.className = "em-bar";
-      bar.innerHTML = '<button type="button" class="btn ghost em-open" aria-haspopup="dialog">😊 Emoji</button>';
+      bar.innerHTML = btn;
       host.parentNode.insertBefore(bar, host.nextSibling);
     });
   }
@@ -178,16 +186,24 @@
     d.addEventListener("click", function (e) {
       var b = e.target.closest(".em-open");
       if (b) {
-        var host = b.parentNode.previousElementSibling, ta = host && (host.matches("textarea") ? host : host.querySelector("textarea"));
+        var row = b.closest(".ch-row"), host = row ? row.querySelector(".bd-ta") : b.parentNode.previousElementSibling, ta = host && (host.matches("textarea") ? host : host.querySelector("textarea"));
         if (isOpen() && pk.anchor === b) { close(); return; }
         open(b, function (em) { if (ta) insertAt(ta, em); });
         return;
       }
+      // narrow composers: 📷 and 🔗 live behind "+"
+      var plus = e.target.closest("[data-plus]");
+      if (plus) { var pr = plus.closest(".ch-row"), on = !pr.classList.contains("plus-open"); pr.classList.toggle("plus-open", on); plus.setAttribute("aria-expanded", on); return; }
+      root.document.querySelectorAll(".ch-row.plus-open").forEach(function (r) { if (!r.querySelector(".ch-plus").contains(e.target)) { r.classList.remove("plus-open"); r.querySelector(".ch-plus").setAttribute("aria-expanded", "false"); } });
       var a = e.target.closest("[data-ac]"); if (a) { acPick(Number(a.dataset.ac)); return; }
       if (pk.el && !pk.el.contains(e.target)) close();
       if (ac.el && !ac.el.contains(e.target)) acClose();
     });
-    d.addEventListener("input", function (e) { if (e.target.matches && e.target.matches(COMPOSER)) acShow(e.target); });
+    d.addEventListener("input", function (e) {
+      if (!e.target.matches) return;
+      if (e.target.matches(COMPOSER)) acShow(e.target);
+      if (e.target.matches(".ch-row textarea")) grow(e.target);
+    });
     // Capture: before the pages' own handlers (send on submit, or on Enter in chat and DMs)
     d.addEventListener("keydown", function (e) {
       if (e.key === "Escape") { if (isOpen()) { var a = pk.anchor; close(); if (a) a.focus(); } acClose(); return; }

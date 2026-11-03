@@ -69,3 +69,26 @@ test("messages use the board's sanitizer: no raw HTML", () => {
   assert.match(src, /B\(\)\.formatBody\(m\.body, ctx\)/);
   assert.doesNotMatch(src, /innerHTML\s*=\s*m\.body/);
 });
+
+test("one-row composer (Chat, Draft chat, DMs): a real textarea that keeps its width; 📷/🔗 behind + when narrow; icon emoji button", () => {
+  const read = (f: string) => fs.readFileSync(path.resolve(import.meta.dirname, "../..", f), "utf8");
+  const css = read("style.css");
+  for (const f of ["chat.js", "dm.js"]) {
+    const js = read(f);
+    assert.match(js, /<textarea name="body" rows="1"[^>]*placeholder="Type a message…"/, f + ": a textarea with the placeholder");
+    assert.doesNotMatch(js, /type="number"/, f + ": never a number input");
+    assert.match(js, /class="ch-icon ch-plus" data-plus/, f + ": the + menu");
+    assert.match(js, /<div class="ch-extra">/, f + ": 📷 and 🔗 grouped for the + menu");
+    assert.match(js, /class="ch-send-i"/, f + ": ➤ when narrow");
+  }
+  assert.match(css, /\.ch-row \.bd-ta \{ flex: 1 1 0; min-width: 160px; \}/, "the text box takes the remaining width, at least 160px");
+  assert.match(css, /\.ch-compose textarea \{[^}]*font: 18px/, "18px text");
+  assert.match(css, /\.ch-compose textarea \{[^}]*background: var\(--ink\)[^}]*caret-color/, "dark background and a visible cursor");
+  assert.match(css, /\.ch-compose textarea \{[^}]*max-height: 116px/, "about 4 lines, then it scrolls");
+  assert.match(css, /@container \(max-width: 420px\) \{[^@]*\.ch-row \.ch-plus \{ display: flex; \}[^@]*\.ch-extra \{ display: none; \}/, "narrow: + instead of 📷 🔗");
+  assert.doesNotMatch(css, /\.dr-dock \.ch-row[^{]*\{ flex-wrap: wrap/, "the Draft chat no longer wraps the row");
+  const emoji = read("emoji.js");
+  assert.match(emoji, /class="ch-icon em-open"[^>]*aria-label="Emoji"[^>]*>😊<\/button>/, "an icon-sized emoji button");
+  assert.doesNotMatch(emoji, /😊 Emoji</, "no big EMOJI box");
+  assert.match(emoji, /host\.insertAdjacentHTML\("afterend", btn\)/, "inside the row, right after the text box");
+});

@@ -286,10 +286,11 @@
     if (st.mute) return '<div class="ch-compose muted small">You\'re muted until ' + esc(time(st.mute)) + ".</div>";
     return '<form class="ch-compose" data-ch-compose>' +
       '<div class="bd-thumbs">' + c.images.map(function (im, i) { return '<span class="bd-thumb"><img src="' + esc(im.preview) + '" alt=""><button type="button" data-ch="unimg" data-i="' + i + '" aria-label="Remove image">×</button></span>'; }).join("") + "</div>" +
-      '<div class="ch-row"><label class="ch-icon" aria-label="Add a photo or GIF">📷<input type="file" accept="image/*" data-ch="file" hidden></label>' +
-      '<button type="button" class="ch-icon" data-ch="link" aria-label="Add an image link">🔗</button>' +
-      '<div class="bd-ta"><textarea name="body" rows="1" maxlength="2000" placeholder="Message #' + esc(room.name || st.room) + '" enterkeyhint="send"></textarea><ul class="bd-ac" hidden></ul></div>' +
-      '<button class="btn ch-send" type="submit"' + (c.busy ? " disabled" : "") + ">" + (c.busy ? "…" : "Send") + "</button></div>" +
+      '<div class="ch-row"><button type="button" class="ch-icon ch-plus" data-plus aria-label="Add a photo or link" aria-expanded="false">+</button>' +
+      '<div class="ch-extra"><label class="ch-icon" aria-label="Add a photo or GIF">📷<input type="file" accept="image/*" data-ch="file" hidden></label>' +
+      '<button type="button" class="ch-icon" data-ch="link" aria-label="Add an image link">🔗</button></div>' +
+      '<div class="bd-ta"><textarea name="body" rows="1" maxlength="2000" placeholder="Type a message…" aria-label="Message #' + esc(room.name || st.room) + '" enterkeyhint="send"></textarea><ul class="bd-ac" hidden></ul></div>' +
+      '<button class="btn ch-send" type="submit" aria-label="Send"' + (c.busy ? " disabled" : "") + '><span class="ch-send-t">' + (c.busy ? "…" : "Send") + '</span><span class="ch-send-i" aria-hidden="true">➤</span></button></div>' +
       (c.err ? '<p class="acct-msg err">' + esc(c.err) + "</p>" : "") + "</form>";
   }
   function typingHtml() {
@@ -602,7 +603,7 @@
       if (e.target.tagName !== "IMG" || !st.atBottom) return;
       var log = st.el && st.el.querySelector(".ch-log"); if (log) log.scrollTop = log.scrollHeight;
     }, true);
-    el.addEventListener("input", function (e) { if (e.target.matches("[data-ch-compose] textarea")) { e.target.style.height = "auto"; e.target.style.height = Math.min(140, e.target.scrollHeight) + "px"; typing(e.target); } });
+    el.addEventListener("input", function (e) { if (e.target.matches("[data-ch-compose] textarea")) { e.target.style.height = "auto"; e.target.style.height = Math.min(116, e.target.scrollHeight) + "px"; typing(e.target); } });
     el.addEventListener("keydown", function (e) {
       // Enter sends on a computer; Shift+Enter (and phones' return key) makes a new line.
       if (e.key === "Enter" && !e.shiftKey && e.target.matches("[data-ch-compose] textarea") && !("ontouchstart" in root)) { e.preventDefault(); sendMessage(e.target.form); }

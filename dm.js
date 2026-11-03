@@ -153,10 +153,11 @@
     }).join("");
     var k = st.compose;
     var compose = part ? '<form class="ch-compose" data-dm-compose><div class="bd-thumbs">' + k.images.map(function (im, i) { return '<span class="bd-thumb"><img src="' + esc(im.preview) + '" alt=""><button type="button" data-dm="unimg" data-i="' + i + '" aria-label="Remove image">×</button></span>'; }).join("") + "</div>" +
-      '<div class="ch-row"><label class="ch-icon" aria-label="Add a photo or GIF">📷<input type="file" accept="image/*" data-dm="file" hidden></label>' +
-      '<button type="button" class="ch-icon" data-dm="link" aria-label="Add an image link">🔗</button>' +
-      '<div class="bd-ta"><textarea name="body" rows="1" maxlength="2000" placeholder="Message" enterkeyhint="send"></textarea></div>' +
-      '<button class="btn ch-send" type="submit"' + (k.busy ? " disabled" : "") + ">" + (k.busy ? "…" : "Send") + "</button></div>" +
+      '<div class="ch-row"><button type="button" class="ch-icon ch-plus" data-plus aria-label="Add a photo or link" aria-expanded="false">+</button>' +
+      '<div class="ch-extra"><label class="ch-icon" aria-label="Add a photo or GIF">📷<input type="file" accept="image/*" data-dm="file" hidden></label>' +
+      '<button type="button" class="ch-icon" data-dm="link" aria-label="Add an image link">🔗</button></div>' +
+      '<div class="bd-ta"><textarea name="body" rows="1" maxlength="2000" placeholder="Type a message…" aria-label="Message" enterkeyhint="send"></textarea></div>' +
+      '<button class="btn ch-send" type="submit" aria-label="Send"' + (k.busy ? " disabled" : "") + '><span class="ch-send-t">' + (k.busy ? "…" : "Send") + '</span><span class="ch-send-i" aria-hidden="true">➤</span></button></div>' +
       (k.err ? '<p class="acct-msg err">' + esc(k.err) + "</p>" : "") + "</form>" : '<p class="muted small">You\'re reading this because it was reported. Only its participants can post.</p>';
     return '<section class="dm"><p class="dm-back"><a href="#messages/private">← Messages</a></p><div class="dm-head"><h2 class="dm-title">' + titleHtml(p, st.people) + "</h2>" +
       (part && !c.reported_at ? '<button class="linkish" type="button" data-dm="report">Report</button>' : "") + "</div>" + reportBox +
