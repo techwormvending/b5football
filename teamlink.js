@@ -48,6 +48,15 @@
     var s = String(text || "").trim().toLowerCase(), t = list().filter(function (x) { return x.name.toLowerCase() === s; })[0];
     return t ? t.id : null;
   }
+  // Draft board column headers: a short board name (<= 12 characters; the commissioner edits it, teams.board_name),
+  // else the name without "The" and, when long, its last word. Full name in the title.
+  var boards = {};
+  function boardName(id) {
+    if (boards[id]) return boards[id];
+    var n = name(id).replace(/^the\s+/i, "");
+    return n.length <= 12 ? n : n.split(/\s+/).pop().slice(0, 12);
+  }
+  function boardLabel(id) { return logo(id) + "<span class=\"tl-board\">" + esc(boardName(id)) + "</span>"; }
   function linkName(text, opts) { var id = byName(text); return id ? link(id, opts) : esc(text); }
 
   root.B5Team = {
@@ -57,7 +66,8 @@
     division: function (id) { var t = get(id); return t ? t.division : null; },
     manager: function (id) { var t = get(id); return t ? t.manager || "" : ""; },
     titles: function (id) { var t = get(id); return t ? t.titles || 0 : 0; },
-    byName: byName, href: href, logo: logo, link: link, option: option, linkName: linkName, initials: initials,
+    byName: byName, href: href, boardName: boardName, boardLabel: boardLabel,
+    setBoardNames: function (m) { boards = {}; Object.keys(m || {}).forEach(function (k) { if (m[k]) boards[k] = String(m[k]); }); }, logo: logo, link: link, option: option, linkName: linkName, initials: initials,
     /** Raw rows for the commissioner's one-time "add the teams to the database". */
     seedRows: function () { return list().map(function (t) { return { id: t.id, name: t.name, division: t.division, logo: t.logo || null }; }); }
   };

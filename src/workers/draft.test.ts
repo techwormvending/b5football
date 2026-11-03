@@ -166,3 +166,16 @@ test("draft errors: the draft's own refusals are shown as written; database word
   assert.equal(P.technical("permission denied for table drafts"), true);
   assert.equal(P.technical('relation "public.draft_state" does not exist'), true);
 });
+
+test("board layout helpers: last names, duplicate teams in a round order, Scribe-only video links", () => {
+  assert.equal(P.lastName({ name: "Josh Allen", pos: "QB" }), "Allen");
+  assert.equal(P.lastName({ name: "Marvin Harrison Jr.", pos: "WR" }), "Harrison");
+  assert.equal(P.lastName({ name: "Kenneth Walker III", pos: "RB" }), "Walker");
+  assert.equal(P.lastName({ name: "Amon-Ra St. Brown", pos: "WR" }), "St. Brown");
+  assert.equal(P.lastName({ name: "Pittsburgh Steelers", pos: "DEF", nfl: "PIT" }), "PIT");
+  assert.deepEqual(plain(D.duplicates(["0001", "0002", "0001", "0003", "0002", ""])), { "0001": true, "0002": true });
+  assert.deepEqual(plain(D.duplicates(["0001", "0002"])), {});
+  assert.ok(P.SCRIBE.test("https://scribehow.com/embed/How_to_Create_a_New_Practice_Draft_on_B5_Football__iD_l2TKMREOYcfUsx13N8w?as=video"));
+  for (const bad of ["http://scribehow.com/embed/x", "https://scribehow.com.evil.com/embed/x", "https://evil.com/?https://scribehow.com/embed/x", "https://scribehow.com/embed/x\"onload=\"x", "javascript:alert(1)"])
+    assert.ok(!P.SCRIBE.test(bad), bad);
+});

@@ -105,7 +105,8 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then echo "::warning::Supabase not configured; skipping ADP."; exit 0; fi
-          node scripts/sync-adp.mts || echo "::warning::ADP sync failed; the Draft Room keeps the last good ADP."
+          # a manual run pulls ADP whatever the day
+          node scripts/sync-adp.mts ${{ github.event_name == 'workflow_dispatch' && '--force' || '' }} || echo "::warning::ADP sync failed; the Draft Room keeps the last good ADP."
 
       # TEMPORARY (2026 shadow season): our engine vs MFL each week, and publish scores,
       # mirrored lineups, matchups and standings to Supabase. Delete after the migration.

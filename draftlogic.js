@@ -137,6 +137,12 @@
     for (var i = 0; i < s.length; i++) if (s[i] <= season) return s[i];
     return s.length ? s[0] : null;
   }
+  /** Values that appear more than once: { value: true } (the round order form marks them red). */
+  function duplicates(list) {
+    var seen = {}, dup = {};
+    (list || []).forEach(function (x) { if (x == null || x === "") return; if (seen[x]) dup[x] = true; seen[x] = true; });
+    return dup;
+  }
   /** "1:23" from seconds. */
   function clock(sec) { sec = Math.max(0, Math.ceil(sec)); return Math.floor(sec / 60) + ":" + ("0" + (sec % 60)).slice(-2); }
   /** Seconds left on the server's clock, given our clock's offset from the server's (ms). */
@@ -170,5 +176,5 @@
 
   root.B5DraftLogic = { roundOrder: roundOrder, missingOrders: missingOrders, validateOrder: validateOrder, position: position, ownerOf: ownerOf,
     slot: slot, board: board, currentOverall: currentOverall, picksAway: picksAway, autoPick: autoPick, clock: clock, secondsLeft: secondsLeft, parseRankings: parseRankings,
-    byRanking: byRanking, sortPool: sortPool, bestAvailable: bestAvailable, value: value, adpMap: adpMap, adpSeason: adpSeason };
+    duplicates: duplicates, byRanking: byRanking, sortPool: sortPool, bestAvailable: bestAvailable, value: value, adpMap: adpMap, adpSeason: adpSeason };
 })(typeof globalThis !== "undefined" ? globalThis : this);

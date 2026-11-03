@@ -15,7 +15,7 @@
   var POS = ["QB", "RB", "WR", "TE", "K", "DEF"];
   var ROSTER_MAX = 18;
 
-  var st = { el: null, id: null, tv: false, me: null, d: null, orders: {}, orderRows: {}, sel: [], owners: {}, players: [], pmap: {}, rank: {}, rankInfo: null, adp: {}, adpInfo: [], adpSeason: null, sort: { by: "adp", dir: 1 }, sortSet: false,
+  var st = { el: null, id: null, tv: false, me: null, d: null, orders: {}, orderRows: {}, sel: [], owners: {}, players: [], pmap: {}, rank: {}, rankInfo: null, adp: {}, adpInfo: [], adpSeason: null, sort: { by: "adp", dir: 1 }, sortSet: false, tip: null, btab: "round", bround: null, bteam: null, scrolledCur: null,
     queue: [], byes: {}, tab: "players", q: "", pos: "", showDrafted: false, offset: 0, ticked: {}, sub: null, timer: null, msg: null, shown: 150, anim: null, seenOrders: {}, loading: false };
   var session = function () { return st.me && st.me.session; };
   var api = function (path, init) { return A.api(cfg, session(), path, init || {}, f); };
@@ -105,8 +105,10 @@
       st.d.kind === "real" ? api("draft_picks?season=eq." + season + "&select=round,original_team,owner_team&limit=2000") : null,
       api("profiles?select=id,display_name"),
       rpc("server_now"),
-      api("adp_pulls?select=season,source,period,drafts,players,pulled_at")
+      api("adp_pulls?select=season,source,period,drafts,players,pulled_at"),
+      api("teams?select=id,board_name")
     ]).then(function (r) {
+      var bn = {}; ok(r[7]).forEach(function (t) { bn[t.id] = t.board_name; }); T().setBoardNames(bn);
       st.adpInfo = ok(r[6]);
       st.adpSeason = DL.adpSeason(st.adpInfo.map(function (x) { return x.season; }), season);
       if (r[0]) { st.players = ok(r[0]).map(function (p) { return { id: p.id, name: p.name, pos: p.position, nfl: p.nfl_team }; }); st.pmap = {}; st.players.forEach(function (p) { st.pmap[p.id] = p; }); }
@@ -169,23 +171,76 @@
     if (d.status !== "live") return "–:––";
     return DL.clock(DL.secondsLeft(d.clock_ends_at, Date.now(), st.offset));
   }
+  /** "Allen" from "Josh Allen", "Harrison" from "Marvin Harrison Jr."; defenses by their team code. */
+  function lastName(p) {
+    if (!p) return "";
+    if (p.pos === "DEF") return p.nfl || p.name;
+    var w = String(p.name || "").split(/\s+/).filter(function (x) { return x && !/^(jr|sr|ii|iii|iv|v)\.?$/i.test(x); });
+    return w.length > 1 ? w.slice(1).join(" ") : w[0] || "";
+  }
+  var pk = function (r, pick) { return r + "." + ("0" + pick).slice(-2); };
+  /** Every board slot in pick order with its selection and player (rounds without an order are left out). */
+  function boardSlots(v) {
+    var d = st.d, out = [];
+    for (var o = 1; o <= v.total; o++) {
+      var sl = DL.slot(o, d.teams, st.orders, st.owners);
+      if (!sl) continue;
+      var x = v.done[o];
+      out.push({ slot: sl, sel: x || null, p: x && x.player_id ? st.pmap[x.player_id] || { id: x.player_id, name: x.player_id, pos: "" } : null });
+    }
+    return out;
+  }
+  function tipText(b) {
+    var x = b.sel, p = b.p, by = x ? pickedByText(x, st.names || {}) : "";
+    return p ? p.name + ", " + p.pos + " " + (p.nfl || "") + (by ? " · " + by : "") + (x.adp != null ? " · ADP " + (Math.round(Number(x.adp) * 10) / 10) : "") : "";
+  }
+  /** The 12-column board: full browser width, equal columns, sticky header, scrolls down through the rounds. */
   function boardHtml(v, big) {
-    var d = st.d, cols = st.orders[1] || d.teams, mineT = myTeam();
-    var head = "<tr><th>Rd</th>" + cols.map(function (t) { return '<th class="' + (t === mineT ? "dr-mine" : "") + '">' + T().logo(t) + '<span class="dr-th">' + T().link(t, { logo: false }) + "</span></th>"; }).join("") + "</tr>";
+    var d = st.d, cols = st.orders[1] || d.teams, mineT = myTeam(), byCell = {}, running = /^(live|paused|awaiting_order)$/.test(d.status);
+    boardSlots(v).forEach(function (b) { byCell[b.slot.round + ":" + b.slot.original] = b; });
+    var head = '<tr><th class="dr-rd" scope="col">Rd</th>' + cols.map(function (t) {
+      var open = st.tip === "th:" + t;
+      return '<th scope="col" class="' + (t === mineT ? "dr-mine" : "") + '"><button type="button" class="dr-thb" data-dr-tip="th:' + esc(t) + '" title="' + esc(T().name(t)) + '" aria-expanded="' + open + '">' + T().boardLabel(t) + "</button>" +
+        (open ? '<div class="dr-tip" role="tooltip">' + T().link(t) + "</div>" : "") + "</th>";
+    }).join("") + "</tr>";
     var rows = "";
     for (var r = 1; r <= d.rounds; r++) {
       var order = DL.roundOrder(st.orders, r);
-      rows += "<tr><th>" + r + "</th>" + cols.map(function (orig) {
-        if (!order) return '<td class="dr-cell empty"></td>';
-        var pick = order.indexOf(orig) + 1, overall = (r - 1) * d.teams.length + pick, s = v.done[overall], owner = DL.ownerOf(st.owners, r, orig);
-        var p = s && s.player_id ? st.pmap[s.player_id] || { name: s.player_id, pos: "" } : null;
-        var cls = "dr-cell" + (p ? " pos-bg-" + esc(p.pos) : "") + (overall === v.cur ? " now" : "") + (s && s.skipped ? " skipped" : "") + (owner === mineT ? " dr-mine" : "");
-        return '<td class="' + cls + '" data-dr-cell="' + overall + '"' + (s && pickedByText(s, st.names || {}) ? ' title="by ' + esc(pickedByText(s, st.names || {})) + '"' : "") + '><span class="dr-pk">' + r + "." + ("0" + pick).slice(-2) + "</span>" +
-          (owner !== orig ? '<span class="dr-via" title="Traded pick">→ ' + T().link(owner, { logo: false }) + "</span>" : "") +
-          (p ? '<b class="dr-pn">' + esc(p.name) + '</b><span class="dr-pp">' + esc(p.pos) + " " + esc(p.nfl || "") + "</span>" + valueTag(s) : s && s.skipped ? '<span class="muted">skipped</span>' : "") + "</td>";
+      rows += '<tr data-dr-round="' + r + '"><th class="dr-rd" scope="row">' + r + "</th>" + cols.map(function (orig) {
+        if (!order) return '<td class="dr-cell empty' + (orig === mineT ? " dr-mine" : "") + '"></td>';
+        var b = byCell[r + ":" + orig], sl = b.slot, x = b.sel, p = b.p, open = st.tip === "c:" + sl.overall;
+        var cls = "dr-cell" + (p ? " pos-band-" + esc(p.pos) : "") + (running && sl.overall === v.cur ? " now" : "") + (x && x.skipped ? " skipped" : "") + (sl.owner === mineT ? " dr-mine" : "");
+        var line1 = '<span class="dr-l1"><span class="dr-pk">' + pk(r, sl.pick) + "</span>" + (x ? valueTag(x).replace(/>(📈|💎) (Reach|Steal)</, ">$1<") : "") +
+          (p ? '<span class="dr-pp">' + esc(p.pos) + " " + esc(p.nfl || "") + "</span>" : "") + "</span>";
+        var line2 = p ? '<b class="dr-pn">' + esc(lastName(p)) + "</b>" : x && x.skipped ? '<span class="dr-pn muted">skipped</span>' :
+          sl.traded ? '<span class="dr-pn dr-via">→ ' + esc(T().boardName(sl.owner)) + "</span>" : running && sl.overall === v.cur ? '<span class="dr-pn dr-onclock">On clock</span>' : '<span class="dr-pn"></span>';
+        var tip = open ? '<div class="dr-tip" role="tooltip">' + (p ? "<b>" + esc(p.name) + "</b><br>" + esc(p.pos + " " + (p.nfl || "")) + (x.adp != null ? " · ADP " + esc(Math.round(Number(x.adp) * 10) / 10) : "") + "<br>" : "") +
+          T().link(sl.owner) + (sl.traded ? ' <span class="muted small">(from ' + esc(T().boardName(sl.original)) + ")</span>" : "") + (x && pickedByText(x, st.names || {}) ? '<br><span class="muted small">by ' + esc(pickedByText(x, st.names || {})) + "</span>" : "") + "</div>" : "";
+        return '<td class="' + cls + '" data-dr-cell="' + sl.overall + '"><button type="button" class="dr-cellb" data-dr-tip="c:' + sl.overall + '" title="' + esc(tipText(b) || "Pick " + pk(r, sl.pick)) + '" aria-expanded="' + open + '">' + line1 + line2 + "</button>" + tip + "</td>";
       }).join("") + "</tr>";
     }
-    return '<div class="dr-board-wrap' + (big ? " big" : "") + '"><table class="dr-board"><thead>' + head + "</thead><tbody>" + rows + "</tbody></table></div>";
+    var colgroup = '<colgroup><col class="dr-rdc">' + cols.map(function () { return "<col>"; }).join("") + "</colgroup>";
+    return '<div class="dr-board-wrap full' + (big ? " big" : "") + '" data-dr="board"><table class="dr-board">' + colgroup + "<thead>" + head + "</thead><tbody>" + rows + "</tbody></table></div>" +
+      (big ? "" : boardSmallHtml(v));
+  }
+  /** Under 900 px: By Round / By Team / My Team lists instead of 12 columns. */
+  function boardSmallHtml(v) {
+    var all = boardSlots(v), mine = myTeam(), cur = v.slot ? v.slot.round : 1, running = /^(live|paused|awaiting_order)$/.test(st.d.status);
+    var round = st.bround || cur, team = st.bteam || mine || st.d.teams[0];
+    var tab = st.btab === "team" || (st.btab === "mine" && mine) ? st.btab : "round";
+    var list = tab === "round" ? all.filter(function (b) { return b.slot.round === round; })
+      : all.filter(function (b) { return b.slot.owner === (tab === "mine" ? mine : team); });
+    var tabs = [["round", "By Round"], ["team", "By Team"]].concat(mine ? [["mine", "My Team"]] : []);
+    var picker = tab === "round"
+      ? '<div class="weeks dr-rounds">' + Array.from({ length: st.d.rounds }, function (_, i) { var r = i + 1; return '<button type="button" class="wk' + (r === round ? " active" : "") + (r === cur ? " now" : "") + '" data-dr-bround="' + r + '" aria-pressed="' + (r === round) + '">' + r + "</button>"; }).join("") + "</div>"
+      : tab === "team" ? '<label class="dr-bteam">Team <select data-dr="bteam">' + st.d.teams.map(function (t) { return T().option(t, t === team); }).join("") + "</select></label>" : "";
+    return '<div class="dr-bsmall"><div class="dr-btabs" role="tablist">' + tabs.map(function (t) { return '<button type="button" role="tab" aria-selected="' + (tab === t[0]) + '" class="' + (tab === t[0] ? "active" : "") + '" data-dr-btab="' + t[0] + '">' + t[1] + "</button>"; }).join("") + "</div>" + picker +
+      (list.length ? '<ol class="dr-blist">' + list.map(function (b) {
+        var x = b.sel, p = b.p;
+        return '<li class="' + (running && b.slot.overall === v.cur ? "now" : "") + (p ? " pos-band-" + esc(p.pos) : "") + '"><span class="dr-pk">' + pk(b.slot.round, b.slot.pick) + "</span>" +
+          '<span class="dr-bwho">' + (tab === "round" ? T().link(b.slot.owner) : "Round " + esc(b.slot.round)) + (b.slot.traded ? ' <span class="muted small">via ' + esc(T().boardName(b.slot.original)) + "</span>" : "") + "</span>" +
+          '<span class="dr-bpl">' + (p ? "<b>" + esc(p.name) + "</b> " + posTag(p.pos) + ' <span class="muted small">' + esc(p.nfl || "") + "</span> " + valueTag(x) : x && x.skipped ? '<span class="muted">skipped</span>' : running && b.slot.overall === v.cur ? '<span class="dr-onclock">on the clock</span>' : '<span class="muted">–</span>') + "</span></li>";
+      }).join("") + "</ol>" : '<p class="muted">' + (tab === "round" ? "Round " + esc(round) + "'s order isn't set yet." : "No picks known yet.") + "</p>") + "</div>";
   }
   function canPickNow(v) { return st.d.status === "live" && v.slot && (v.slot.owner === myTeam() || isCommish()); }
   function myCatchUps() { return st.sel.filter(function (s) { return s.skipped && (s.team_id === myTeam() || isCommish()); }); }
@@ -274,6 +329,9 @@
       (redo.length ? '<p class="small">Redo a draw (only before that round\'s first pick): ' + redo.map(function (r) { return '<button type="button" class="linkish" data-dr-c="draw:' + r + '">Round ' + r + "</button>"; }).join(" · ") + "</p>" : "") +
       '<details><summary>Edit a past pick</summary><form class="acct-form" data-dr-form="edit"><label>Pick number (overall)<input name="overall" type="number" min="1" max="' + esc(v.total) + '" required></label>' +
         '<label>New player<input name="player" list="drPlayers" required placeholder="Start typing a name"></label><button class="btn" type="submit">Change the pick</button></form></details>' +
+      '<details><summary>Board names (column headers)</summary><form class="acct-form dr-bnames" data-dr-form="bnames"><p class="muted small">Up to 12 characters, so all 12 columns fit. The full name shows on hover or tap.</p>' +
+        d.teams.map(function (t) { return "<label>" + T().logo(t) + " " + esc(T().name(t)) + '<input name="bn' + esc(t) + '" maxlength="12" required value="' + esc(T().boardName(t)) + '"></label>'; }).join("") +
+        '<button class="btn" type="submit">Save board names</button></form></details>' +
       '<label class="acct-check"><input type="checkbox" data-dr="ranks"' + (d.ranks === "custom" ? " checked" : "") + (Object.keys(st.rank).length ? "" : " disabled") + "> Custom ranks (the uploaded CSV instead of ADP, for sorting and auto-pick)" + (Object.keys(st.rank).length ? "" : ": upload a CSV first") + "</label>" +
       '<details><summary>Rankings (CSV)</summary><form class="acct-form" data-dr-form="rank"><p class="muted small">Columns rank, player (optional pos, team), or one player per line in order. Players are matched by name; anything ambiguous is listed, never guessed. Uploading turns Custom ranks on.</p>' +
         '<label>Source<input name="source" value="Commissioner upload" required></label><label>CSV<textarea name="csv" rows="5"></textarea></label><input type="file" accept=".csv,text/csv" data-dr="csvfile">' +
@@ -282,9 +340,17 @@
   }
   function manualOrderHtml(round) {
     var cur = st.orders[round] || st.d.teams;
-    return '<form class="dr-manual" data-dr-form="order" data-round="' + round + '"><ol>' + cur.map(function (t, i) {
-      return '<li><select name="t' + i + '" aria-label="Pick ' + (i + 1) + '">' + st.d.teams.map(function (x) { return T().option(x, x === t); }).join("") + "</select></li>";
-    }).join("") + '</ol><button class="btn ghost" type="submit">Use this order</button></form>';
+    return '<form class="dr-manual" data-dr-form="order" data-round="' + round + '"><ol class="dr-ogrid" style="--rows:' + Math.ceil(cur.length / 3) + ";--rows2:" + Math.ceil(cur.length / 2) + '">' + cur.map(function (t, i) {
+      return '<li><label class="dr-onum" for="dro' + round + "-" + i + '">' + (i + 1) + '.</label><select id="dro' + round + "-" + i + '" name="t' + i + '" aria-label="Pick ' + (i + 1) + '">' + st.d.teams.map(function (x) { return T().option(x, x === t); }).join("") + "</select></li>";
+    }).join("") + '</ol><p class="acct-msg err" data-dr="dupmsg" hidden></p><button class="btn ghost" type="submit">Use this order</button></form>';
+  }
+  /** Red for teams picked twice; "Use this order" only once all are different. */
+  function checkOrderForm(form) {
+    var sels = [].slice.call(form.querySelectorAll("select")), dup = DL.duplicates(sels.map(function (x) { return x.value; }));
+    sels.forEach(function (x) { x.classList.toggle("dup", !!dup[x.value]); x.setAttribute("aria-invalid", dup[x.value] ? "true" : "false"); });
+    var n = Object.keys(dup).length, msg = form.querySelector('[data-dr="dupmsg"]');
+    form.querySelector('button[type="submit"]').disabled = n > 0;
+    if (msg) { msg.hidden = !n; msg.textContent = n ? Object.keys(dup).map(function (t) { return T().name(t); }).join(", ") + (n === 1 ? " is" : " are") + " in the order twice." : ""; }
   }
   function animHtml() {
     var a = st.anim; if (!a || Date.now() > a.until) return "";
@@ -309,8 +375,9 @@
     var last = st.sel.filter(function (x) { return x.player_id; }).slice(-5).reverse();
     return '<section class="dr-tv"><div class="dr-tv-top"><div class="dr-tv-now">' + (s ? '<div class="dr-tv-rp">Round ' + esc(s.round) + " · Pick " + esc(s.pick) + "</div><div class=\"dr-tv-team\">" + T().logo(s.owner) + T().link(s.owner, { logo: false }) + "</div>" : '<div class="dr-tv-rp">' + esc(st.d.name) + "</div>") +
       '<div class="dr-tv-clock" data-dr="clock">' + esc(clockText()) + "</div></div>" +
-      '<ol class="dr-tv-last">' + last.map(function (x) { var p = st.pmap[x.player_id] || { name: x.player_id, pos: "" }; return "<li>" + esc(x.round + "." + ("0" + x.pick).slice(-2)) + " " + T().logo(x.team_id) + " <b>" + esc(p.name) + "</b> " + posTag(p.pos) + " " + valueTag(x) + "</li>"; }).join("") + "</ol></div>" +
-      '<div data-dr="anim">' + animHtml() + "</div>" + boardHtml(v, true) + '<div class="dr-tv-chat" data-dr="chat"></div></section>';
+      '<ol class="dr-tv-last">' + last.map(function (x) { var p = st.pmap[x.player_id] || { name: x.player_id, pos: "" }; return "<li>" + esc(x.round + "." + ("0" + x.pick).slice(-2)) + " " + T().logo(x.team_id) + " <b>" + esc(p.name) + "</b> " + posTag(p.pos) + " " + valueTag(x) + "</li>"; }).join("") + "</ol>" +
+      '<div class="dr-tv-chat" data-dr="chat"></div></div>' +
+      '<div data-dr="anim">' + animHtml() + "</div>" + boardHtml(v, true) + "</section>";
   }
   function lobbyHtml(list) {
     var real = list.filter(function (d) { return d.kind === "real"; }), mocks = list.filter(function (d) { return d.kind === "mock"; });
@@ -326,7 +393,7 @@
     return '<section class="dr-lobby"><h2>Draft Room</h2>' + (st.msg ? '<p class="acct-msg ' + (st.msg.err ? "err" : "ok") + '">' + esc(st.msg.err || st.msg.ok) + "</p>" : "") +
       "<h3>The " + esc(season) + " draft</h3>" + (real.length ? '<ul class="dr-dlist">' + real.map(row).join("") + "</ul>" : '<p class="muted">Not set up yet.</p>' +
         (isCommish() ? '<button type="button" class="btn" data-dr-new="real">Set up the ' + esc(season) + " draft</button>" : "")) +
-      "<h3>Practice drafts</h3><p class=\"muted small\">Try the room before the real draft: humans pick for their own teams, bots draft the empty seats. Practice drafts never touch rosters.</p>" +
+      "<h3>Practice drafts</h3><p class=\"muted small\">Try the room before the real draft: humans pick for their own teams, bots draft the empty seats. Practice drafts never touch rosters.</p>" + videoHtml() +
       (mocks.length ? '<ul class="dr-dlist">' + mocks.map(row).join("") + "</ul>" : '<p class="muted">None yet.</p>') +
       (isCommish() ? '<details class="card"><summary>New practice draft</summary>' + newMockForm() + "</details>" : "") + "</section>";
   }
@@ -365,13 +432,36 @@
     if (!st.d) { st.el.innerHTML = '<div class="card muted">That draft doesn\'t exist (or was deleted). <a href="#draft">All drafts</a></div>'; return; }
     var y = root.scrollY, focus = root.document.activeElement, fs = focus && focus.dataset && focus.dataset.dr === "search" ? focus.selectionStart : null;
     var chatEl = st.el.querySelector('[data-dr="chat"]'), chatKeep = chatEl && chatEl.firstChild ? chatEl : null;
+    // a half-entered round order survives a refresh (Realtime, the clock)
+    var kept = {}; if (!st.dropKept) st.el.querySelectorAll('form[data-dr-form="order"] select').forEach(function (x) { var d = x.querySelector('option[selected]'); if (d && x.value !== d.value) kept[x.id] = x.value; });
+    st.dropKept = false;
     st.el.innerHTML = st.tv ? tvHtml() : roomHtml();
+    Object.keys(kept).forEach(function (id) { var x = root.document.getElementById(id); if (x) x.value = kept[id]; });
     var slotEl = st.el.querySelector('[data-dr="chat"]');
     if (chatKeep && slotEl) slotEl.parentNode.replaceChild(chatKeep, slotEl);   // the chat panel keeps its state
     else if (slotEl && root.B5Chat) root.B5Chat.mount(slotEl, st.tv ? { room: "draft", tv: true } : { room: "draft", panel: true });
     if (fs != null) { var s = st.el.querySelector('[data-dr="search"]'); if (s) { s.focus(); s.setSelectionRange(fs, fs); } }
     if (root.scrollTo) root.scrollTo(0, y);
+    st.el.querySelectorAll('form[data-dr-form="order"]').forEach(checkOrderForm);
+    setViewportWidth();
+    keepRoundInView();
     st.msg = null;
+  }
+  // The board breaks out of the page's max width: --dr-vw = the real viewport width (no scrollbar).
+  function setViewportWidth() {
+    var de = root.document && root.document.documentElement;
+    if (de && de.clientWidth) de.style.setProperty("--dr-vw", de.clientWidth + "px");
+  }
+  // When the rounds don't all fit, scroll the board (not the page) so the current pick's round is in view.
+  function keepRoundInView() {
+    var wrap = st.el && st.el.querySelector('[data-dr="board"]'), v = st.d && st.d.current_overall;
+    if (!wrap || !v || st.scrolledCur === v || wrap.scrollHeight <= wrap.clientHeight + 2) return;
+    var cell = wrap.querySelector('[data-dr-cell="' + v + '"]');
+    if (!cell) return;
+    st.scrolledCur = v;
+    // one round above the current one stays visible, under the sticky header
+    var head = wrap.querySelector("thead"), top = cell.getBoundingClientRect().top - wrap.getBoundingClientRect().top + wrap.scrollTop - (head ? head.offsetHeight : 0) - cell.offsetHeight;
+    wrap.scrollTop = Math.max(0, top);
   }
   function paintClock() {
     if (!st.el || !st.d) return;
@@ -419,8 +509,13 @@
     if (el.dataset.drBound) return;
     el.dataset.drBound = "1";
     el.addEventListener("click", function (e) {
-      var t = e.target.closest("button, a"); if (!t) return;
+      var t = e.target.closest("button, a");
+      if (st.tip && (!t || !t.dataset.drTip) && !e.target.closest(".dr-tip")) { st.tip = null; render(); if (!t) return; }
+      if (!t) return;
       var ds = t.dataset;
+      if (ds.drTip) { st.tip = st.tip === ds.drTip ? null : ds.drTip; render(); return; }
+      if (ds.drBtab) { st.btab = ds.drBtab; render(); return; }
+      if (ds.drBround) { st.bround = Number(ds.drBround); render(); return; }
       if (ds.drTab) { st.tab = ds.drTab; render(); return; }
       if (ds.drPos != null) { st.pos = ds.drPos; st.shown = 150; render(); return; }
       if (ds.dr === "more") { st.shown += 150; render(); return; }
@@ -458,14 +553,20 @@
       } else if (c.indexOf("draw:") === 0) {
         var r = Number(c.slice(5));
         if (st.orders[r] && !root.confirm("Redo round " + r + "'s order? The new draw is logged.")) return;
+        st.dropKept = true;
         act(rpc("draft_set_order", { p_draft: did, p_round: r, p_teams: null }));
       }
     });
+    el.addEventListener("toggle", function (e) {
+      if (e.target.dataset && e.target.dataset.dr === "guide") { try { root.localStorage.setItem(guideKey(), e.target.open ? "open" : "closed"); } catch (x) { /* private mode: just this visit */ } }
+    }, true);
     el.addEventListener("input", function (e) {
       if (e.target.dataset.dr === "search") { st.q = e.target.value; st.shown = 150; render(); }
     });
     el.addEventListener("change", function (e) {
       if (e.target.dataset.dr === "drafted") { st.showDrafted = e.target.checked; render(); }
+      if (e.target.dataset.dr === "bteam") { st.bteam = e.target.value; render(); }
+      if (e.target.form && e.target.form.dataset.drForm === "order") checkOrderForm(e.target.form);
       if (e.target.dataset.dr === "ranks") { st.sortSet = false; act(rpc("draft_settings", { p_draft: st.id, p_settings: { ranks: e.target.checked ? "custom" : "adp" } }), e.target.checked ? "Custom ranks on." : "Back to ADP."); }
       if (e.target.dataset.dr === "csvfile" && e.target.files && e.target.files[0]) {
         var ta = e.target.form.querySelector("textarea"); e.target.files[0].text().then(function (x) { ta.value = x; });
@@ -475,10 +576,28 @@
       var form = e.target.closest("[data-dr-form]"); if (!form) return;
       e.preventDefault();
       var fd = new FormData(form), k = form.dataset.drForm;
-      if (k === "order") {
+      if (k === "video") {
+        var u = String(fd.get("url") || "").trim();
+        if (u && !SCRIBE.test(u)) { st.msg = { err: "Use a Scribe embed link (https://scribehow.com/embed/...)." }; return startLobby(); }
+        api("rpc/set_practice_video", { method: "POST", body: JSON.stringify({ p_url: u || null }) }).then(function (r) {
+          st.msg = r && r.ok === false ? { err: friendly(r.error) } : { ok: u ? "Video guide saved." : "Video guide hidden." };
+          return startLobby();
+        });
+        return;
+      }
+      if (k === "bnames") {
+        var names = st.d.teams.map(function (t) { return { id: t, b: String(fd.get("bn" + t) || "").trim() }; });
+        var bad = names.filter(function (x) { return !x.b || x.b.length > 12; })[0];
+        if (bad) { st.msg = { err: "Each board name needs 1 to 12 characters." }; render(); return; }
+        var changed = names.filter(function (x) { return x.b !== T().boardName(x.id); });
+        act(Promise.all(changed.map(function (x) { return api("teams?id=eq." + encodeURIComponent(x.id), { method: "PATCH", body: JSON.stringify({ board_name: x.b }), headers: { Prefer: "return=minimal" } }); }))
+          .then(function (rs) { var f = rs.filter(function (r) { return !r.ok; })[0]; return f || { ok: true }; }), changed.length ? "Board names saved." : "Nothing changed.")
+          .then(function () { return loadStatic().then(render); });
+      } else if (k === "order") {
         var teams = []; for (var i = 0; i < st.d.teams.length; i++) teams.push(fd.get("t" + i));
         var bad = DL.validateOrder(teams, st.d.teams);
         if (bad) { st.msg = { err: bad }; render(); return; }
+        st.dropKept = true;
         act(rpc("draft_set_order", { p_draft: st.id, p_round: Number(form.dataset.round), p_teams: teams }), "Round " + form.dataset.round + " order set.");
       } else if (k === "edit") {
         var p = playerFromLabel(fd.get("player"));
@@ -523,7 +642,27 @@
     st.el = null;
   }
   function startLobby() {
-    return api("drafts?select=*&order=kind.desc,created_at.desc").then(function (r) { if (st.el && !st.id) st.el.innerHTML = lobbyHtml(ok(r)); });
+    return Promise.all([api("drafts?select=*&order=kind.desc,created_at.desc"), canGuide() ? api("league_settings?select=practice_video_url") : null]).then(function (r) {
+      if (r[1]) st.videoUrl = (ok(r[1])[0] || {}).practice_video_url || null;
+      if (st.el && !st.id) st.el.innerHTML = lobbyHtml(ok(r[0]));
+    });
+  }
+  // ---- Video guide: "How to create a practice draft" (commissioners and administrators) --------
+  // The URL is a league setting (league_settings.practice_video_url; only Scribe embed links), so it can
+  // be swapped without a code change. Open the first time; open/closed remembered per user (this browser).
+  var isAdmin = function () { return !!(st.me && st.me.profile && st.me.profile.is_admin); };
+  var canGuide = function () { return isCommish() || isAdmin(); };
+  var SCRIBE = /^https:\/\/scribehow\.com\/embed\/[A-Za-z0-9_.%-]+(\?[A-Za-z0-9_.%=&-]*)?$/;
+  function guideKey() { return "b5-draft-guide:" + (st.me && st.me.session && st.me.session.user ? st.me.session.user.id : "?"); }
+  function guideOpen() { try { return root.localStorage.getItem(guideKey()) !== "closed"; } catch (e) { return true; } }
+  function videoHtml() {
+    if (!canGuide()) return "";
+    var url = st.videoUrl && SCRIBE.test(st.videoUrl) ? st.videoUrl : null;
+    var change = '<details class="dr-vchange"><summary>Change the video</summary><form class="acct-form" data-dr-form="video"><label>Scribe embed link<input name="url" type="url" value="' + esc(url || "") + '" placeholder="https://scribehow.com/embed/..."></label>' +
+      '<p class="muted small">Only https://scribehow.com/embed/ links. Leave it empty to hide the guide.</p><button class="btn" type="submit">Save</button></form></details>';
+    if (!url) return '<div class="card dr-video"><p class="muted">No video guide set.</p>' + change + "</div>";
+    return '<details class="card dr-video" data-dr="guide"' + (guideOpen() ? " open" : "") + '><summary>▶ How to create a practice draft (video)</summary>' +
+      '<div class="dr-vframe"><iframe src="' + esc(url) + '" title="How to create a new practice draft on B5 Football" loading="lazy" allow="fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>' + change + "</details>";
   }
   function start(el, r) {
     stop();
@@ -532,6 +671,7 @@
     if (!(cfg && cfg.configured && A && DL)) { el.innerHTML = '<div class="card">Not set up yet.</div>'; return; }
     el.innerHTML = '<p class="muted">Loading…</p>';
     bind(el);
+    if (root.addEventListener && !st.rz) { st.rz = true; root.addEventListener("resize", setViewportWidth); }
     var who = root.B5Account ? root.B5Account.load().catch(function () { return null; }) : Promise.resolve(null);
     who.then(function (me) {
       st.me = me;
@@ -552,5 +692,5 @@
     });
   }
 
-  root.B5Draft = { start: start, stop: stop, technical: technical, errorText: errorText, view: view, poolRows: poolRows, rankCtx: rankCtx, valueTag: valueTag, myPicks: myPicks, byeWeeks: byeWeeks, pickedByText: pickedByText };
+  root.B5Draft = { start: start, stop: stop, technical: technical, errorText: errorText, videoHtml: videoHtml, SCRIBE: SCRIBE, view: view, poolRows: poolRows, rankCtx: rankCtx, valueTag: valueTag, lastName: lastName, myPicks: myPicks, byeWeeks: byeWeeks, pickedByText: pickedByText };
 })(typeof globalThis !== "undefined" ? globalThis : this);

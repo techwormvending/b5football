@@ -69,3 +69,20 @@ test("lint: every team name on every page goes through TeamLink", () => {
   assert.deepEqual(problems, [], "\n" + problems.join("\n"));
   assert.ok(exceptions.length <= 6, "keep the exceptions few:\n" + exceptions.join("\n"));
 });
+
+test("board names: the commissioner's short name, else the name without 'The' (its last word when long); full name stays in B5Team.name", async () => {
+  const ctx: Record<string, any> = {}; // eslint-disable-line @typescript-eslint/no-explicit-any
+  ctx.globalThis = ctx;
+  ctx.LEAGUE = { teams: [{ id: "0005", name: "The Mighty Mullets" }, { id: "0004", name: "Narcoleptic Dogs" }, { id: "0001", name: "NSFW" }] };
+  const vm = await import("node:vm");
+  vm.runInNewContext(fs.readFileSync(path.resolve(import.meta.dirname, "../../teamlink.js"), "utf8"), ctx);
+  const T = ctx.B5Team;
+  assert.equal(T.boardName("0001"), "NSFW");
+  assert.equal(T.boardName("0004"), "Dogs", "over 12 characters: the last word");
+  T.setBoardNames({ "0005": "Mullets", "0004": "Narco Dogs" });
+  assert.equal(T.boardName("0005"), "Mullets");
+  assert.equal(T.name("0005"), "The Mighty Mullets");
+  assert.match(T.boardLabel("0004"), /<span class="tl-board">Narco Dogs<\/span>/);
+  T.setBoardNames({ "0005": "<b>x</b>" });
+  assert.match(T.boardLabel("0005"), /&lt;b&gt;x&lt;\/b&gt;/, "escaped");
+});

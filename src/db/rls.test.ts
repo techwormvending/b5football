@@ -3079,6 +3079,33 @@ describe("draft ADP (2026-11-02)", () => {
   });
 });
 
+describe("draft board names and the practice-draft video guide (2026-11-02)", () => {
+  const call = (who: Who, sql: string) => rowsT(db, who, sql).then(r => r[0]);
+  test("board names: public, at most 12 characters, the commissioner edits them (audited)", async () => {
+    await db.exec(`update public.teams set board_name = null where id = '0001'`);
+    await as(db, user(COMMISH), tx => tx.query(`update public.teams set board_name = 'Nutcrackers' where id = '0001'`));
+    assert.equal((await rowsT(db, anon, `select board_name from public.teams where id = '0001'`))[0]!.board_name, "Nutcrackers");
+    await assert.rejects(as(db, user(COMMISH), tx => tx.query(`update public.teams set board_name = 'A name far too long' where id = '0001'`)), /check constraint/);
+    await as(db, user(ALICE), tx => tx.query(`update public.teams set board_name = 'Hacked' where id = '0001'`));
+    assert.equal((await rowsT(db, anon, `select board_name from public.teams where id = '0001'`))[0]!.board_name, "Nutcrackers", "a manager can't");
+    const a = await rowsT(db, service, `select actor, details from public.audit_log where action = 'draft:board_name'`);
+    assert.deepEqual([a.length, a[0]!.actor, a[0]!.details.new], [1, COMMISH, "Nutcrackers"]);
+  });
+  test("video guide URL: a league setting anyone reads; administrators or commissioners change it, Scribe embeds only, audited", async () => {
+    const url = (await rowsT(db, anon, `select practice_video_url as u from public.league_settings`))[0]!.u;
+    assert.match(url, /^https:\/\/scribehow\.com\/embed\/How_to_Create_a_New_Practice_Draft_on_B5_Football__iD_l2TKMREOYcfUsx13N8w\?as=video$/);
+    await call(user(COMMISH), `select public.set_practice_video('https://scribehow.com/embed/New_Guide__abc123?as=video')`);
+    assert.equal((await rowsT(db, anon, `select practice_video_url as u from public.league_settings`))[0]!.u, "https://scribehow.com/embed/New_Guide__abc123?as=video");
+    await assert.rejects(call(user(COMMISH), `select public.set_practice_video('https://evil.example/embed/x')`), /Scribe embed link/);
+    await assert.rejects(call(user(COMMISH), `select public.set_practice_video('https://scribehow.com/embed/x"onload="y')`), /Scribe embed link/);
+    await assert.rejects(call(user(ALICE), `select public.set_practice_video('https://scribehow.com/embed/x')`), /Only an administrator or commissioner/);
+    await denied(db, anon, `select public.set_practice_video(null)`, /permission denied/);
+    await call(user(COMMISH), `select public.set_practice_video(null)`);
+    assert.equal((await rowsT(db, anon, `select practice_video_url as u from public.league_settings`))[0]!.u, null, "empty hides the guide");
+    assert.equal((await rowsT(db, service, `select 1 from public.audit_log where action = 'settings:practice_video'`)).length, 2);
+  });
+});
+
 describe("draft isolation and scoped updates (2026-11-02)", () => {
   beforeEach(async () => {
     await db.exec(`insert into public.teams (id, name, division) values ('0003', 'Third', 'Gold');
