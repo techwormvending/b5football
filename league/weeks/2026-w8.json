@@ -1,10 +1,8 @@
 {
  "season": 2026,
  "week": 8,
- "status": "live",
- "missingGames": [
-  "CHI@SEA"
- ],
+ "status": "pending_review",
+ "missingGames": [],
  "diffLog": [
   {
    "at": "2026-10-30T15:55:35.898Z",
@@ -17,14 +15,20 @@
    "kind": "live_vs_final",
    "entries": [],
    "note": "no live numbers were recorded for ARI@DAL, ATL@TB, BAL@BUF, CLE@PIT, IND@JAX, KC@DEN, LAC@LAR, LV@NYJ, MIN@DET, NE@MIA, PHI@WAS, TEN@CIN"
+  },
+  {
+   "at": "2026-11-03T17:01:50.638Z",
+   "kind": "live_vs_final",
+   "entries": [],
+   "note": "no live numbers were recorded for CHI@SEA"
   }
  ],
- "updatedAt": "2026-11-03T03:39:13.695Z",
+ "updatedAt": "2026-11-03T17:01:50.638Z",
  "final": {
   "season": 2026,
   "week": 8,
   "source": "final",
-  "computedAt": "2026-11-03T03:39:13.695Z",
+  "computedAt": "2026-11-03T17:01:50.638Z",
   "delayed": false,
   "errors": [],
   "games": [
@@ -67,6 +71,16 @@
     "awayScore": 19,
     "status": "final",
     "gameDate": "2026-10-29"
+   },
+   {
+    "gameKey": "CHI@SEA",
+    "sourceGameId": "2026_08_CHI_SEA",
+    "home": "SEA",
+    "away": "CHI",
+    "homeScore": 17,
+    "awayScore": 34,
+    "status": "final",
+    "gameDate": "2026-11-02"
    },
    {
     "gameKey": "CLE@PIT",
@@ -1240,6 +1254,254 @@
     "points": 3,
     "stats": {
      "extraPoints": 3
+    }
+   },
+   "nflverse:00-0039165": {
+    "key": "nflverse:00-0039165",
+    "name": "Zach Charbonnet",
+    "position": "RB",
+    "team": "SEA",
+    "gameKey": "CHI@SEA",
+    "points": 3.5,
+    "stats": {
+     "rushYds": 23,
+     "recYds": 6,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0034869": {
+    "key": "nflverse:00-0034869",
+    "name": "Sam Darnold",
+    "position": "QB",
+    "team": "SEA",
+    "gameKey": "CHI@SEA",
+    "points": 20,
+    "stats": {
+     "passYds": 188,
+     "rushYds": 20,
+     "interceptionsThrown": 1,
+     "passTdLengths": [
+      43,
+      7
+     ],
+     "twoPtPasses": 1
+    }
+   },
+   "nflverse:00-0038543": {
+    "key": "nflverse:00-0038543",
+    "name": "Jaxon Smith-Njigba",
+    "position": "WR",
+    "team": "SEA",
+    "gameKey": "CHI@SEA",
+    "points": 17,
+    "stats": {
+     "recYds": 118,
+     "receptions": 6,
+     "recTdLengths": [
+      43
+     ]
+    }
+   },
+   "nflverse:00-0040648": {
+    "key": "nflverse:00-0040648",
+    "name": "Tory Horton",
+    "position": "WR",
+    "team": "SEA",
+    "gameKey": "CHI@SEA",
+    "points": 4.5,
+    "stats": {
+     "recYds": 26,
+     "receptions": 3,
+     "twoPtReceptions": 1
+    }
+   },
+   "nflverse:00-0036275": {
+    "key": "nflverse:00-0036275",
+    "name": "D'Andre Swift",
+    "position": "RB",
+    "team": "CHI",
+    "gameKey": "CHI@SEA",
+    "points": 25,
+    "stats": {
+     "rushYds": 69,
+     "recYds": 10,
+     "receptions": 2,
+     "rushTdLengths": [
+      1,
+      5,
+      5
+     ]
+    }
+   },
+   "nflverse:00-0039918": {
+    "key": "nflverse:00-0039918",
+    "name": "Caleb Williams",
+    "position": "QB",
+    "team": "CHI",
+    "gameKey": "CHI@SEA",
+    "points": 11,
+    "stats": {
+     "passYds": 247,
+     "rushYds": 1,
+     "passTdLengths": [
+      1
+     ]
+    }
+   },
+   "nflverse:00-0040126": {
+    "key": "nflverse:00-0040126",
+    "name": "Colston Loveland",
+    "position": "TE",
+    "team": "CHI",
+    "gameKey": "CHI@SEA",
+    "points": 11,
+    "stats": {
+     "recYds": 65,
+     "receptions": 7
+    }
+   },
+   "nflverse:00-0040735": {
+    "key": "nflverse:00-0040735",
+    "name": "Luther Burden III",
+    "position": "WR",
+    "team": "CHI",
+    "gameKey": "CHI@SEA",
+    "points": 11.5,
+    "stats": {
+     "recYds": 56,
+     "receptions": 7,
+     "recTdLengths": [
+      1
+     ]
+    }
+   },
+   "nflverse:00-0039021": {
+    "key": "nflverse:00-0039021",
+    "name": "Roschon Johnson",
+    "position": "RB",
+    "team": "CHI",
+    "gameKey": "CHI@SEA",
+    "points": 2.5,
+    "stats": {
+     "rushYds": 17,
+     "recYds": 11,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0032464": {
+    "key": "nflverse:00-0032464",
+    "name": "Kalif Raymond",
+    "position": "WR",
+    "team": "CHI",
+    "gameKey": "CHI@SEA",
+    "points": 3,
+    "stats": {
+     "rushYds": 39,
+     "recYds": 14,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0041512": {
+    "key": "nflverse:00-0041512",
+    "name": "Jadarian Price",
+    "position": "RB",
+    "team": "SEA",
+    "gameKey": "CHI@SEA",
+    "points": 3,
+    "stats": {
+     "rushYds": 29,
+     "recYds": 8,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0039299": {
+    "key": "nflverse:00-0039299",
+    "name": "George Holani",
+    "position": "RB",
+    "team": "SEA",
+    "gameKey": "CHI@SEA",
+    "points": 0,
+    "stats": {
+     "rushYds": 9
+    }
+   },
+   "nflverse:00-0041051": {
+    "key": "nflverse:00-0041051",
+    "name": "Zavion Thomas",
+    "position": "WR",
+    "team": "CHI",
+    "gameKey": "CHI@SEA",
+    "points": 0.5,
+    "stats": {
+     "recYds": 4,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0039793": {
+    "key": "nflverse:00-0039793",
+    "name": "AJ Barner",
+    "position": "TE",
+    "team": "SEA",
+    "gameKey": "CHI@SEA",
+    "points": 3,
+    "stats": {
+     "recYds": 23,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0039919": {
+    "key": "nflverse:00-0039919",
+    "name": "Rome Odunze",
+    "position": "WR",
+    "team": "CHI",
+    "gameKey": "CHI@SEA",
+    "points": 6,
+    "stats": {
+     "recYds": 87,
+     "receptions": 4
+    }
+   },
+   "nflverse:00-0033908": {
+    "key": "nflverse:00-0033908",
+    "name": "Cooper Kupp",
+    "position": "WR",
+    "team": "SEA",
+    "gameKey": "CHI@SEA",
+    "points": 6.5,
+    "stats": {
+     "recYds": 7,
+     "receptions": 1,
+     "recTdLengths": [
+      7
+     ]
+    }
+   },
+   "nflverse:00-0031203": {
+    "key": "nflverse:00-0031203",
+    "name": "Cairo Santos",
+    "position": "K",
+    "team": "CHI",
+    "gameKey": "CHI@SEA",
+    "points": 12.2,
+    "stats": {
+     "extraPoints": 4,
+     "fgMadeLengths": [
+      44,
+      38
+     ]
+    }
+   },
+   "nflverse:00-0031492": {
+    "key": "nflverse:00-0031492",
+    "name": "Jason Myers",
+    "position": "K",
+    "team": "SEA",
+    "gameKey": "CHI@SEA",
+    "points": 3,
+    "stats": {
+     "fgMadeLengths": [
+      27
+     ]
     }
    },
    "nflverse:00-0040784": {
@@ -3816,6 +4078,33 @@
      "rushYdsAllowed": 66,
      "interceptions": 1,
      "fumbleRecoveries": 2
+    }
+   },
+   "SEA": {
+    "team": "SEA",
+    "gameKey": "CHI@SEA",
+    "points": 3,
+    "stats": {
+     "opponentPoints": 34,
+     "offensiveTdsAllowed": 4,
+     "passYdsAllowed": 237,
+     "rushYdsAllowed": 126,
+     "sacks": 1,
+     "fumbleRecoveries": 1
+    }
+   },
+   "CHI": {
+    "team": "CHI",
+    "gameKey": "CHI@SEA",
+    "points": 15,
+    "stats": {
+     "opponentPoints": 17,
+     "offensiveTdsAllowed": 2,
+     "passYdsAllowed": 171,
+     "rushYdsAllowed": 81,
+     "sacks": 3,
+     "interceptions": 1,
+     "blockedFgs": 1
     }
    },
    "PIT": {
