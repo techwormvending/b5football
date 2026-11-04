@@ -45,6 +45,18 @@
     var original = order[p.pick - 1], owner = ownerOf(owners, p.round, original);
     return { overall: overall, round: p.round, pick: p.pick, original: original, owner: owner, traded: owner !== original };
   }
+  /** The By Pick board: one row per round, columns = picks 1..n of the round. A cell = the slot (the team that
+      owns the pick NOW, its original team, the overall pick number), or null while that round's order isn't set
+      ("Order TBD"). Odd rounds follow their own draw; even rounds the reverse of the round above. */
+  function pickGrid(teams, rounds, orders, owners) {
+    var n = teams.length, out = [];
+    for (var r = 1; r <= rounds; r++) {
+      var cells = [];
+      for (var p = 1; p <= n; p++) cells.push(slot((r - 1) * n + p, teams, orders, owners));
+      out.push({ round: r, known: !!roundOrder(orders, r), cells: cells });
+    }
+    return out;
+  }
   /** Every slot whose order is known, in pick order. */
   function board(teams, rounds, orders, owners) {
     var out = [];
@@ -175,6 +187,6 @@
   }
 
   root.B5DraftLogic = { roundOrder: roundOrder, missingOrders: missingOrders, validateOrder: validateOrder, position: position, ownerOf: ownerOf,
-    slot: slot, board: board, currentOverall: currentOverall, picksAway: picksAway, autoPick: autoPick, clock: clock, secondsLeft: secondsLeft, parseRankings: parseRankings,
+    slot: slot, board: board, pickGrid: pickGrid, currentOverall: currentOverall, picksAway: picksAway, autoPick: autoPick, clock: clock, secondsLeft: secondsLeft, parseRankings: parseRankings,
     duplicates: duplicates, byRanking: byRanking, sortPool: sortPool, bestAvailable: bestAvailable, value: value, adpMap: adpMap, adpSeason: adpSeason };
 })(typeof globalThis !== "undefined" ? globalThis : this);

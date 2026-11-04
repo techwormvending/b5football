@@ -3055,6 +3055,14 @@ describe("draft ADP (2026-11-02)", () => {
     assert.ok(!/:(K|D)[0-9]$/.test(p[5]!), "no second K for the first team");
   });
 
+  test("TV board view: By Team by default; the commissioner sets By Pick (team or pick only); managers can't", async () => {
+    const id = await mock();
+    assert.equal((await rowsT(db, service, `select tv_view from public.drafts where id = ${id}`))[0]!.tv_view, "team");
+    await call(user(COMMISH), `select public.draft_settings(${id}, '{"tv_view": "pick"}'::jsonb)`);
+    assert.equal((await rowsT(db, user(ALICE), `select tv_view from public.drafts where id = ${id}`))[0]!.tv_view, "pick", "members read it (the TV page)");
+    await assert.rejects(call(user(COMMISH), `select public.draft_settings(${id}, '{"tv_view": "grid"}'::jsonb)`), /team or pick/);
+    await assert.rejects(call(user(ALICE), `select public.draft_settings(${id}, '{"tv_view": "team"}'::jsonb)`), /commissioner/);
+  });
   test("each pick keeps its ADP; Reach / Steal in the B5 Bot post; custom ranks override ADP", async () => {
     await adp(S, "mfl", [["P01", 30], ["P02", 1], ["P03", 2]]);
     const id = await mock();

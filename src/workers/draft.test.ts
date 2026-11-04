@@ -180,3 +180,22 @@ test("board layout helpers: last names, duplicate teams in a round order, Scribe
   for (const bad of ["http://scribehow.com/embed/x", "https://scribehow.com.evil.com/embed/x", "https://evil.com/?https://scribehow.com/embed/x", "https://scribehow.com/embed/x\"onload=\"x", "javascript:alert(1)"])
     assert.ok(!P.SCRIBE.test(bad), bad);
 });
+
+test("By Pick board: each round's teams in that round's order (odd drawn, even reversed), TBD until drawn, traded picks by owner", () => {
+  const teams = ["A", "B", "C", "D"];
+  const g = plain(D.pickGrid(teams, 4, { 1: ["C", "A", "D", "B"], 3: ["B", "D", "A", "C"] }, { "2:A": "D" }));
+  const row = (r: number) => g[r - 1].cells.map((c: { owner: string; original: string; traded: boolean; overall: number } | null) => c ? c.owner + (c.traded ? "<" + c.original : "") + "#" + c.overall : "TBD");
+  assert.deepEqual(row(1), ["C#1", "A#2", "D#3", "B#4"], "round 1: the draw");
+  assert.deepEqual(row(2), ["B#5", "D#6", "D<A#7", "C#8"], "round 2: reversed; A's pick now owned by D (via A)");
+  assert.deepEqual(row(3), ["B#9", "D#10", "A#11", "C#12"], "round 3: its own draw");
+  assert.deepEqual(row(4), ["C#13", "A#14", "D#15", "B#16"], "round 4: reverse of round 3");
+  const tbd = plain(D.pickGrid(teams, 4, { 1: ["C", "A", "D", "B"] }, {}));
+  assert.deepEqual([tbd[2].known, tbd[2].cells.every((c: unknown) => c === null), tbd[3].known], [false, true, false], "rounds 3-4 are Order TBD until drawn");
+});
+
+test("board view: By Team by default; the viewer's choice in the room; the commissioner's TV setting on the big screen", () => {
+  assert.equal(P.viewFor(false, { tv_view: "pick" }, null), "team", "default By Team");
+  assert.equal(P.viewFor(false, { tv_view: "team" }, "pick"), "pick", "the viewer's own choice");
+  assert.equal(P.viewFor(true, { tv_view: "pick" }, "team"), "pick", "the TV follows the commissioner, not the viewer");
+  assert.equal(P.viewFor(true, {}, "pick"), "team");
+});

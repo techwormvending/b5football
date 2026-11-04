@@ -15,7 +15,7 @@
   var POS = ["QB", "RB", "WR", "TE", "K", "DEF"];
   var ROSTER_MAX = 18;
 
-  var st = { el: null, id: null, tv: false, me: null, d: null, orders: {}, orderRows: {}, sel: [], owners: {}, players: [], pmap: {}, rank: {}, rankInfo: null, adp: {}, adpInfo: [], adpSeason: null, sort: { by: "adp", dir: 1 }, sortSet: false, tip: null, focus: null, sheet: "peek", unread: 0, latest: null, chatW: null, popped: null, takeover: null, sound: false, popout: false, btab: "round", bround: null, bteam: null, scrolledCur: null,
+  var st = { el: null, id: null, tv: false, me: null, d: null, orders: {}, orderRows: {}, sel: [], owners: {}, players: [], pmap: {}, rank: {}, rankInfo: null, adp: {}, adpInfo: [], adpSeason: null, sort: { by: "adp", dir: 1 }, sortSet: false, tip: null, boardView: "team", focus: null, sheet: "peek", unread: 0, latest: null, chatW: null, popped: null, takeover: null, sound: false, popout: false, btab: "round", bround: null, bteam: null, scrolledCur: null,
     queue: [], byes: {}, tab: "players", q: "", pos: "", showDrafted: false, offset: 0, ticked: {}, sub: null, timer: null, msg: null, shown: 150, anim: null, seenOrders: {}, loading: false };
   var session = function () { return st.me && st.me.session; };
   var api = function (path, init) { return A.api(cfg, session(), path, init || {}, f); };
@@ -210,6 +210,44 @@
     var x = b.sel, p = b.p, by = x ? pickedByText(x, st.names || {}) : "";
     return p ? p.name + ", " + p.pos + " " + (p.nfl || "") + (by ? " · " + by : "") + (x.adp != null ? " · ADP " + (Math.round(Number(x.adp) * 10) / 10) : "") : "";
   }
+  function cellTipHtml(b) {
+    var sl = b.slot, x = b.sel, p = b.p;
+    return '<div class="dr-tip" role="tooltip">' + (p ? "<b>" + esc(p.name) + "</b><br>" + esc(p.pos + " " + (p.nfl || "")) + (x.adp != null ? " · ADP " + esc(Math.round(Number(x.adp) * 10) / 10) : "") + "<br>" : "") +
+      T().link(sl.owner) + (sl.traded ? ' <span class="muted small">(via ' + esc(T().boardName(sl.original)) + ")</span>" : "") + (x && pickedByText(x, st.names || {}) ? '<br><span class="muted small">by ' + esc(pickedByText(x, st.names || {})) + "</span>" : "") + "</div>";
+  }
+  /** Which board: "team" (columns = teams) or "pick" (columns = picks 1-12 of the round). The big screen follows the
+      commissioner's TV setting (drafts.tv_view); everyone else their own choice (this browser). */
+  function viewFor(big) { return big ? (st.d && st.d.tv_view === "pick" ? "pick" : "team") : st.boardView === "pick" ? "pick" : "team"; }
+  function viewToggleHtml() {
+    var b = function (k, label) { return '<button type="button" class="' + (st.boardView === k ? "active" : "") + '" data-dr-view="' + k + '" aria-pressed="' + (st.boardView === k) + '">' + label + "</button>"; };
+    return '<div class="dr-viewtog" role="group" aria-label="Board view">' + b("team", "By Team") + b("pick", "By Pick") + "</div>";
+  }
+  /** "By Pick": columns = picks 1-12 of the round, rows = rounds; each cell names the team making that pick (the
+      owner now, "via" the original team), the overall number, and the player once picked. "Order TBD" until drawn. */
+  function boardPickHtml(v, big, span, running) {
+    var d = st.d, n = d.teams.length, mineT = myTeam(), byOverall = {};
+    boardSlots(v).forEach(function (b) { byOverall[b.slot.overall] = b; });
+    var grid = DL.pickGrid(d.teams, d.rounds, st.orders, st.owners);
+    var head = '<tr><th class="dr-rd" scope="col">' + (big ? "Rd" : "Round") + "</th>" + Array.from({ length: n }, function (_, i) { return '<th scope="col" class="dr-pickh">Pick ' + (i + 1) + "</th>"; }).join("") + "</tr>";
+    var rows = grid.filter(function (g) { return g.round >= span[0] && g.round <= span[1]; }).map(function (g) {
+      return '<tr data-dr-round="' + g.round + '"><th class="dr-rd" scope="row">' + (big ? "" : "Round ") + g.round + "</th>" + g.cells.map(function (c, i) {
+        if (!c) return '<td class="dr-cell empty tbd"><span class="dr-tbd">Order TBD</span></td>';
+        var b = byOverall[c.overall] || { slot: c, sel: null, p: null }, x = b.sel, p = b.p, open = st.tip === "c:" + c.overall;
+        var cls = "dr-cell" + (p ? " pos-band-" + esc(p.pos) : "") + (running && c.overall === v.cur ? " now" : "") + (x && x.skipped ? " skipped" : "") + (c.owner === mineT ? " dr-mine" : "");
+        var team = '<span class="dr-pt">' + T().logo(c.owner) + '<span class="dr-ptn">' + esc(T().boardName(c.owner)) + "</span></span>";
+        var via = c.traded ? '<span class="dr-via">via ' + esc(T().boardName(c.original)) + "</span>" : "";
+        var line1 = '<span class="dr-l1"><span class="dr-pk">' + pk(g.round, c.pick) + " #" + c.overall + "</span>" + (x ? valueTag(x).replace(/>(📈|💎) (Reach|Steal)</, ">$1<") : "") +
+          (big ? team : "") + (p && !big ? '<span class="dr-pp">' + esc(p.pos) + " " + esc(p.nfl || "") + "</span>" : "") + "</span>";
+        var line2 = p ? '<b class="dr-pn">' + esc(lastName(p)) + (big ? ' <span class="dr-pp2">' + esc(p.pos) + " " + esc(p.nfl || "") + "</span>" : "") + "</b>" : x && x.skipped ? '<span class="dr-pn muted">skipped</span>' :
+          running && c.overall === v.cur ? '<span class="dr-pn dr-onclock">On clock</span>' : '<span class="dr-pn"></span>';
+        return '<td class="' + cls + '" data-dr-cell="' + c.overall + '"><button type="button" class="dr-cellb" data-dr-tip="c:' + c.overall + '" title="' +
+          esc((tipText(b) ? tipText(b) + " · " : "") + T().name(c.owner) + (c.traded ? " (via " + T().name(c.original) + ")" : "") + " · Pick " + pk(g.round, c.pick) + ", #" + c.overall) + '" aria-expanded="' + open + '">' +
+          line1 + (big ? "" : team + via) + line2 + "</button>" + (open ? cellTipHtml(b) : "") + "</td>";
+      }).join("") + "</tr>";
+    }).join("");
+    var colgroup = '<colgroup><col class="dr-rdc">' + Array.from({ length: n }, function () { return "<col>"; }).join("") + "</colgroup>";
+    return '<div class="dr-board-wrap full' + (big ? " big" : "") + '" data-dr="board"><table class="dr-board by-pick">' + colgroup + "<thead>" + head + "</thead><tbody>" + rows + "</tbody></table></div>";
+  }
   /** The 12-column board: full browser width, equal columns, sticky header, scrolls down through the rounds. */
   function boardHtml(v, big) {
     var d = st.d, cols = st.orders[1] || d.teams, mineT = myTeam(), byCell = {}, running = /^(live|paused|awaiting_order)$/.test(d.status);
@@ -220,6 +258,7 @@
         (open ? '<div class="dr-tip" role="tooltip">' + T().link(t) + "</div>" : "") + "</th>";
     }).join("") + "</tr>";
     var rows = "", span = !big && st.focus === "chat" ? focusRounds(v.slot ? v.slot.round : DL.position(Math.min(v.total, (v.cur || v.total)), d.teams.length).round, d.rounds) : [1, d.rounds];
+    if (viewFor(big) === "pick") return (big ? "" : viewToggleHtml()) + boardPickHtml(v, big, span, running) + (big ? "" : boardSmallHtml(v));
     for (var r = span[0]; r <= span[1]; r++) {
       var order = DL.roundOrder(st.orders, r);
       rows += '<tr data-dr-round="' + r + '"><th class="dr-rd" scope="row">' + r + "</th>" + cols.map(function (orig) {
@@ -230,13 +269,12 @@
           (p ? '<span class="dr-pp">' + esc(p.pos) + " " + esc(p.nfl || "") + "</span>" : "") + "</span>";
         var line2 = p ? '<b class="dr-pn">' + esc(lastName(p)) + "</b>" : x && x.skipped ? '<span class="dr-pn muted">skipped</span>' :
           sl.traded ? '<span class="dr-pn dr-via">→ ' + esc(T().boardName(sl.owner)) + "</span>" : running && sl.overall === v.cur ? '<span class="dr-pn dr-onclock">On clock</span>' : '<span class="dr-pn"></span>';
-        var tip = open ? '<div class="dr-tip" role="tooltip">' + (p ? "<b>" + esc(p.name) + "</b><br>" + esc(p.pos + " " + (p.nfl || "")) + (x.adp != null ? " · ADP " + esc(Math.round(Number(x.adp) * 10) / 10) : "") + "<br>" : "") +
-          T().link(sl.owner) + (sl.traded ? ' <span class="muted small">(from ' + esc(T().boardName(sl.original)) + ")</span>" : "") + (x && pickedByText(x, st.names || {}) ? '<br><span class="muted small">by ' + esc(pickedByText(x, st.names || {})) + "</span>" : "") + "</div>" : "";
+        var tip = open ? cellTipHtml(b) : "";
         return '<td class="' + cls + '" data-dr-cell="' + sl.overall + '"><button type="button" class="dr-cellb" data-dr-tip="c:' + sl.overall + '" title="' + esc(tipText(b) || "Pick " + pk(r, sl.pick)) + '" aria-expanded="' + open + '">' + line1 + line2 + "</button>" + tip + "</td>";
       }).join("") + "</tr>";
     }
     var colgroup = '<colgroup><col class="dr-rdc">' + cols.map(function () { return "<col>"; }).join("") + "</colgroup>";
-    return '<div class="dr-board-wrap full' + (big ? " big" : "") + '" data-dr="board"><table class="dr-board">' + colgroup + "<thead>" + head + "</thead><tbody>" + rows + "</tbody></table></div>" +
+    return (big ? "" : viewToggleHtml()) + '<div class="dr-board-wrap full' + (big ? " big" : "") + '" data-dr="board"><table class="dr-board">' + colgroup + "<thead>" + head + "</thead><tbody>" + rows + "</tbody></table></div>" +
       (big ? "" : boardSmallHtml(v));
   }
   /** Under 900 px: By Round / By Team / My Team lists instead of 12 columns. */
@@ -334,6 +372,7 @@
     var picked = {}; st.sel.forEach(function (s) { picked[s.round] = true; });
     var redo = Object.keys(st.orders).map(Number).filter(function (r) { return !picked[r]; });
     return '<div class="card dr-commish"><div class="dr-cacts"><b class="dr-ctitle">Commissioner</b>' +
+      '<span class="dr-tvview" role="group" aria-label="TV view">TV view: ' + ["team", "pick"].map(function (k) { var on = (d.tv_view || "team") === k; return '<button type="button" class="btn ' + (on ? "" : "ghost") + '" data-dr-c="tv:' + k + '" aria-pressed="' + on + '">' + (k === "team" ? "By Team" : "By Pick") + "</button>"; }).join("") + "</span>" +
       (d.status === "setup" ? b("start", "Start the draft", "") : "") +
       (d.status === "live" ? b("pause", "Pause") + b("extend30", "+30 s") + b("extend60", "+1 min") : "") +
       (d.status === "paused" ? b("resume", "Resume", "") + b("extend60", "+1 min") : "") +
@@ -486,6 +525,8 @@
     if (!st.d) { st.el.innerHTML = '<div class="card muted">That draft doesn\'t exist (or was deleted). <a href="#draft">All drafts</a></div>'; return; }
     var y = root.scrollY, focus = root.document.activeElement, fs = focus && focus.dataset && focus.dataset.dr === "search" ? focus.selectionStart : null;
     var chatEl = st.el.querySelector('[data-dr="chat"]'), chatKeep = chatEl && chatEl.firstChild ? chatEl : null;
+    // moving the chat into the new page resets its scroll: remember where the reader was
+    var lg = chatKeep && chatKeep.querySelector(".ch-log"), lgTop = lg ? lg.scrollTop : 0, lgEnd = lg ? lg.scrollHeight - lg.scrollTop - lg.clientHeight < 40 : true;
     // a half-entered round order survives a refresh (Realtime, the clock)
     var kept = {}; if (!st.dropKept) st.el.querySelectorAll('form[data-dr-form="order"] select').forEach(function (x) { var d = x.querySelector('option[selected]'); if (d && x.value !== d.value) kept[x.id] = x.value; });
     st.dropKept = false;
@@ -496,7 +537,7 @@
     if (root.document) root.document.body.classList.toggle("dr-sheet-full", !st.tv && !st.popout && st.sheet === "full");
     Object.keys(kept).forEach(function (id) { var x = root.document.getElementById(id); if (x) x.value = kept[id]; });
     var slotEl = st.el.querySelector('[data-dr="chat"]');
-    if (chatKeep && slotEl) slotEl.parentNode.replaceChild(chatKeep, slotEl);   // the chat panel keeps its state
+    if (chatKeep && slotEl) { slotEl.parentNode.replaceChild(chatKeep, slotEl); if (lg) lg.scrollTop = lgEnd ? lg.scrollHeight : lgTop; }   // the chat panel keeps its state and place
     else if (slotEl && root.B5Chat) root.B5Chat.mount(slotEl, chatOpts());
     if (fs != null) { var s = st.el.querySelector('[data-dr="search"]'); if (s) { s.focus(); s.setSelectionRange(fs, fs); } }
     if (root.scrollTo) root.scrollTo(0, y);
@@ -645,6 +686,7 @@
       if (ds.drBtab) { st.btab = ds.drBtab; render(); return; }
       if (ds.drBround) { st.bround = Number(ds.drBround); render(); return; }
       if (ds.drTab) { st.tab = ds.drTab; render(); return; }
+      if (ds.drView) { st.boardView = ds.drView === "pick" ? "pick" : "team"; store("b5-draft-board-view", st.boardView); st.tip = null; render(); return; }
       if (ds.dr === "sheet") { if (!st.swiped || Date.now() - st.swiped > 500) setSheet(sheetAfter(st.sheet, null)); return; }
       if (ds.drDock) {
         var k2 = ds.drDock;
@@ -683,6 +725,7 @@
       if (c === "start") act(rpc("draft_control", { p_draft: did, p_action: "start" }));
       else if (c === "pause" || c === "resume") act(rpc("draft_control", { p_draft: did, p_action: c }));
       else if (c === "extend30" || c === "extend60") act(rpc("draft_control", { p_draft: did, p_action: "extend", p_seconds: c === "extend30" ? 30 : 60 }));
+      else if (c === "tv:team" || c === "tv:pick") act(rpc("draft_settings", { p_draft: did, p_settings: { tv_view: c.slice(3) } }), "The big screen shows the board " + (c === "tv:pick" ? "by pick." : "by team."));
       else if (c === "complete") { if (root.confirm(st.d.kind === "real" ? "Finalize the draft? The picks become the rosters." : "Finish the practice draft?")) act(rpc("draft_control", { p_draft: did, p_action: "complete" }), "Done."); }
       else if (c === "undo") {
         var n = Number(root.prompt("Undo how many of the last picks?", "1"));
@@ -806,7 +849,7 @@
   function start(el, r) {
     stop();
     st.el = el; st.id = r && r.draft ? Number(r.draft) : null; st.tv = !!(r && r.tv); st.popout = !!(r && r.popout); st.d = null;
-    st.chatW = clampChatWidth(store("b5-draft-chat-w") || CHAT_DEFAULT); st.sound = store("b5-draft-sound") === "on"; st.focus = null; st.sheet = "peek"; st.unread = 0;
+    st.chatW = clampChatWidth(store("b5-draft-chat-w") || CHAT_DEFAULT); st.sound = store("b5-draft-sound") === "on"; st.boardView = store("b5-draft-board-view") === "pick" ? "pick" : "team"; st.focus = null; st.sheet = "peek"; st.unread = 0;
     if (root.document) { root.document.body.classList.toggle("draft-room", !!st.id && !st.tv); root.document.body.classList.toggle("draft-popout", st.popout); } st.ticked = {}; st.seenOrders = {}; st.orderRows = {}; st.anim = null;
     if (root.document) root.document.body.classList.toggle("draft-tv", st.tv);
     if (!(cfg && cfg.configured && A && DL)) { el.innerHTML = '<div class="card">Not set up yet.</div>'; return; }
@@ -834,5 +877,5 @@
     });
   }
 
-  root.B5Draft = { start: start, stop: stop, clampChatWidth: clampChatWidth, focusRounds: focusRounds, sheetAfter: sheetAfter, lastPicks: lastPicks, technical: technical, errorText: errorText, videoHtml: videoHtml, SCRIBE: SCRIBE, view: view, poolRows: poolRows, rankCtx: rankCtx, valueTag: valueTag, lastName: lastName, myPicks: myPicks, byeWeeks: byeWeeks, pickedByText: pickedByText };
+  root.B5Draft = { start: start, stop: stop, viewFor: function (big, d, choice) { st.d = d; st.boardView = choice; return viewFor(big); }, clampChatWidth: clampChatWidth, focusRounds: focusRounds, sheetAfter: sheetAfter, lastPicks: lastPicks, technical: technical, errorText: errorText, videoHtml: videoHtml, SCRIBE: SCRIBE, view: view, poolRows: poolRows, rankCtx: rankCtx, valueTag: valueTag, lastName: lastName, myPicks: myPicks, byeWeeks: byeWeeks, pickedByText: pickedByText };
 })(typeof globalThis !== "undefined" ? globalThis : this);

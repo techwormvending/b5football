@@ -1155,3 +1155,28 @@ body.draft-room .foot { display: none; }
 @media (min-width: 1100px) { .dr-room .dr-head { padding: 10px 14px; } .dr-room .dr-clock { font-size: 46px; } }
 .dr-dock { padding-left: 4px; padding-right: 4px; }
 @media (max-width: 1099px) { .dr-docktools { display: flex; justify-content: flex-end; } .dr-docktools .dr-dt { min-width: 48px; } }
+
+/* Board views (2026-11-03): By Team (columns = teams) / By Pick (columns = picks 1-12 of the round) */
+.dr-viewtog { display: inline-flex; gap: 0; margin: 4px 0 8px; border: 2px solid var(--gold); border-radius: 10px; overflow: hidden; }
+.dr-viewtog button { min-height: 44px; min-width: 110px; padding: 0 16px; border: 0; background: transparent; color: var(--chalk); font: 600 16px var(--body); cursor: pointer; }
+.dr-viewtog button.active { background: var(--gold); color: var(--ink-deep); }
+.dr-viewtog button:focus-visible { outline: 3px solid #fff; outline-offset: -3px; }
+@media (max-width: 899px) { .dr-viewtog { display: none; } }
+.dr-board.by-pick col.dr-rdc { width: 4.4em; }
+.dr-board-wrap.big .dr-board.by-pick col.dr-rdc { width: 2.1em; }
+.dr-board.by-pick thead th.dr-pickh { padding: .45em .35em; font-weight: 700; text-align: center; white-space: nowrap; }
+.dr-board.by-pick th.dr-rd[scope=row] { white-space: nowrap; }
+.dr-pt { display: flex; align-items: center; gap: .25em; min-width: 0; white-space: nowrap; }
+.dr-pt .logo.sm { width: 1.25em; height: 1.25em; flex: none; }
+.dr-ptn { overflow: hidden; text-overflow: ellipsis; min-width: 0; font-weight: 600; }
+.dr-board.by-pick .dr-cellb .dr-pt { flex: 0 0 100%; order: 1; }
+.dr-board.by-pick .dr-cellb > .dr-via { flex: 0 0 100%; order: 1; color: var(--chalk-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dr-board-wrap.big .dr-board.by-pick .dr-l1 .dr-pt { flex: 0 1 auto; order: 0; margin-left: .2em; }
+.dr-cell.tbd { color: var(--chalk-dim); text-align: center; vertical-align: middle; background: repeating-linear-gradient(135deg, transparent 0 6px, rgba(255,255,255,.04) 6px 12px); }
+.dr-tbd { display: block; padding: .3em .2em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dr-tvview { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font-size: 15px; }
+.dr-tvview .btn { min-height: 40px; padding: 0 10px; }
+.dr-cellb { overflow: hidden; }
+.dr-board.by-pick .dr-pk { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 1 auto; }
+.dr-tv-chat .ch-draft { display: none; }
+.dr-pp2 { font-weight: 400; color: var(--chalk-dim); }
