@@ -1,7 +1,7 @@
 {
  "season": 2026,
  "week": 8,
- "status": "pending_review",
+ "status": "final",
  "missingGames": [],
  "diffLog": [
   {
@@ -23,12 +23,12 @@
    "note": "no live numbers were recorded for CHI@SEA"
   }
  ],
- "updatedAt": "2026-11-03T17:01:50.638Z",
+ "updatedAt": "2026-11-04T17:14:01.877Z",
  "final": {
   "season": 2026,
   "week": 8,
   "source": "final",
-  "computedAt": "2026-11-03T17:01:50.638Z",
+  "computedAt": "2026-11-04T17:14:01.877Z",
   "delayed": false,
   "errors": [],
   "games": [
@@ -4348,5 +4348,7 @@
   "unmatched": [],
   "warnings": []
  },
- "autoFinalizeAt": "2026-11-04T04:00:00.000Z"
+ "autoFinalizeAt": "2026-11-04T04:00:00.000Z",
+ "finalizedAt": "2026-11-04T17:14:01.877Z",
+ "finalizedBy": "auto"
 }
