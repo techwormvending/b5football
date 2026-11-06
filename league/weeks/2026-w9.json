@@ -1,0 +1,356 @@
+{
+ "season": 2026,
+ "week": 9,
+ "status": "live",
+ "missingGames": [
+  "ARI@SEA",
+  "BUF@MIN",
+  "CIN@ATL",
+  "CLE@NO",
+  "DAL@IND",
+  "DEN@CAR",
+  "DET@MIA",
+  "GB@NE",
+  "HOU@LAC",
+  "LAR@WAS",
+  "LV@SF",
+  "NYG@PHI",
+  "NYJ@KC",
+  "TB@CHI"
+ ],
+ "diffLog": [
+  {
+   "at": "2026-11-06T16:45:36.412Z",
+   "kind": "live_vs_final",
+   "entries": [],
+   "note": "no live numbers were recorded for JAX@BAL"
+  }
+ ],
+ "updatedAt": "2026-11-06T16:45:36.412Z",
+ "final": {
+  "season": 2026,
+  "week": 9,
+  "source": "final",
+  "computedAt": "2026-11-06T16:45:36.412Z",
+  "delayed": false,
+  "errors": [],
+  "games": [
+   {
+    "gameKey": "JAX@BAL",
+    "sourceGameId": "2026_09_JAX_BAL",
+    "home": "BAL",
+    "away": "JAX",
+    "homeScore": 10,
+    "awayScore": 33,
+    "status": "final",
+    "gameDate": "2026-11-05"
+   }
+  ],
+  "players": {
+   "nflverse:00-0036971": {
+    "key": "nflverse:00-0036971",
+    "name": "Trevor Lawrence",
+    "position": "QB",
+    "team": "JAX",
+    "gameKey": "JAX@BAL",
+    "points": 13,
+    "stats": {
+     "passYds": 242,
+     "rushYds": -1,
+     "passTdLengths": [
+      50
+     ]
+    }
+   },
+   "nflverse:00-0041084": {
+    "key": "nflverse:00-0041084",
+    "name": "Tanner Koziol",
+    "position": "TE",
+    "team": "JAX",
+    "gameKey": "JAX@BAL",
+    "points": 3,
+    "stats": {
+     "recYds": 15,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0041503": {
+    "key": "nflverse:00-0041503",
+    "name": "Nate Boerkircher",
+    "position": "TE",
+    "team": "JAX",
+    "gameKey": "JAX@BAL",
+    "points": 6,
+    "stats": {
+     "recYds": 61,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0040719": {
+    "key": "nflverse:00-0040719",
+    "name": "Bhayshul Tuten",
+    "position": "RB",
+    "team": "JAX",
+    "gameKey": "JAX@BAL",
+    "points": 8,
+    "stats": {
+     "rushYds": 29,
+     "rushTdLengths": [
+      1
+     ]
+    }
+   },
+   "nflverse:00-0034960": {
+    "key": "nflverse:00-0034960",
+    "name": "Jakobi Meyers",
+    "position": "WR",
+    "team": "JAX",
+    "gameKey": "JAX@BAL",
+    "points": 4,
+    "stats": {
+     "recYds": 65,
+     "receptions": 4
+    }
+   },
+   "nflverse:00-0038611": {
+    "key": "nflverse:00-0038611",
+    "name": "Chris Rodriguez Jr.",
+    "position": "RB",
+    "team": "JAX",
+    "gameKey": "JAX@BAL",
+    "points": 9,
+    "stats": {
+     "rushYds": 19,
+     "recYds": 13,
+     "receptions": 2,
+     "rushTdLengths": [
+      2
+     ]
+    }
+   },
+   "nflverse:00-0032764": {
+    "key": "nflverse:00-0032764",
+    "name": "Derrick Henry",
+    "position": "RB",
+    "team": "BAL",
+    "gameKey": "JAX@BAL",
+    "points": 4,
+    "stats": {
+     "passYds": -3,
+     "rushYds": 57
+    }
+   },
+   "nflverse:00-0039064": {
+    "key": "nflverse:00-0039064",
+    "name": "Zay Flowers",
+    "position": "WR",
+    "team": "BAL",
+    "gameKey": "JAX@BAL",
+    "points": 1.5,
+    "stats": {
+     "rushYds": 17,
+     "recYds": 6,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0040981": {
+    "key": "nflverse:00-0040981",
+    "name": "Joe Fagnano",
+    "position": "QB",
+    "team": "BAL",
+    "gameKey": "JAX@BAL",
+    "points": -1,
+    "stats": {
+     "passYds": 60,
+     "rushYds": 13,
+     "interceptionsThrown": 2
+    }
+   },
+   "nflverse:00-0034975": {
+    "key": "nflverse:00-0034975",
+    "name": "Justice Hill",
+    "position": "RB",
+    "team": "BAL",
+    "gameKey": "JAX@BAL",
+    "points": 19.5,
+    "stats": {
+     "rushYds": 85,
+     "recYds": 7,
+     "receptions": 3,
+     "rushTdLengths": [
+      65
+     ]
+    }
+   },
+   "nflverse:00-0038606": {
+    "key": "nflverse:00-0038606",
+    "name": "Parker Washington",
+    "position": "WR",
+    "team": "JAX",
+    "gameKey": "JAX@BAL",
+    "points": 11,
+    "stats": {
+     "recYds": 61,
+     "receptions": 2,
+     "recTdLengths": [
+      50
+     ]
+    }
+   },
+   "nflverse:00-0040879": {
+    "key": "nflverse:00-0040879",
+    "name": "Matthew Hibner",
+    "position": "TE",
+    "team": "BAL",
+    "gameKey": "JAX@BAL",
+    "points": 2,
+    "stats": {
+     "recYds": 5,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0034753": {
+    "key": "nflverse:00-0034753",
+    "name": "Mark Andrews",
+    "position": "TE",
+    "team": "BAL",
+    "gameKey": "JAX@BAL",
+    "points": 3,
+    "stats": {
+     "recYds": 19,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0036550": {
+    "key": "nflverse:00-0036550",
+    "name": "Rashod Bateman",
+    "position": "WR",
+    "team": "BAL",
+    "gameKey": "JAX@BAL",
+    "points": 0.5,
+    "stats": {
+     "recYds": 6,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0040238": {
+    "key": "nflverse:00-0040238",
+    "name": "LeQuint Allen Jr.",
+    "position": "RB",
+    "team": "JAX",
+    "gameKey": "JAX@BAL",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0038935": {
+    "key": "nflverse:00-0038935",
+    "name": "Brenton Strange",
+    "position": "TE",
+    "team": "JAX",
+    "gameKey": "JAX@BAL",
+    "points": 3,
+    "stats": {
+     "recYds": 22,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0041100": {
+    "key": "nflverse:00-0041100",
+    "name": "Josh Cameron",
+    "position": "WR",
+    "team": "JAX",
+    "gameKey": "JAX@BAL",
+    "points": 0.5,
+    "stats": {
+     "recYds": 6,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0032104": {
+    "key": "nflverse:00-0032104",
+    "name": "Ameer Abdullah",
+    "position": "RB",
+    "team": "JAX",
+    "gameKey": "JAX@BAL",
+    "points": 2,
+    "stats": {
+     "rushYds": 30
+    }
+   },
+   "nflverse:00-0040075": {
+    "key": "nflverse:00-0040075",
+    "name": "LaJohntay Wester",
+    "position": "WR",
+    "team": "BAL",
+    "gameKey": "JAX@BAL",
+    "points": 0.5,
+    "stats": {
+     "recYds": 14,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0039409": {
+    "key": "nflverse:00-0039409",
+    "name": "Cam Little",
+    "position": "K",
+    "team": "JAX",
+    "gameKey": "JAX@BAL",
+    "points": 19.1,
+    "stats": {
+     "extraPoints": 3,
+     "fgMadeLengths": [
+      36,
+      45,
+      47,
+      33
+     ]
+    }
+   },
+   "nflverse:00-0038562": {
+    "key": "nflverse:00-0038562",
+    "name": "Jake Moody",
+    "position": "K",
+    "team": "BAL",
+    "gameKey": "JAX@BAL",
+    "points": 6.3,
+    "stats": {
+     "fgMadeLengths": [
+      53
+     ],
+     "extraPoints": 1
+    }
+   }
+  },
+  "defenses": {
+   "BAL": {
+    "team": "BAL",
+    "gameKey": "JAX@BAL",
+    "points": 8,
+    "stats": {
+     "opponentPoints": 33,
+     "offensiveTdsAllowed": 3,
+     "passYdsAllowed": 242,
+     "rushYdsAllowed": 77,
+     "fumbleRecoveries": 1
+    }
+   },
+   "JAX": {
+    "team": "JAX",
+    "gameKey": "JAX@BAL",
+    "points": 13,
+    "stats": {
+     "opponentPoints": 10,
+     "offensiveTdsAllowed": 1,
+     "passYdsAllowed": 55,
+     "rushYdsAllowed": 172,
+     "sacks": 1,
+     "interceptions": 2,
+     "fumbleRecoveries": 1
+    }
+   }
+  },
+  "unmatched": [],
+  "warnings": []
+ },
+ "autoFinalizeAt": "2026-11-11T04:00:00.000Z"
+}
