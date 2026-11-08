@@ -2816,8 +2816,12 @@ describe("draft room (2026-11-02)", () => {
       insert into public.nfl_players (id, name, position, nfl_team) select 'P' || lpad(g::text, 2, '0'), 'Player ' || lpad(g::text, 2, '0'), 'WR', 'DET' from generate_series(1, 30) g;`);
   });
   const call = (who: Who, sql: string) => rowsT(db, who, sql).then(r => r[0]);
-  const mock = async (settings: Record<string, unknown> = {}) =>
-    Number((await call(user(COMMISH), `select public.draft_create(${S}, 'mock', 'Practice', '${JSON.stringify({ rounds: 4, timer_seconds: 60, ...settings })}'::jsonb) as id`))!.id);
+  const mock = async (settings: Record<string, unknown> = {}) => {
+    const id = Number((await call(user(COMMISH), `select public.draft_create(${S}, 'mock', 'Practice', '${JSON.stringify({ rounds: 4, timer_seconds: 60, ...settings })}'::jsonb) as id`))!.id);
+    for (const u of [ALICE, BOB, CAROL]) await call(user(u), `select public.draft_join(${id})`);
+    return id;
+  };
+  const real = async () => Number((await call(user(COMMISH), `select public.draft_create(2027, 'real', '2027 Draft', '{"rounds": 4, "timer_seconds": 60}'::jsonb) as id`))!.id);
   const draft = (id: number) => db.query<Record<string, any>>(`select * from public.drafts where id = ${id}`).then(r => r.rows[0]!); // eslint-disable-line @typescript-eslint/no-explicit-any
   const order = (id: number, round: number, teams: string[] | null) =>
     call(user(COMMISH), `select public.draft_set_order(${id}, ${round}, ${teams ? `array[${teams.map(t => `'${t}'`).join(",")}]` : "null"}) as o`);
@@ -2829,7 +2833,7 @@ describe("draft room (2026-11-02)", () => {
     await assert.rejects(order(id, 1, ["0001", "0002"]), /needs all 3 teams/);
     await assert.rejects(order(id, 1, ["0001", "0001", "0002"]), /twice/);
     await assert.rejects(order(id, 2, ["0001", "0002", "0003"]), /odd rounds/);
-    await assert.rejects(as(db, user(ALICE), tx => tx.query(`select public.draft_set_order(${id}, 1, null)`)), /Only the commissioner/);
+    await assert.rejects(call(user(ALICE), `select public.draft_set_order(${await real()}, 1, null)`), /Only the commissioner/, "a real draft");
     await order(id, 1, ["0002", "0003", "0001"]);
     await call(user(COMMISH), `select public.draft_control(${id}, 'start')`);
     let d = await draft(id);
@@ -2848,14 +2852,14 @@ describe("draft room (2026-11-02)", () => {
     await assert.rejects(pick(user(ALICE), id, "P07"), /isn't live/);
     const drawn = (await order(id, 3, null))!.o as string[];
     assert.deepEqual([...drawn].sort(), ["0001", "0002", "0003"], "a fair draw of every team");
-    const log = await rowsT(db, service, `select details from public.audit_log where action = 'draft:order_drawn'`);
-    assert.equal(log.length, 1); assert.equal(log[0]!.details.keys.length, 3, "each team's random key is kept"); assert.ok(log[0]!.details.at);
+    const keys = await rowsT(db, service, `select draw_keys from public.draft_orders where draft_id = ${id} and round = 3`);
+    assert.equal(keys[0]!.draw_keys.length, 3, "each team's random key is kept");
     d = await draft(id);
     assert.equal(d.status, "live", "drawing the order resumes the draft");
     assert.equal(await onClock(id), drawn[0]);
     // Redo before any pick in the round: allowed (logged); after: refused
     await order(id, 3, ["0003", "0002", "0001"]);
-    assert.equal((await rowsT(db, service, `select 1 from public.audit_log where action = 'draft:order_redone'`)).length, 1);
+    assert.equal((await rowsT(db, service, `select 1 from public.draft_log where draft_id = ${id} and action = 'Redid the round 3 order'`)).length, 1);
     await pick(user(COMMISH), id, "P07");
     await assert.rejects(order(id, 3, null), /already has picks/);
     const sel = await rowsT(db, user(ALICE), `select overall, team_id, player_id, picked_by from public.draft_selections where draft_id = ${id} order by overall`);
@@ -2864,7 +2868,7 @@ describe("draft room (2026-11-02)", () => {
   });
 
   test("picks are validated: right team, available player; two co-owners racing: only one wins", async () => {
-    const id = await mock();
+    const id = await real();
     await order(id, 1, ["0001", "0002", "0003"]);
     await call(user(COMMISH), `select public.draft_control(${id}, 'start')`);
     await assert.rejects(pick(user(BOB), id, "P01"), /NSFW is on the clock, not your team/);
@@ -2943,9 +2947,10 @@ describe("draft room (2026-11-02)", () => {
     await pick(user(BOB), id, "P04");
     await call(user(COMMISH), `select public.draft_edit_pick(${id}, 1, 'P10')`);
     await assert.rejects(call(user(COMMISH), `select public.draft_edit_pick(${id}, 1, 'P04')`), /already drafted/);
-    await assert.rejects(as(db, user(ALICE), tx => tx.query(`select public.draft_undo(${id}, 1)`)), /Only the commissioner/);
-    const actions = (await rowsT(db, service, `select action from public.audit_log where action like 'draft:%' order by id`)).map(x => x.action);
-    for (const a of ["draft:create", "draft:order_set", "draft:start", "draft:pause", "draft:resume", "draft:extend", "draft:undo", "draft:edit_pick"]) assert.ok(actions.includes(a), a);
+    await assert.rejects(call(user(ALICE), `select public.draft_undo(${await real()}, 1)`), /Only the commissioner/, "a real draft");
+    const actions = (await rowsT(db, service, `select action from public.draft_log where draft_id = ${id} order by id`)).map(x => x.action);
+    for (const a of ["Created the practice draft", "Set the round 1 order", "Started the draft", "Paused the draft", "Resumed the draft", "Undid 1 pick", "Changed pick #1 to Player 10"]) assert.ok(actions.some(x => x === a), a + " in " + actions.join(" | "));
+    assert.ok(actions.some(x => /^Added \d+ seconds$/.test(x)), "extend");
     for (const p of ["P11", "P12", "P13", "P14", "P15", "P16", "P17", "P18", "P19", "P22"]) {
       const d = await draft(id);
       if (d.status === "done") break;
@@ -3015,7 +3020,11 @@ describe("draft ADP (2026-11-02)", () => {
   });
   const call = (who: Who, sql: string) => rowsT(db, who, sql).then(r => r[0]);
   const adp = (season: number, source: string, rows: [string, number][]) => call(service, `select public.replace_adp(${season}, '${source}', 'ALL', 700, '${JSON.stringify(rows.map(([player_id, a], i) => ({ player_id, adp: a, pos_rank: "WR" + (i + 1) })))}'::jsonb) as n`);
-  const mock = async (rounds = 4) => Number((await call(user(COMMISH), `select public.draft_create(${S}, 'mock', 'Practice', '{"rounds": ${rounds}, "timer_seconds": 60}'::jsonb) as id`))!.id);
+  const mock = async (rounds = 4) => {
+    const id = Number((await call(user(COMMISH), `select public.draft_create(${S}, 'mock', 'Practice', '{"rounds": ${rounds}, "timer_seconds": 60}'::jsonb) as id`))!.id);
+    await call(user(ALICE), `select public.draft_join(${id})`);
+    return id;
+  };
   const expire = (id: number) => db.exec(`update public.drafts set clock_ends_at = now() - interval '1 second' where id = ${id}`).then(() => call(user(ALICE), `select public.draft_tick(${id})`));
   const picks = (id: number) => rowsT(db, service, `select team_id, player_id, adp::float as adp from public.draft_selections where draft_id = ${id} order by overall`);
 
@@ -3055,13 +3064,13 @@ describe("draft ADP (2026-11-02)", () => {
     assert.ok(!/:(K|D)[0-9]$/.test(p[5]!), "no second K for the first team");
   });
 
-  test("TV board view: By Team by default; the commissioner sets By Pick (team or pick only); managers can't", async () => {
+  test("TV board view: By Team by default; set By Pick (team or pick only); only people with the controls", async () => {
     const id = await mock();
     assert.equal((await rowsT(db, service, `select tv_view from public.drafts where id = ${id}`))[0]!.tv_view, "team");
     await call(user(COMMISH), `select public.draft_settings(${id}, '{"tv_view": "pick"}'::jsonb)`);
     assert.equal((await rowsT(db, user(ALICE), `select tv_view from public.drafts where id = ${id}`))[0]!.tv_view, "pick", "members read it (the TV page)");
     await assert.rejects(call(user(COMMISH), `select public.draft_settings(${id}, '{"tv_view": "grid"}'::jsonb)`), /team or pick/);
-    await assert.rejects(call(user(ALICE), `select public.draft_settings(${id}, '{"tv_view": "team"}'::jsonb)`), /commissioner/);
+    await assert.rejects(call(user(BOB), `select public.draft_settings(${id}, '{"tv_view": "team"}'::jsonb)`), /Join this practice draft/);
   });
   test("each pick keeps its ADP; Reach / Steal in the B5 Bot post; custom ranks override ADP", async () => {
     await adp(S, "mfl", [["P01", 30], ["P02", 1], ["P03", 2]]);
@@ -3070,7 +3079,7 @@ describe("draft ADP (2026-11-02)", () => {
     await call(user(COMMISH), `select public.draft_control(${id}, 'start')`);
     await call(user(ALICE), `select public.draft_pick(${id}, 'P01')`);      // pick 1, ADP 30: a reach
     assert.equal((await picks(id))[0]!.adp, 30);
-    const msg = (await rowsT(db, service, `select body from public.chat_messages where room_id = 'draft' order by id desc limit 5`)).map(r => r.body).find(b => /select Player 01/.test(b));
+    const msg = (await rowsT(db, service, `select body from public.chat_messages where room_id like 'practice-%' order by id desc limit 5`)).map(r => r.body).find(b => /select Player 01/.test(b));
     assert.match(msg!, /📈 Reach \(ADP 30\.0\)/);
     assert.equal((await rowsT(db, service, `select private.draft_value(40, 25) as v`))[0]!.v, "steal");
     assert.equal((await rowsT(db, service, `select private.draft_value(20, 25) as v`))[0]!.v, null);
@@ -3155,6 +3164,170 @@ describe("league history: champions since 2000 and the franchise lineage (2026-1
   });
 });
 
+describe("practice drafts: any member hosts, strict separation from the real draft (2026-11-08)", () => {
+  beforeEach(async () => {
+    await db.exec(`insert into public.teams (id, name, division) values ('0003', 'Third', 'Gold');
+      insert into public.nfl_players (id, name, position, nfl_team) select 'P' || lpad(g::text, 2, '0'), 'Player ' || lpad(g::text, 2, '0'), 'WR', 'DET' from generate_series(1, 30) g;`);
+  });
+  const call = (who: Who, sql: string) => rowsT(db, who, sql).then(r => r[0]);
+  const create = async (who: Who = user(ALICE), settings: Record<string, unknown> = { rounds: 2, timer_seconds: 60 }) =>
+    Number((await call(who, `select public.draft_create(${S}, 'mock', 'Practice', '${JSON.stringify(settings)}'::jsonb) as id`))!.id);
+  const realDraft = async () => Number((await call(user(COMMISH), `select public.draft_create(2027, 'real', '2027 Draft', '{"rounds": 2}'::jsonb) as id`))!.id);
+  const ctl = (who: Who, id: number, action: string) => call(who, `select public.draft_control(${id}, '${action}')`);
+  const setOrder = (who: Who, id: number, round: number) => call(who, `select public.draft_set_order(${id}, ${round}, null)`);
+  const log = async (id: number) => (await rowsT(db, service, `select actor_name, action from public.draft_log where draft_id = ${id} order by id`)).map(r => r.actor_name + ": " + r.action);
+  const names = () => db.exec(`update public.profiles set display_name = 'Alice' where id = '${ALICE}'; update public.profiles set display_name = 'Bob' where id = '${BOB}';`);
+
+  test("a non-commissioner creates one (host + participant), joins and uses every control; each action names who did it", async () => {
+    await names();
+    const id = await create();
+    const d = (await db.query<Record<string, any>>(`select host, is_practice, host_only from public.drafts where id = ${id}`)).rows[0]!; // eslint-disable-line @typescript-eslint/no-explicit-any
+    assert.deepEqual([d.host, d.is_practice, d.host_only], [ALICE, true, false]);
+    await call(user(BOB), `select public.draft_join(${id})`);
+    await setOrder(user(BOB), id, 1);
+    await ctl(user(BOB), id, "start");
+    await ctl(user(ALICE), id, "pause");
+    await ctl(user(BOB), id, "resume");
+    await call(user(BOB), `select public.draft_control(${id}, 'extend', 30)`);
+    const seat = (await db.query<{ t: string }>(`select (private.draft_slot(${id}, 1)).owner as t`)).rows[0]!.t;
+    await call(user(BOB), `select public.draft_pick(${id}, 'P01')`);        // whichever seat is on the clock
+    assert.equal((await rowsT(db, service, `select team_id from public.draft_selections where draft_id = ${id}`))[0]!.team_id, seat);
+    await call(user(ALICE), `select public.draft_edit_pick(${id}, 1, 'P02')`);
+    await call(user(BOB), `select public.draft_undo(${id}, 1)`);
+    await call(user(ALICE), `select public.draft_settings(${id}, '{"bots": ["0003"]}'::jsonb)`);
+    assert.deepEqual((await db.query<{ bots: string[] }>(`select bots from public.drafts where id = ${id}`)).rows[0]!.bots, ["0003"], "bots change mid-draft");
+    await ctl(user(BOB), id, "end");
+    assert.equal((await db.query<{ status: string }>(`select status from public.drafts where id = ${id}`)).rows[0]!.status, "complete");
+    await ctl(user(ALICE), id, "reset");
+    const after = (await db.query<{ status: string; n: number; o: number }>(`select status, (select count(*)::int from public.draft_selections where draft_id = ${id}) n, (select count(*)::int from public.draft_orders where draft_id = ${id}) o from public.drafts where id = ${id}`)).rows[0]!;
+    assert.deepEqual([after.status, after.n, after.o], ["setup", 0, 0]);
+    const l = await log(id);
+    for (const line of ["Alice: Created the practice draft", "Bob: Joined the draft", "Bob: Drew the round 1 order", "Bob: Started the draft", "Alice: Paused the draft", "Bob: Resumed the draft", "Bob: Added 30 seconds",
+      "Bob: Drafted Player 01 for " + (seat === "0001" ? "NSFW" : seat === "0002" ? "Stealers" : "Third") + " (1.01)", "Alice: Changed pick #1 to Player 02", "Bob: Undid 1 pick", "Alice: Changed the bots", "Bob: Ended the draft", "Alice: Reset the draft"])
+      assert.ok(l.includes(line), line + " missing from: " + l.join(" | "));
+    await denied(db, anon, `select * from public.draft_log`, /permission denied/);
+    await denied(db, user(ALICE), `insert into public.draft_log (draft_id, actor_name, action) values (${id}, 'x', 'y')`, /permission denied/);
+  });
+
+  test("the same member is rejected on a real draft, by every RPC; logged-out visitors can't create or join", async () => {
+    const id = await realDraft();
+    for (const sql of [`select public.draft_control(${id}, 'start')`, `select public.draft_set_order(${id}, 1, null)`, `select public.draft_undo(${id}, 1)`, `select public.draft_edit_pick(${id}, 1, 'P01')`,
+      `select public.draft_settings(${id}, '{"rounds": 3}'::jsonb)`, `select public.draft_delete(${id})`, `select public.draft_create(2028, 'real', 'Mine')`])
+      await assert.rejects(call(user(ALICE), sql), /Only the commissioner/, sql);
+    await assert.rejects(call(user(ALICE), `select public.draft_join(${id})`), /Only practice drafts/);
+    await assert.rejects(call(user(COMMISH), `select public.draft_control(${id}, 'end')`), /Only practice drafts/);
+    await assert.rejects(call(user(COMMISH), `select public.draft_control(${id}, 'reset')`), /Only practice drafts/);
+    await assert.rejects(call(user(COMMISH), `select public.draft_settings(${id}, '{"host_only": true}'::jsonb)`), /Only practice drafts/);
+    await setOrder(user(COMMISH), id, 1);
+    const drawn = await rowsT(db, service, `select details from public.audit_log where action = 'draft:order_drawn'`);
+    assert.equal(drawn[0]!.details.keys.length, 3, "a real draft's draw stays in the admin audit log, with its keys");
+    await ctl(user(COMMISH), id, "start");
+    const slot = (await db.query<{ t: string }>(`select (private.draft_slot(${id}, 1)).owner as t`)).rows[0]!.t;
+    const outsider = slot === "0001" ? BOB : ALICE;
+    await assert.rejects(call(user(outsider), `select public.draft_pick(${id}, 'P01')`), /not your team/, "a real pick is still his own team's only");
+    await denied(db, anon, `select public.draft_create(${S}, 'mock', 'x')`, /permission denied/);
+    const mock = await create();
+    await denied(db, anon, `select public.draft_join(${mock})`, /permission denied/);
+  });
+
+  test("not joined: no controls. Host-only: the host keeps them, others pick only for their own team; only the host switches", async () => {
+    const id = await create();
+    await assert.rejects(setOrder(user(BOB), id, 1), /Join this practice draft/);
+    await assert.rejects(call(user(COMMISH), `select public.draft_control(${id}, 'start')`), /Join this practice draft/, "a commissioner joins like anyone else");
+    await call(user(BOB), `select public.draft_join(${id})`);
+    await assert.rejects(call(user(BOB), `select public.draft_settings(${id}, '{"host_only": true}'::jsonb)`), /Only the host/);
+    await call(user(ALICE), `select public.draft_settings(${id}, '{"host_only": true}'::jsonb)`);
+    await assert.rejects(setOrder(user(BOB), id, 1), /limited the controls/);
+    await call(user(ALICE), `select public.draft_set_order(${id}, 1, array['0001','0002','0003'])`);
+    await ctl(user(ALICE), id, "start");
+    await assert.rejects(call(user(BOB), `select public.draft_pick(${id}, 'P01')`), /only pick for your own team/);
+    await call(user(ALICE), `select public.draft_pick(${id}, 'P01')`);          // the host, seat 0001
+    await call(user(BOB), `select public.draft_pick(${id}, 'P02')`);            // his own seat, 0002
+    await call(user(ALICE), `select public.draft_settings(${id}, '{"host_only": false}'::jsonb)`);
+    await ctl(user(BOB), id, "pause");
+    assert.ok((await log(id)).some(x => /Switched to host-only controls/.test(x)));
+  });
+
+  test("delete: the host or a commissioner, nobody else; the chat room goes with it", async () => {
+    const id = await create();
+    await call(user(BOB), `select public.draft_join(${id})`);
+    await assert.rejects(call(user(BOB), `select public.draft_delete(${id})`), /host or a commissioner/);
+    await call(user(COMMISH), `select public.draft_delete(${id})`);
+    assert.equal((await db.query(`select 1 from public.chat_rooms where draft_id = ${id}`)).rows.length, 0);
+    const id2 = await create();
+    await call(user(ALICE), `select public.draft_delete(${id2})`);
+    assert.equal((await db.query(`select 1 from public.drafts where id = ${id2}`)).rows.length, 0);
+  });
+
+  test("practice actions leave real data alone: rosters, picks, transactions, awards, the league Draft room and its header, other owners' email", async () => {
+    await db.exec(`insert into public.draft_state (id) values (true) on conflict do nothing`);
+    const count = async (sql: string) => Number((await db.query<{ n: number }>(`select count(*)::int n from ${sql}`)).rows[0]!.n);
+    const header = () => db.query(`select status, team_id, draft_id from public.draft_state`).then(r => JSON.stringify(r.rows));
+    const before = { rost: await count("public.roster_entries"), picks: await count("public.draft_picks where used"), txn: await count("public.transactions"), awards: await count("public.awards"),
+      room: await count("public.chat_messages where room_id = 'draft'"), head: await header() };
+    const id = await create(user(ALICE), { rounds: 1, timer_seconds: 60 });
+    await setOrder(user(ALICE), id, 1);
+    await ctl(user(ALICE), id, "start");
+    await ctl(user(ALICE), id, "pause");
+    await ctl(user(ALICE), id, "resume");
+    for (const p of ["P01", "P02", "P03"]) await call(user(ALICE), `select public.draft_pick(${id}, '${p}')`);
+    await ctl(user(ALICE), id, "complete");
+    assert.equal(await count("public.roster_entries"), before.rost, "rosters");
+    assert.equal(await count("public.draft_picks where used"), before.picks, "draft picks");
+    assert.equal(await count("public.transactions"), before.txn, "transactions");
+    assert.equal(await count("public.awards"), before.awards, "awards");
+    assert.equal(await count("public.chat_messages where room_id = 'draft'"), before.room, "nothing in the league Draft chat");
+    assert.equal(await header(), before.head, "the league Draft chat's header");
+    const posts = await count(`public.chat_messages where room_id = 'practice-${id}' and is_bot`);
+    assert.ok(posts >= 7, "B5 Bot posts in the draft's own room: " + posts);
+    const mail = await db.query<{ user_id: string }>(`select distinct user_id from public.notify_queue where kind = 'draft' and ref like 'draft:${id}:%'`);
+    assert.deepEqual(mail.rows.map(r => r.user_id), [ALICE], "email only reaches people in the draft (Bob owns a seat but never joined)");
+  });
+
+  test("its chat room is visible only to the people in that practice draft, commissioners included", async () => {
+    const id = await create();
+    const room = "practice-" + id;
+    await call(user(ALICE), `insert into public.chat_messages (room_id, body) values ('${room}', 'hi') returning id`);
+    assert.equal((await rowsT(db, user(ALICE), `select 1 from public.chat_messages where room_id = '${room}'`)).length, 1);
+    for (const who of [BOB, COMMISH]) {
+      assert.equal((await rowsT(db, user(who), `select 1 from public.chat_messages where room_id = '${room}'`)).length, 0, "messages hidden");
+      assert.equal((await rowsT(db, user(who), `select 1 from public.chat_rooms where id = '${room}'`)).length, 0, "room hidden");
+      await denied(db, user(who), `insert into public.chat_messages (room_id, body) values ('${room}', 'x')`, /row-level security/);
+    }
+    await call(user(BOB), `select public.draft_join(${id})`);
+    assert.equal((await rowsT(db, user(BOB), `select 1 from public.chat_messages where room_id = '${room}'`)).length, 1, "joined: he sees it");
+    await call(user(BOB), `insert into public.chat_messages (room_id, body) values ('${room}', 'yo') returning id`);
+    assert.equal((await rowsT(db, user(ALICE), `select * from public.chat_unread() where room_id = '${room}'`)).length, 0, "no unread badge for a practice room");
+    assert.equal((await rowsT(db, user(BOB), `select 1 from public.chat_messages where room_id = 'league'`)).length >= 0, true);
+    await as(db, user(COMMISH), tx => tx.query(`insert into public.chat_rooms (id, name, kind, draft_id) values ('sneaky', 'x', 'practice', ${id})`));
+    const sneaky = (await db.query<{ kind: string; draft_id: string | null }>(`select kind, draft_id from public.chat_rooms where id = 'sneaky'`)).rows[0]!;
+    assert.deepEqual([sneaky.kind, sneaky.draft_id], ["custom", null], "a room can't be attached to a draft by hand");
+  });
+
+  test("housekeeping: 3 active per host, 14 days without activity deletes (host warned 2 days before), real drafts never", async () => {
+    await create(); await create(); const third = await create();
+    await assert.rejects(create(), /already host 3 active/);
+    await ctl(user(ALICE), third, "end");
+    const fourth = await create();                                                 // a finished one doesn't count
+    assert.ok(fourth > third);
+    const old = await create(user(BOB));
+    const real = await realDraft();
+    await db.exec(`update public.drafts set last_activity_at = now() - interval '13 days' where id in (${old}, ${real})`);
+    await db.query(`select private.practice_housekeeping()`);
+    const warn = () => db.query<{ user_id: string; p: { type: string } }>(`select user_id, payload as p from public.notify_queue where ref like 'draft:${old}:expiring:%'`).then(r => r.rows);
+    assert.deepEqual((await warn()).map(r => [r.user_id, r.p.type]), [[BOB, "expiring"]], "the host is warned");
+    await db.query(`select private.practice_housekeeping(now() + interval '1 hour')`);
+    assert.equal((await warn()).length, 1, "once");
+    await call(user(BOB), `insert into public.chat_messages (room_id, body) values ('practice-${old}', 'still here') returning id`);
+    assert.ok(Date.parse(((await db.query<{ a: string }>(`select last_activity_at::text a from public.drafts where id = ${old}`)).rows[0]!.a)) > Date.now() - 60000, "chat counts as activity");
+    await db.exec(`update public.drafts set last_activity_at = now() - interval '15 days' where id in (${old}, ${real})`);
+    await db.query(`select private.practice_housekeeping()`);
+    assert.equal((await db.query(`select 1 from public.drafts where id = ${old}`)).rows.length, 0, "deleted");
+    assert.equal((await db.query(`select 1 from public.chat_rooms where id = 'practice-${old}'`)).rows.length, 0, "with its room");
+    assert.equal((await db.query(`select 1 from public.drafts where id = ${real}`)).rows.length, 1, "a real draft is never cleaned up");
+  });
+});
+
 describe("draft isolation and scoped updates (2026-11-02)", () => {
   beforeEach(async () => {
     await db.exec(`insert into public.teams (id, name, division) values ('0003', 'Third', 'Gold');
@@ -3184,11 +3357,11 @@ describe("draft isolation and scoped updates (2026-11-02)", () => {
     assert.equal(h.d, String(real), "a practice draft doesn't take the header from the running real draft");
     assert.equal((await rowsT(db, service, `select 1 from public.roster_entries where player_id like 'P%'`)).length, 0);
     await assert.rejects(call(user(COMMISH), `select public.draft_control(${mock}, 'start')`), /already started/, "can't start twice");
-    // With no real draft running, the practice draft drives the header
+    // Even with no real draft running, a practice draft never takes the league Draft chat's header
     await call(user(COMMISH), `select public.draft_control(${real}, 'pause')`);
     await db.exec(`update public.drafts set status = 'setup' where id = ${real}`);
     await call(user(COMMISH), `select public.draft_control(${mock}, 'extend', 10)`);
-    assert.equal((await db.query<{ d: string }>(`select draft_id::text as d from public.draft_state`)).rows[0]!.d, String(mock));
+    assert.equal((await db.query<{ d: string }>(`select draft_id::text as d from public.draft_state`)).rows[0]!.d, String(real));
   });
   test("page errors are logged for administrators (rate-limited), never shown raw", async () => {
     await call(user(ALICE), `select public.log_client_error('draft:start', 'UPDATE requires a WHERE clause')`);

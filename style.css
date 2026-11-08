@@ -1180,3 +1180,11 @@ body.draft-room .foot { display: none; }
 .dr-board.by-pick .dr-pk { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 1 auto; }
 .dr-tv-chat .ch-draft { display: none; }
 .dr-pp2 { font-weight: 400; color: var(--chalk-dim); }
+
+/* Practice drafts (2026-11-08): join bar, the draft log */
+.dr-joinbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; padding: 10px 14px; border-color: var(--gold); }
+.dr-limited { margin: 0 0 8px; }
+.dr-log { list-style: none; margin: 0; padding: 0; }
+.dr-log li { padding: 6px 0; border-bottom: 1px solid var(--card-line); overflow-wrap: anywhere; }
+@media (min-width: 761px) { .dr-room .dr-p-log { display: none; } .dr-room[data-dtab="log"] .dr-p-log { display: block; } }
+@media (max-width: 760px) { .dr[data-tab="log"] .dr-p-log { display: block; } }

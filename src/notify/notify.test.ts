@@ -170,6 +170,7 @@ test("draft alerts: on the clock, 2 picks away, start reminder, results", () => 
   assert.equal(it({ type: "clock", draft: "2027 Draft", team: "Mac Daddies", round: 3, pick: 7, seconds: 180 }).subject, "You're on the clock: Mac Daddies (Round 3, Pick 7)");
   assert.equal(it({ type: "soon", draft: "2027 Draft", team: "Mac Daddies", round: 3, pick: 9 }).subject, "You're 2 picks away: Mac Daddies (Round 3, Pick 9)");
   assert.match(it({ type: "start", draft: "2027 Draft", starts_at: "2027-08-28T23:00:00Z" }).subject, /2027 Draft starts at Sat 7:00 PM ET/);
+  assert.match(it({ type: "expiring", draft: "Sunday practice", deletes_at: "2026-11-20T12:00:00Z" }).subject, /practice draft will be deleted soon: Sunday practice/);
   const r = it({ type: "results", draft: "Practice", team: "NSFW", mock: true, picks: [{ round: 1, pick: 3, player: "Ja'Marr Chase", pos: "WR", nfl: "CIN" }] });
   assert.equal(r.subject, "Practice results: NSFW (practice)");
   assert.match(r.text, /1\.03 Ja'Marr Chase, WR CIN/);

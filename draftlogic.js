@@ -155,6 +155,18 @@
     (list || []).forEach(function (x) { if (x == null || x === "") return; if (seen[x]) dup[x] = true; seen[x] = true; });
     return dup;
   }
+  /** May this person use a draft's controls? Real: the commissioner. Practice: the host, or anyone who joined
+      unless the host made them host-only. The database decides (private.draft_can_control); this draws the page. */
+  function canControl(d, who) {
+    if (!d || !who) return false;
+    if (d.kind !== "mock") return !!who.commissioner;
+    return !!who.user && (d.host === who.user || (!d.host_only && !!who.joined));
+  }
+  /** When an idle practice draft is deleted (14 days after its last activity); soon = within 2 days. */
+  function practiceExpiry(d, now) {
+    var at = Date.parse(d.last_activity_at) + 14 * 86400000;
+    return { at: at, soon: at - now <= 2 * 86400000 };
+  }
   /** "1:23" from seconds. */
   function clock(sec) { sec = Math.max(0, Math.ceil(sec)); return Math.floor(sec / 60) + ":" + ("0" + (sec % 60)).slice(-2); }
   /** Seconds left on the server's clock, given our clock's offset from the server's (ms). */
@@ -188,5 +200,5 @@
 
   root.B5DraftLogic = { roundOrder: roundOrder, missingOrders: missingOrders, validateOrder: validateOrder, position: position, ownerOf: ownerOf,
     slot: slot, board: board, pickGrid: pickGrid, currentOverall: currentOverall, picksAway: picksAway, autoPick: autoPick, clock: clock, secondsLeft: secondsLeft, parseRankings: parseRankings,
-    duplicates: duplicates, byRanking: byRanking, sortPool: sortPool, bestAvailable: bestAvailable, value: value, adpMap: adpMap, adpSeason: adpSeason };
+    duplicates: duplicates, canControl: canControl, practiceExpiry: practiceExpiry, byRanking: byRanking, sortPool: sortPool, bestAvailable: bestAvailable, value: value, adpMap: adpMap, adpSeason: adpSeason };
 })(typeof globalThis !== "undefined" ? globalThis : this);

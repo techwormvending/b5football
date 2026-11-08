@@ -15,7 +15,7 @@
   var POS = ["QB", "RB", "WR", "TE", "K", "DEF"];
   var ROSTER_MAX = 18;
 
-  var st = { el: null, id: null, tv: false, me: null, d: null, orders: {}, orderRows: {}, sel: [], owners: {}, players: [], pmap: {}, rank: {}, rankInfo: null, adp: {}, adpInfo: [], adpSeason: null, sort: { by: "adp", dir: 1 }, sortSet: false, tip: null, boardView: "team", focus: null, sheet: "peek", unread: 0, latest: null, chatW: null, popped: null, takeover: null, sound: false, popout: false, btab: "round", bround: null, bteam: null, scrolledCur: null,
+  var st = { el: null, id: null, tv: false, me: null, d: null, orders: {}, orderRows: {}, sel: [], owners: {}, players: [], pmap: {}, rank: {}, rankInfo: null, adp: {}, adpInfo: [], adpSeason: null, sort: { by: "adp", dir: 1 }, sortSet: false, tip: null, parts: {}, log: [], lobbyParts: {}, lobbyNames: {}, boardView: "team", focus: null, sheet: "peek", unread: 0, latest: null, chatW: null, popped: null, takeover: null, sound: false, popout: false, btab: "round", bround: null, bteam: null, scrolledCur: null,
     queue: [], byes: {}, tab: "players", q: "", pos: "", showDrafted: false, offset: 0, ticked: {}, sub: null, timer: null, msg: null, shown: 150, anim: null, seenOrders: {}, loading: false };
   var session = function () { return st.me && st.me.session; };
   var api = function (path, init) { return A.api(cfg, session(), path, init || {}, f); };
@@ -28,13 +28,21 @@
   var isCommish = function () { return !!(st.me && st.me.profile && st.me.profile.is_commissioner); };
   var myTeam = function () { return st.me && st.me.teams && st.me.teams[0] ? st.me.teams[0].team_id : null; };
   var isMember = function () { return !!(st.me && (myTeam() || isCommish())); };
+  var myId = function () { return st.me && st.me.session && st.me.session.user ? st.me.session.user.id : null; };
+  var isPractice = function () { return !!(st.d && st.d.kind === "mock"); };
+  var joined = function () { return !!st.parts[myId()]; };
+  var whoFor = function (isIn) { return { user: myId(), commissioner: isCommish(), joined: isIn }; };
+  /** Does this viewer hold the draft's controls? (the room's draft; the database has the last word) */
+  var canCtl = function () { return DL.canControl(st.d, whoFor(joined())); };
+  var outOfPractice = function () { return isPractice() && !joined(); };
+  var chatRoom = function () { return isPractice() ? "practice-" + st.id : "draft"; };
   var friendly = function (e) { return String(e || "").replace(/^.*?: /, ""); };
   // The draft's own refusals are written for people ("That pick was already made"); database or
   // network wording isn't: those get a plain message and are logged for administrators.
   var FRIENDLY = { "draft_control:start": "Couldn't start the draft.", "draft_control:pause": "Couldn't pause the draft.", "draft_control:resume": "Couldn't resume the draft.",
     "draft_control:extend": "Couldn't add time.", "draft_control:complete": "Couldn't finish the draft.", draft_undo: "Couldn't undo the pick.", draft_set_order: "Couldn't set the round's order.",
     draft_pick: "Couldn't make the pick.", draft_edit_pick: "Couldn't change the pick.", draft_create: "Couldn't create the draft.", draft_settings: "Couldn't save the settings.",
-    draft_delete: "Couldn't delete the draft.", draft_rankings_upload: "Couldn't upload the rankings." };
+    draft_delete: "Couldn't delete the draft.", draft_join: "Couldn't join the draft.", "draft_control:end": "Couldn't end the draft.", "draft_control:reset": "Couldn't reset the draft.", draft_rankings_upload: "Couldn't upload the rankings." };
   function technical(msg) {
     return /WHERE clause|permission denied for|does not exist|syntax error|violates .*constraint|null value|invalid input|relation "|column "|function |could not|unexpected|internal|HTTP [45]\d\d|Network error|JWT|schema cache|operator/i.test(String(msg || ""));
   }
@@ -128,8 +136,12 @@
       api("drafts?id=eq." + st.id + "&select=*"),
       api("draft_orders?draft_id=eq." + st.id + "&select=round,teams,method,set_at&order=round"),
       api("draft_selections?draft_id=eq." + st.id + "&select=*&order=overall"),
-      myTeam() ? api("draft_queue?draft_id=eq." + st.id + "&team_id=eq." + myTeam() + "&select=player_id,rank&order=rank") : null
+      myTeam() ? api("draft_queue?draft_id=eq." + st.id + "&team_id=eq." + myTeam() + "&select=player_id,rank&order=rank") : null,
+      api("draft_participants?draft_id=eq." + st.id + "&select=user_id"),
+      api("draft_log?draft_id=eq." + st.id + "&select=at,actor_name,action&order=id.desc&limit=40")
     ]).then(function (r) {
+      st.parts = {}; ok(r[4]).forEach(function (p) { st.parts[p.user_id] = true; });
+      st.log = ok(r[5]);
       st.loading = false;
       st.d = ok(r[0])[0] || null;
       var prev = st.orderRows;
@@ -296,8 +308,10 @@
           '<span class="dr-bpl">' + (p ? "<b>" + esc(p.name) + "</b> " + posTag(p.pos) + ' <span class="muted small">' + esc(p.nfl || "") + "</span> " + valueTag(x) : x && x.skipped ? '<span class="muted">skipped</span>' : running && b.slot.overall === v.cur ? '<span class="dr-onclock">on the clock</span>' : '<span class="muted">–</span>') + "</span></li>";
       }).join("") + "</ol>" : '<p class="muted">' + (tab === "round" ? "Round " + esc(round) + "'s order isn't set yet." : "No picks known yet.") + "</p>") + "</div>";
   }
-  function canPickNow(v) { return st.d.status === "live" && v.slot && (v.slot.owner === myTeam() || isCommish()); }
-  function myCatchUps() { return st.sel.filter(function (s) { return s.skipped && (s.team_id === myTeam() || isCommish()); }); }
+  /** May I make this team's pick? Real: its owners or the commissioner. Practice: whoever has the controls, or a joined owner of that seat. */
+  function canPickFor(team) { return isPractice() ? canCtl() || (joined() && team === myTeam()) : team === myTeam() || isCommish(); }
+  function canPickNow(v) { return st.d.status === "live" && v.slot && canPickFor(v.slot.owner); }
+  function myCatchUps() { return st.sel.filter(function (s) { return s.skipped && canPickFor(s.team_id); }); }
   function playersHtml(v) {
     var taken = {}; st.sel.forEach(function (s) { if (s.player_id) taken[s.player_id] = s; });
     var ctx = rankCtx(st.d, st.rank, st.adp), rows = poolRows(st.players, ctx, taken, { q: st.q, pos: st.pos, showDrafted: st.showDrafted, sort: st.sortSet ? st.sort : null });
@@ -364,34 +378,39 @@
       POS.map(function (p) { var xs = m.byPos[p] || []; return '<div class="dr-mpos">' + posTag(p) + " " + (xs.length ? xs.map(function (x) { return esc(x.p.name) + ' <span class="muted small">' + esc(x.s.round + "." + ("0" + x.s.pick).slice(-2)) + "</span>"; }).join(", ") : '<span class="muted">–</span>') + "</div>"; }).join("") + "</div>";
   }
   function commishHtml(v) {
-    if (!isCommish()) return "";
+    if (!canCtl()) return isPractice() && joined() ? '<p class="muted small dr-limited">The host has limited the controls in this practice draft. You can still pick for your own team.</p>' : "";
     var d = st.d, b = function (k, label, cls) { return '<button type="button" class="btn ' + (cls || "ghost") + '" data-dr-c="' + k + '">' + label + "</button>"; };
     var needRound = d.status === "awaiting_order" ? DL.position(d.current_overall, d.teams.length).round : null;
     var missing = DL.missingOrders(st.orders, d.rounds);
     var orderRound = needRound || (d.status === "setup" ? missing[0] || 1 : null);
     var picked = {}; st.sel.forEach(function (s) { picked[s.round] = true; });
     var redo = Object.keys(st.orders).map(Number).filter(function (r) { return !picked[r]; });
-    return '<div class="card dr-commish"><div class="dr-cacts"><b class="dr-ctitle">Commissioner</b>' +
+    return '<div class="card dr-commish"><div class="dr-cacts"><b class="dr-ctitle">' + (isPractice() ? "Draft controls" : "Commissioner") + "</b>" +
       '<span class="dr-tvview" role="group" aria-label="TV view">TV view: ' + ["team", "pick"].map(function (k) { var on = (d.tv_view || "team") === k; return '<button type="button" class="btn ' + (on ? "" : "ghost") + '" data-dr-c="tv:' + k + '" aria-pressed="' + on + '">' + (k === "team" ? "By Team" : "By Pick") + "</button>"; }).join("") + "</span>" +
       (d.status === "setup" ? b("start", "Start the draft", "") : "") +
       (d.status === "live" ? b("pause", "Pause") + b("extend30", "+30 s") + b("extend60", "+1 min") : "") +
       (d.status === "paused" ? b("resume", "Resume", "") + b("extend60", "+1 min") : "") +
       (st.sel.length && d.status !== "complete" ? b("undo", "Undo last pick") : "") +
+      (isPractice() && d.status !== "complete" && d.status !== "setup" ? b("end", "End the draft") : "") + (isPractice() && (d.status !== "setup" || st.sel.length) ? b("reset", "Reset") : "") +
       (d.status === "done" ? b("complete", d.kind === "real" ? "Finalize: fill the rosters" : "Finish the practice draft", "") : "") + "</div>" +
       (orderRound ? '<div class="dr-order"><h4>Round ' + esc(orderRound) + " order" + (needRound ? ' <span class="tag dr-st-awaiting_order">the draft is waiting</span>' : "") + "</h4>" +
         '<p class="muted small">Round ' + esc(orderRound + 1) + ' is the reverse. Draw at random (fair, logged with the time), or enter the order from the hat.</p>' +
         '<div class="dr-cacts">' + b("draw:" + orderRound, "🎩 Draw at random", "") + "</div>" + manualOrderHtml(orderRound) + "</div>" : "") +
-      '<details class="dr-more"' + (st.moreOpen ? ' open' : '') + ' data-dr="more-tools"><summary>More commissioner tools</summary>' +
+      '<details class="dr-more"' + (st.moreOpen ? ' open' : '') + ' data-dr="more-tools"><summary>More tools</summary>' +
       (redo.length ? '<p class="small">Redo a draw (only before that round\'s first pick): ' + redo.map(function (r) { return '<button type="button" class="linkish" data-dr-c="draw:' + r + '">Round ' + r + "</button>"; }).join(" · ") + "</p>" : "") +
       '<details><summary>Edit a past pick</summary><form class="acct-form" data-dr-form="edit"><label>Pick number (overall)<input name="overall" type="number" min="1" max="' + esc(v.total) + '" required></label>' +
         '<label>New player<input name="player" list="drPlayers" required placeholder="Start typing a name"></label><button class="btn" type="submit">Change the pick</button></form></details>' +
-      '<details><summary>Board names (column headers)</summary><form class="acct-form dr-bnames" data-dr-form="bnames"><p class="muted small">Up to 12 characters, so all 12 columns fit. The full name shows on hover or tap.</p>' +
+      (isPractice() && d.host === myId() ? '<label class="acct-check"><input type="checkbox" data-dr="hostonly"' + (d.host_only ? " checked" : "") + "> Host-only controls (only you can run the draft)</label>" : "") +
+      (isPractice() ? '<details><summary>Bots</summary><form class="acct-form" data-dr-form="bots"><p class="muted small">Bots draft these seats, starting now if the draft is running.</p>' +
+        d.teams.map(function (t) { return '<label class="acct-check"><input type="checkbox" name="bot" value="' + esc(t) + '"' + (d.bots.indexOf(t) >= 0 ? " checked" : "") + "> " + T().link(t, { logo: false }) + "</label>"; }).join("") +
+        '<button class="btn" type="submit">Save the bots</button></form></details>' : "") +
+      (!isCommish() ? "" : '<details><summary>Board names (column headers)</summary><form class="acct-form dr-bnames" data-dr-form="bnames"><p class="muted small">Up to 12 characters, so all 12 columns fit. The full name shows on hover or tap.</p>' +
         d.teams.map(function (t) { return "<label>" + T().logo(t) + " " + esc(T().name(t)) + '<input name="bn' + esc(t) + '" maxlength="12" required value="' + esc(T().boardName(t)) + '"></label>'; }).join("") +
         '<button class="btn" type="submit">Save board names</button></form></details>' +
       '<label class="acct-check"><input type="checkbox" data-dr="ranks"' + (d.ranks === "custom" ? " checked" : "") + (Object.keys(st.rank).length ? "" : " disabled") + "> Custom ranks (the uploaded CSV instead of ADP, for sorting and auto-pick)" + (Object.keys(st.rank).length ? "" : ": upload a CSV first") + "</label>" +
       '<details><summary>Rankings (CSV)</summary><form class="acct-form" data-dr-form="rank"><p class="muted small">Columns rank, player (optional pos, team), or one player per line in order. Players are matched by name; anything ambiguous is listed, never guessed. Uploading turns Custom ranks on.</p>' +
         '<label>Source<input name="source" value="Commissioner upload" required></label><label>CSV<textarea name="csv" rows="5"></textarea></label><input type="file" accept=".csv,text/csv" data-dr="csvfile">' +
-        '<button class="btn" type="submit">Upload rankings</button></form></details></details>' +
+        '<button class="btn" type="submit">Upload rankings</button></form></details>') + "</details>" +
       '<datalist id="drPlayers">' + st.players.slice(0, 1500).map(function (p) { return '<option value="' + esc(p.name + " (" + p.pos + " " + (p.nfl || "FA") + ")") + '">'; }).join("") + "</datalist></div>";
   }
   function manualOrderHtml(round) {
@@ -437,16 +456,19 @@
   }
   function roomHtml() {
     var v = view(st.d, st.orders, st.owners, st.sel);
-    var tabs = [["players", "Players"], ["queue", "Queue"], ["team", "My team"], ["board", "Board"]];
+    var tabs = [["players", "Players"], ["queue", "Queue"], ["team", "My team"], ["board", "Board"]].concat(isPractice() ? [["log", "Log"]] : []);
     var dtab = st.tab === "board" ? "players" : st.tab;
-    var dtabs = [["players", "Player Pool"], ["queue", "My Queue"], ["team", "My Team"]];
+    var dtabs = [["players", "Player Pool"], ["queue", "My Queue"], ["team", "My Team"]].concat(isPractice() ? [["log", "Draft log"]] : []);
     var w = st.focus === "chat" ? null : st.focus === "board" ? CHAT_MIN : clampChatWidth(st.chatW);
-    var dock = st.popped
+    var dock = outOfPractice()
+      ? '<div class="card dr-popped"><p><b>This chat is for the people in this practice draft.</b></p><button type="button" class="btn" data-dr-join="' + esc(st.id) + '">Join to chat</button></div>'
+      : st.popped
       ? '<div class="card dr-popped"><p><b>The chat is open in its own window.</b></p><button type="button" class="btn" data-dr-dock="bring-back">Bring it back here</button></div>'
       : '<div class="dr-chatmount" data-dr="chat"></div>';
     return '<section class="dr dr-room" data-tab="' + esc(st.tab) + '" data-dtab="' + esc(dtab) + '" data-focus="' + esc(st.focus || "") + '" data-sheet="' + esc(st.sheet) + '"' + (st.popped ? ' data-popped="1"' : "") +
       (w ? ' style="--chat-w:' + w + 'px"' : "") + ">" +
-      '<p class="dr-links"><a href="#draft">← All drafts</a> · <a href="#draft/' + esc(st.id) + '/tv">Big-screen board</a> · <span class="muted">' + esc(st.d.name) + (st.d.kind === "mock" ? " (practice)" : "") + "</span></p>" +
+      '<p class="dr-links"><a href="#draft">← All drafts</a> · <a href="#draft/' + esc(st.id) + '/tv">Big-screen board</a> · <span class="muted">' + esc(st.d.name) + (st.d.kind === "mock" ? " (practice" + (st.names && st.names[st.d.host] ? ", host: " + esc(st.names[st.d.host]) : "") + ")" : "") + "</span>" + (isPractice() && st.d.host_only ? ' <span class="tag">Host-only controls</span>' : "") + "</p>" +
+      (outOfPractice() ? '<div class="card dr-joinbar"><span>Join to use the controls, pick and chat. Practice drafts never touch real rosters.</span><button type="button" class="btn" data-dr-join="' + esc(st.id) + '">Join this draft</button></div>' : "") +
       (st.msg ? '<p class="acct-msg ' + (st.msg.err ? "err" : "ok") + '">' + esc(st.msg.err || st.msg.ok) + "</p>" : "") +
       '<div data-dr="anim">' + animHtml() + "</div>" +
       '<div class="dr-topbar">' + headerHtml(v) + lastPicksHtml() + "</div>" +
@@ -454,14 +476,20 @@
         '<nav class="dr-tabs" aria-label="Draft room">' + tabs.map(function (t) { return '<button type="button" class="' + (st.tab === t[0] ? "active" : "") + '" data-dr-tab="' + t[0] + '">' + t[1] + "</button>"; }).join("") + "</nav>" +
         '<div class="dr-pane dr-p-board">' + boardHtml(v) + (st.focus === "chat" ? '<p class="muted small">Showing the current round and the 2 before it. <button type="button" class="linkish" data-dr-dock="focus-chat">Show the whole board</button></p>' : "") + "</div>" +
         '<nav class="dr-dtabs" aria-label="Players and teams">' + dtabs.map(function (t) { return '<button type="button" class="' + (dtab === t[0] ? "active" : "") + '" data-dr-tab="' + t[0] + '" aria-pressed="' + (dtab === t[0]) + '">' + t[1] + "</button>"; }).join("") + "</nav>" +
-        '<div class="dr-pane dr-p-players">' + playersHtml(v) + '</div><div class="dr-pane dr-p-queue">' + queueHtml(v) + '</div><div class="dr-pane dr-p-team">' + teamHtml() + "</div>" +
+        '<div class="dr-pane dr-p-players">' + playersHtml(v) + '</div><div class="dr-pane dr-p-queue">' + queueHtml(v) + '</div><div class="dr-pane dr-p-team">' + teamHtml() + "</div>" + (isPractice() ? '<div class="dr-pane dr-p-log">' + logHtml() + "</div>" : "") +
       "</div>" +
       '<div class="dr-resize" role="separator" aria-orientation="vertical" aria-label="Resize the chat" tabindex="0" aria-valuemin="' + CHAT_MIN + '" aria-valuemax="' + CHAT_MAX + '" aria-valuenow="' + (w || "") + '"></div>' +
       '<aside class="dr-dock" aria-label="Draft chat">' + handleHtml() + dockToolsHtml() + dock + "</aside></div></section>";
   }
+  /** Who did what in this practice draft, newest first. */
+  function logHtml() {
+    var when = function (iso) { return new Date(iso).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" }); };
+    return '<div class="card"><h3>Draft log</h3>' + (st.log.length ? '<ul class="dr-log">' + st.log.map(function (l) {
+      return '<li><span class="muted small">' + esc(when(l.at)) + "</span> <b>" + esc(l.actor_name) + "</b> " + esc(l.action) + "</li>"; }).join("") + "</ul>" : '<p class="muted">Nothing yet.</p>') + "</div>";
+  }
   /** Pop-out chat window (#draft/<id>/chat): just the Draft chat, full window, for a second monitor. */
   function popoutHtml() {
-    return '<section class="dr-pop"><p class="dr-links"><b>' + esc(st.d.name) + '</b> · Draft chat <span class="muted">(close this window to bring the chat back to the room)</span></p><div class="dr-chatmount" data-dr="chat"></div></section>';
+    return '<section class="dr-pop"><p class="dr-links"><b>' + esc(st.d.name) + '</b> · Draft chat <span class="muted">(close this window to bring the chat back to the room)</span></p>' + (outOfPractice() ? '<p class="muted">Join this practice draft to chat.</p>' : '<div class="dr-chatmount" data-dr="chat"></div>') + "</section>";
   }
   function tvHtml() {
     var v = view(st.d, st.orders, st.owners, st.sel), s = v.slot;
@@ -470,25 +498,31 @@
       '<div class="dr-tv-clock" data-dr="clock">' + esc(clockText()) + "</div></div>" +
       '<ol class="dr-tv-last">' + last.map(function (x) { var p = st.pmap[x.player_id] || { name: x.player_id, pos: "" }; return "<li>" + esc(x.round + "." + ("0" + x.pick).slice(-2)) + " " + T().logo(x.team_id) + " <b>" + esc(p.name) + "</b> " + posTag(p.pos) + " " + valueTag(x) + "</li>"; }).join("") + "</ol>" +
       "</div>" + '<div data-dr="anim">' + animHtml() + "</div>" +
-      '<div class="dr-tv-body">' + boardHtml(v, true) + '<aside class="dr-tv-chat" data-dr="chat" aria-label="Draft chat"></aside></div></section>';
+      '<div class="dr-tv-body">' + boardHtml(v, true) + '<aside class="dr-tv-chat"' + (outOfPractice() ? "" : ' data-dr="chat"') + ' aria-label="Draft chat"></aside></div></section>';
   }
   function lobbyHtml(list) {
     var real = list.filter(function (d) { return d.kind === "real"; }), mocks = list.filter(function (d) { return d.kind === "mock"; });
     var row = function (d) {
-      var settings = d.status === "setup" && isCommish() ? settingsForm(d) : "";
+      var inIt = !!(st.lobbyParts[d.id] || {})[myId()], ctl = DL.canControl(d, whoFor(inIt)), exp = d.kind === "mock" ? DL.practiceExpiry(d, Date.now()) : null;
+      var settings = d.status === "setup" && ctl ? settingsForm(d) : "";
+      var day = function (iso) { return new Date(iso).toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", year: "numeric" }); };
+      var practice = d.kind === "mock" ? '<p class="small">Host: <b>' + esc(st.lobbyNames[d.host] || "a former member") + "</b> · Created " + esc(day(d.created_at)) + " · " + esc(Object.keys(st.lobbyParts[d.id] || {}).length) + " joined" + (d.host_only ? " · Host-only controls" : "") + "</p>" +
+        (exp.soon ? '<p class="acct-msg err">No activity lately: this draft will be deleted around ' + esc(day(new Date(exp.at).toISOString())) + ".</p>" : "") +
+        (inIt ? "" : '<button type="button" class="btn" data-dr-join="' + esc(d.id) + '">Join</button> ') : "";
+      var canDelete = d.kind === "mock" ? d.host === myId() || isCommish() : isCommish() && d.status === "setup";
       return '<li class="card"><a class="dr-open" href="#draft/' + esc(d.id) + '"><b>' + esc(d.name) + "</b></a> " + (d.kind === "mock" ? '<span class="tag">Practice</span> ' : "") +
         '<span class="tag dr-st-' + esc(d.status) + '">' + esc(d.status.replace("_", " ")) + "</span>" +
         '<p class="muted small">' + esc(d.rounds) + " rounds · " + esc(DL.clock(d.timer_seconds)) + " a pick · orders " + (d.order_mode === "live" ? "drawn live at each odd round" : "all set before the draft") +
         " · when time runs out: " + (d.expiry === "autopick" ? "auto-pick" : "skip, pick later") + (d.starts_at ? " · starts " + esc(new Date(d.starts_at).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })) + " ET" : "") + "</p>" +
-        settings + (isCommish() && (d.kind === "mock" || d.status === "setup") ? '<button type="button" class="btn ghost danger" data-dr-del="' + esc(d.id) + '">Delete</button>' : "") + "</li>";
+        practice + settings + (canDelete ? '<button type="button" class="btn ghost danger" data-dr-del="' + esc(d.id) + '">Delete</button>' : "") + "</li>";
     };
     var season = Number(L.season) + 1;
     return '<section class="dr-lobby"><h2>Draft Room</h2>' + (st.msg ? '<p class="acct-msg ' + (st.msg.err ? "err" : "ok") + '">' + esc(st.msg.err || st.msg.ok) + "</p>" : "") +
       "<h3>The " + esc(season) + " draft</h3>" + (real.length ? '<ul class="dr-dlist">' + real.map(row).join("") + "</ul>" : '<p class="muted">Not set up yet.</p>' +
         (isCommish() ? '<button type="button" class="btn" data-dr-new="real">Set up the ' + esc(season) + " draft</button>" : "")) +
-      "<h3>Practice drafts</h3><p class=\"muted small\">Try the room before the real draft: humans pick for their own teams, bots draft the empty seats. Practice drafts never touch rosters.</p>" + videoHtml() +
+      "<h3>Practice drafts</h3><p class=\"muted small\">Try the room before the real draft. Everyone who joins can run it and pick for any seat; bots draft the seats you choose. Practice drafts never touch rosters. You can host 3 active ones, and they're deleted after 14 days without activity.</p>" + videoHtml() +
       (mocks.length ? '<ul class="dr-dlist">' + mocks.map(row).join("") + "</ul>" : '<p class="muted">None yet.</p>') +
-      (isCommish() ? '<details class="card"><summary>New practice draft</summary>' + newMockForm() + "</details>" : "") + "</section>";
+      '<details class="card"><summary>New practice draft</summary>' + newMockForm() + "</details></section>";
   }
   function settingsForm(d) {
     var teams = d.teams;
@@ -548,7 +582,8 @@
     st.msg = null;
   }
   function chatOpts() {
-    var o = { room: "draft", dock: true, teams: st.d.teams, myTeam: myTeam(), sound: function () { return st.sound; }, onMessage: onChatMessage };
+    var o = { room: chatRoom(), dock: true, teams: st.d.teams, myTeam: myTeam(), sound: function () { return st.sound; }, onMessage: onChatMessage };
+    if (isPractice()) o.allow = function () { return st.parts; };   // "N teams here" counts only the people in this draft
     if (st.tv) { o.tv = true; delete o.onMessage; }
     return o;
   }
@@ -686,6 +721,15 @@
       if (ds.drBtab) { st.btab = ds.drBtab; render(); return; }
       if (ds.drBround) { st.bround = Number(ds.drBround); render(); return; }
       if (ds.drTab) { st.tab = ds.drTab; render(); return; }
+      if (ds.drJoin) {
+        t.disabled = true;
+        rpc("draft_join", { p_draft: Number(ds.drJoin) }).then(function (r) {
+          if (r && r.ok === false) { st.msg = { err: errorText(r) }; return st.id ? loadDraft().then(render) : startLobby(); }
+          if (st.id) return loadDraft().then(render);
+          root.location.hash = "#draft/" + ds.drJoin;
+        });
+        return;
+      }
       if (ds.drView) { st.boardView = ds.drView === "pick" ? "pick" : "team"; store("b5-draft-board-view", st.boardView); st.tip = null; render(); return; }
       if (ds.dr === "sheet") { if (!st.swiped || Date.now() - st.swiped > 500) setSheet(sheetAfter(st.sheet, null)); return; }
       if (ds.drDock) {
@@ -706,7 +750,7 @@
         var v = view(st.d, st.orders, st.owners, st.sel), catchUp = canPickNow(v) ? null : myCatchUps()[0];
         var p = st.pmap[ds.drPick] || { name: ds.drPick };
         var forTeam = catchUp ? catchUp.team_id : v.slot && v.slot.owner;
-        if (isCommish() && forTeam !== myTeam() && !root.confirm("Draft " + p.name + " for " + T().name(forTeam) + "?")) return;
+        if (!isPractice() && isCommish() && forTeam !== myTeam() && !root.confirm("Draft " + p.name + " for " + T().name(forTeam) + "?")) return;
         t.disabled = true;
         act(rpc("draft_pick", { p_draft: st.id, p_player: ds.drPick, p_overall: catchUp ? catchUp.overall : v.cur }), p.name + " drafted.");
         return;
@@ -725,6 +769,8 @@
       if (c === "start") act(rpc("draft_control", { p_draft: did, p_action: "start" }));
       else if (c === "pause" || c === "resume") act(rpc("draft_control", { p_draft: did, p_action: c }));
       else if (c === "extend30" || c === "extend60") act(rpc("draft_control", { p_draft: did, p_action: "extend", p_seconds: c === "extend30" ? 30 : 60 }));
+      else if (c === "end") { if (root.confirm("End this practice draft now? Picks stay on the board.")) act(rpc("draft_control", { p_draft: did, p_action: "end" }), "Draft ended."); }
+      else if (c === "reset") { if (root.confirm("Reset this practice draft? Every pick and round order is cleared.")) act(rpc("draft_control", { p_draft: did, p_action: "reset" }), "Reset."); }
       else if (c === "tv:team" || c === "tv:pick") act(rpc("draft_settings", { p_draft: did, p_settings: { tv_view: c.slice(3) } }), "The big screen shows the board " + (c === "tv:pick" ? "by pick." : "by team."));
       else if (c === "complete") { if (root.confirm(st.d.kind === "real" ? "Finalize the draft? The picks become the rosters." : "Finish the practice draft?")) act(rpc("draft_control", { p_draft: did, p_action: "complete" }), "Done."); }
       else if (c === "undo") {
@@ -746,6 +792,7 @@
     });
     el.addEventListener("change", function (e) {
       if (e.target.dataset.dr === "drafted") { st.showDrafted = e.target.checked; render(); }
+      if (e.target.dataset.dr === "hostonly") { act(rpc("draft_settings", { p_draft: st.id, p_settings: { host_only: e.target.checked } }), e.target.checked ? "Only you can run this draft now." : "Everyone in the draft can use the controls."); }
       if (e.target.dataset.dr === "bteam") { st.bteam = e.target.value; render(); }
       if (e.target.form && e.target.form.dataset.drForm === "order") checkOrderForm(e.target.form);
       if (e.target.dataset.dr === "ranks") { st.sortSet = false; act(rpc("draft_settings", { p_draft: st.id, p_settings: { ranks: e.target.checked ? "custom" : "adp" } }), e.target.checked ? "Custom ranks on." : "Back to ADP."); }
@@ -757,6 +804,7 @@
       var form = e.target.closest("[data-dr-form]"); if (!form) return;
       e.preventDefault();
       var fd = new FormData(form), k = form.dataset.drForm;
+      if (k === "bots") { act(rpc("draft_settings", { p_draft: st.id, p_settings: { bots: fd.getAll("bot") } }), "Bots saved."); return; }
       if (k === "video") {
         var u = String(fd.get("url") || "").trim();
         if (u && !SCRIBE.test(u)) { st.msg = { err: "Use a Scribe embed link (https://scribehow.com/embed/...)." }; return startLobby(); }
@@ -824,25 +872,26 @@
     st.el = null;
   }
   function startLobby() {
-    return Promise.all([api("drafts?select=*&order=kind.desc,created_at.desc"), canGuide() ? api("league_settings?select=practice_video_url") : null]).then(function (r) {
+    return Promise.all([api("drafts?select=*&order=kind.desc,created_at.desc"), api("league_settings?select=practice_video_url"), api("draft_participants?select=draft_id,user_id&limit=3000"), api("profiles?select=id,display_name")]).then(function (r) {
+      st.lobbyParts = {}; ok(r[2]).forEach(function (p) { (st.lobbyParts[p.draft_id] = st.lobbyParts[p.draft_id] || {})[p.user_id] = true; });
+      st.lobbyNames = {}; ok(r[3]).forEach(function (p) { st.lobbyNames[p.id] = p.display_name; });
       if (r[1]) st.videoUrl = (ok(r[1])[0] || {}).practice_video_url || null;
       if (st.el && !st.id) st.el.innerHTML = lobbyHtml(ok(r[0]));
     });
   }
-  // ---- Video guide: "How to create a practice draft" (commissioners and administrators) --------
+  // ---- Video guide: "How to create a practice draft" (every member; officers can change it) -----
   // The URL is a league setting (league_settings.practice_video_url; only Scribe embed links), so it can
   // be swapped without a code change. Open the first time; open/closed remembered per user (this browser).
   var isAdmin = function () { return !!(st.me && st.me.profile && st.me.profile.is_admin); };
-  var canGuide = function () { return isCommish() || isAdmin(); };
+  var canChangeGuide = function () { return isCommish() || isAdmin(); };
   var SCRIBE = /^https:\/\/scribehow\.com\/embed\/[A-Za-z0-9_.%-]+(\?[A-Za-z0-9_.%=&-]*)?$/;
   function guideKey() { return "b5-draft-guide:" + (st.me && st.me.session && st.me.session.user ? st.me.session.user.id : "?"); }
   function guideOpen() { try { return root.localStorage.getItem(guideKey()) !== "closed"; } catch (e) { return true; } }
   function videoHtml() {
-    if (!canGuide()) return "";
     var url = st.videoUrl && SCRIBE.test(st.videoUrl) ? st.videoUrl : null;
-    var change = '<details class="dr-vchange"><summary>Change the video</summary><form class="acct-form" data-dr-form="video"><label>Scribe embed link<input name="url" type="url" value="' + esc(url || "") + '" placeholder="https://scribehow.com/embed/..."></label>' +
+    var change = !canChangeGuide() ? "" : '<details class="dr-vchange"><summary>Change the video</summary><form class="acct-form" data-dr-form="video"><label>Scribe embed link<input name="url" type="url" value="' + esc(url || "") + '" placeholder="https://scribehow.com/embed/..."></label>' +
       '<p class="muted small">Only https://scribehow.com/embed/ links. Leave it empty to hide the guide.</p><button class="btn" type="submit">Save</button></form></details>';
-    if (!url) return '<div class="card dr-video"><p class="muted">No video guide set.</p>' + change + "</div>";
+    if (!url) return canChangeGuide() ? '<div class="card dr-video"><p class="muted">No video guide set.</p>' + change + "</div>" : "";
     return '<details class="card dr-video" data-dr="guide"' + (guideOpen() ? " open" : "") + '><summary>▶ How to create a practice draft (video)</summary>' +
       '<div class="dr-vframe"><iframe src="' + esc(url) + '" title="How to create a new practice draft on B5 Football" loading="lazy" allow="fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>' + change + "</details>";
   }
@@ -869,7 +918,7 @@
         if (!st.d) return;
         st.timer = setInterval(paintClock, 250);
         if (root.B5Realtime) st.sub = root.B5Realtime.subscribe({ cfg: cfg, topic: "realtime:b5-draft-" + st.id,
-          changes: [{ table: "drafts", filter: "id=eq." + st.id }, { table: "draft_selections", filter: "draft_id=eq." + st.id }, { table: "draft_orders", filter: "draft_id=eq." + st.id }],
+          changes: [{ table: "drafts", filter: "id=eq." + st.id }, { table: "draft_selections", filter: "draft_id=eq." + st.id }, { table: "draft_orders", filter: "draft_id=eq." + st.id }, { table: "draft_participants", filter: "draft_id=eq." + st.id }],
           getToken: function () { return root.B5Account.load().then(function (m) { return m && m.session ? m.session.access_token : null; }); },
           onChange: function () { refresh(); },
           onJoin: function () { refresh(); } });   // (re)joined: catch up on anything missed while disconnected

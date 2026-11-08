@@ -169,6 +169,8 @@ export function content(item: NotifyItem): Body {
         lines: [`${d.team} is on the clock in ${d.draft}: ${at}.`, `You have ${Math.round(Number(d.seconds || 0) / 60 * 10) / 10} minutes. When time runs out the draft picks for you (your queue first).`], button: "Open the Draft Room" };
       if (d.type === "soon") return { subject: `You're 2 picks away: ${d.team} (${at})`, heading: "You're 2 picks away",
         lines: [`${d.team} picks in 2 picks in ${d.draft} (${at}).`, "Line up your queue now."], button: "Open the Draft Room" };
+      if (d.type === "expiring") return { subject: `Your practice draft will be deleted soon: ${d.draft}`, heading: "Your practice draft will be deleted soon",
+        lines: [`${d.draft} has had no activity for 12 days. It will be deleted around ${et(String(d.deletes_at))}.`, "To keep it, open it and do anything in it (a pick, a setting or a chat message)."], button: "Open the Draft Room" };
       if (d.type === "start") return { subject: `${d.draft} starts at ${et(String(d.starts_at))}`, heading: `${d.draft} starts soon`,
         lines: [`${d.draft} starts at ${et(String(d.starts_at))}.`, "Rank your queue so you're ready; you can pick from your phone."], button: "Open the Draft Room" };
       const picks = (d.picks || []) as { round: number; pick: number; player: string; pos: string; nfl: string }[];

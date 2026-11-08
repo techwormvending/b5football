@@ -160,7 +160,8 @@
       api("draft_state?select=*"),
       api("chat_mutes?user_id=eq." + myId() + "&select=until")
     ]).then(function (r) {
-      st.rooms = ok(r[0]).filter(function (x) { return !x.archived || x.id === st.room; });
+      // a practice draft's room appears only inside that draft, never in the Chat page's tabs
+      st.rooms = ok(r[0]).filter(function (x) { return (!x.archived && x.kind !== "practice") || x.id === st.room; });
       st.draft = ok(r[1])[0] || null;
       var m = ok(r[2])[0]; st.mute = m && Date.parse(m.until) > Date.now() ? m.until : null;
     });
@@ -262,7 +263,7 @@
     return out;
   }
   function onlineHtml() {
-    var list = st.online;
+    var allow = st.allow ? st.allow() : null, list = allow ? st.online.filter(function (p) { return allow[p.user]; }) : st.online;
     if (st.dock) {
       var th = teamsHere(list, st.teams);
       return '<div class="ch-online ch-here" aria-label="In the Draft Room">' + list.slice(0, 16).map(function (p) { return logo(p.team, false, p.name + " (here)"); }).join("") +
@@ -545,7 +546,7 @@
     stop();
     opts = opts || {};
     st.el = el; st.room = opts.room || "league"; st.tv = !!opts.tv; st.readOnly = !!(opts.readOnly || opts.tv); st.mounted = !!(opts.panel || opts.dock);
-    st.dock = !!(opts.dock || (opts.tv && opts.teams)); st.teams = opts.teams || null; st.myTeam = opts.myTeam || null; st.onMessage = opts.onMessage || null; st.sound = opts.sound || null;
+    st.dock = !!(opts.dock || (opts.tv && opts.teams)); st.teams = opts.teams || null; st.myTeam = opts.myTeam || null; st.onMessage = opts.onMessage || null; st.sound = opts.sound || null; st.allow = opts.allow || null;
     st.msgs = []; st.reactions = {}; st.menu = null; st.editing = null; st.atBottom = true; st.newBelow = 0; st.compose = { images: [], busy: false, err: null };
     if (!(cfg && cfg.configured && A)) { el.innerHTML = '<section><h2>Chat</h2><div class="card">Not set up yet.</div></section>'; return; }
     el.innerHTML = '<section class="ch-gate"><h2>Chat</h2><p class="muted">Loading…</p></section>';
@@ -555,7 +556,7 @@
       if (st.el !== el) return;
       if (!isMember()) { render(); return; }
       return loadPeople().then(loadRooms).then(function () {
-        if (!st.rooms.some(function (r) { return r.id === st.room; })) st.room = "league";
+        if (!st.dock && !st.rooms.some(function (r) { return r.id === st.room; })) st.room = "league";   // a dock never falls back to another room
         return loadHistory();
       }).then(function () {
         if (st.el !== el) return;

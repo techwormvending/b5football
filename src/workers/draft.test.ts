@@ -199,3 +199,22 @@ test("board view: By Team by default; the viewer's choice in the room; the commi
   assert.equal(P.viewFor(true, { tv_view: "pick" }, "team"), "pick", "the TV follows the commissioner, not the viewer");
   assert.equal(P.viewFor(true, {}, "pick"), "team");
 });
+
+test("practice drafts on the page: who holds the controls, when an idle draft is deleted; real drafts stay the commissioner's", () => {
+  const who = (user: string, commissioner: boolean, joined: boolean) => ({ user, commissioner, joined });
+  const practice = { kind: "mock", host: "h", host_only: false };
+  assert.equal(D.canControl(practice, who("h", false, true)), true, "the host");
+  assert.equal(D.canControl(practice, who("p", false, true)), true, "anyone who joined");
+  assert.equal(D.canControl(practice, who("x", false, false)), false, "not joined");
+  assert.equal(D.canControl(practice, who("c", true, false)), false, "a commissioner joins like anyone else");
+  const hostOnly = { ...practice, host_only: true };
+  assert.equal(D.canControl(hostOnly, who("h", false, true)), true);
+  assert.equal(D.canControl(hostOnly, who("p", false, true)), false);
+  const real = { kind: "real", host: null, host_only: false };
+  assert.equal(D.canControl(real, who("c", true, false)), true);
+  assert.equal(D.canControl(real, who("p", false, true)), false, "joining means nothing on a real draft");
+  const now = Date.parse("2026-11-20T12:00:00Z"), day = 86400000;
+  assert.equal(D.practiceExpiry({ last_activity_at: new Date(now - 12.5 * day).toISOString() }, now).soon, true, "inside the last 2 days");
+  assert.equal(D.practiceExpiry({ last_activity_at: new Date(now - 5 * day).toISOString() }, now).soon, false);
+  assert.equal(D.practiceExpiry({ last_activity_at: new Date(now).toISOString() }, now).at, now + 14 * day);
+});
