@@ -50,8 +50,6 @@ jobs:
       - name: Confirm nothing was kept (read-only)
         run: |
           npx supabase db query --project-ref "$PROJECT_REF" --linked \
-            "select (select count(*) from auth.users where email like 'b5-test-%@example.invalid') as test_accounts, (select count(*) from public.invites where email like 'b5-test-%@example.invalid') as test_invites, (select count(*) from public.drafts where name like 'TEST %') as test_drafts, (select max_owners_per_team from public.league_settings limit 1) as owner_limit" | tee kept.txt
-          grep -Eq '"test_accounts": *0' kept.txt && grep -Eq '"test_invites": *0' kept.txt && grep -Eq '"test_drafts": *0' kept.txt || { echo "::error::Something from the check was kept"; exit 1; }
-          echo "Nothing kept: no test accounts, invites or drafts." >> "$GITHUB_STEP_SUMMARY"          npx supabase db query --project-ref "$PROJECT_REF" --linked             "select 'kept=' || ((select count(*) from auth.users where email like 'b5-test-%@example.invalid') + (select count(*) from public.invites where email like 'b5-test-%@example.invalid') + (select count(*) from public.drafts where name like 'TEST %')) || ' owner_limit=' || (select max_owners_per_team from public.league_settings limit 1) as result" | tee kept.txt
+            "select 'kept=' || ((select count(*) from auth.users where email like 'b5-test-%@example.invalid') + (select count(*) from public.invites where email like 'b5-test-%@example.invalid') + (select count(*) from public.drafts where name like 'TEST %')) || ' owner_limit=' || (select max_owners_per_team from public.league_settings limit 1) as result" | tee kept.txt
           grep -q 'kept=0 owner_limit=2' kept.txt || { echo "::error::Something from the check was kept"; exit 1; }
-          echo "Nothing kept: no test accounts, invites or drafts." >> "$GITHUB_STEP_SUMMARY"
+          echo "Nothing kept: no test accounts, invites or drafts; the owner limit is back to 2." >> "$GITHUB_STEP_SUMMARY"
