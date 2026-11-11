@@ -1,0 +1,49 @@
+# Live check: practice drafts for every member, on the real database.
+# Manual only: Actions > "Verify practice drafts (live)" > Run workflow.
+#
+# Runs scripts/verify-practice.sql through the Management API (same access token as the migration deploys).
+# The script creates throwaway TEST accounts through the invite flow, runs every practice-draft rule as them,
+# and ends with an error that carries the results, so Postgres rolls back EVERYTHING: no accounts, drafts,
+# chat, emails or audit rows are kept. No real member's account is used.
+#
+# Needs: variable SUPABASE_PROJECT_REF, secret SUPABASE_ACCESS_TOKEN (Database read/write).
+
+name: Verify practice drafts (live)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Run the check (rolled back)
+        run: |
+          set +e
+          npx supabase db query --project-ref "$PROJECT_REF" --linked -f scripts/verify-practice.sql > out.txt 2>&1
+          set -e
+          # the results come back as the error message; the JSON-escaped newlines become real ones
+          sed 's/\\n/\n/g' out.txt | sed -n '/B5VERIFY/,/B5VERIFY-END/p' | grep -E '^(PASS|FAIL)' > results.txt || true
+          cat results.txt
+          {
+            echo "### Practice drafts: live check (rolled back)"
+            echo '```'
+            cat results.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ ! -s results.txt ]; then echo "::error::No results. Raw output:"; cat out.txt; exit 1; fi
+          if grep -q '^FAIL' results.txt; then echo "::error::$(grep -c '^FAIL' results.txt) check(s) failed"; exit 1; fi
+          echo "All $(wc -l < results.txt) checks passed."
