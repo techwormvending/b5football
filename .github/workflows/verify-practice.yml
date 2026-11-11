@@ -47,3 +47,9 @@ jobs:
           if [ ! -s results.txt ]; then echo "::error::No results. Raw output:"; cat out.txt; exit 1; fi
           if grep -q '^FAIL' results.txt; then echo "::error::$(grep -c '^FAIL' results.txt) check(s) failed"; exit 1; fi
           echo "All $(wc -l < results.txt) checks passed."
+      - name: Confirm nothing was kept (read-only)
+        run: |
+          npx supabase db query --project-ref "$PROJECT_REF" --linked \
+            "select (select count(*) from auth.users where email like 'b5-test-%@example.invalid') as test_accounts, (select count(*) from public.invites where email like 'b5-test-%@example.invalid') as test_invites, (select count(*) from public.drafts where name like 'TEST %') as test_drafts, (select max_owners_per_team from public.league_settings limit 1) as owner_limit" | tee kept.txt
+          grep -Eq '"test_accounts": *0' kept.txt && grep -Eq '"test_invites": *0' kept.txt && grep -Eq '"test_drafts": *0' kept.txt || { echo "::error::Something from the check was kept"; exit 1; }
+          echo "Nothing kept: no test accounts, invites or drafts." >> "$GITHUB_STEP_SUMMARY"
