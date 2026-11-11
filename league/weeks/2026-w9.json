@@ -1,7 +1,7 @@
 {
  "season": 2026,
  "week": 9,
- "status": "pending_review",
+ "status": "final",
  "missingGames": [],
  "diffLog": [
   {
@@ -21,14 +21,62 @@
    "kind": "live_vs_final",
    "entries": [],
    "note": "no live numbers were recorded for BUF@MIN"
+  },
+  {
+   "at": "2026-11-11T17:06:13.649Z",
+   "kind": "correction",
+   "entries": [
+    {
+     "key": "nflverse:00-0039910",
+     "name": "Jayden Daniels",
+     "position": "QB",
+     "gameKey": "LAR@WAS",
+     "from": 13,
+     "to": 13,
+     "changes": {
+      "passYds": [
+       273,
+       274
+      ]
+     }
+    },
+    {
+     "key": "nflverse:00-0037809",
+     "name": "Chig Okonkwo",
+     "position": "TE",
+     "gameKey": "LAR@WAS",
+     "from": 10,
+     "to": 10,
+     "changes": {
+      "recYds": [
+       56,
+       57
+      ]
+     }
+    },
+    {
+     "key": "DEF:LAR",
+     "name": "LAR defense",
+     "position": "DEF",
+     "gameKey": "LAR@WAS",
+     "from": 14,
+     "to": 14,
+     "changes": {
+      "passYdsAllowed": [
+       252,
+       253
+      ]
+     }
+    }
+   ]
   }
  ],
- "updatedAt": "2026-11-10T17:01:55.477Z",
+ "updatedAt": "2026-11-11T17:06:13.649Z",
  "final": {
   "season": 2026,
   "week": 9,
   "source": "final",
-  "computedAt": "2026-11-10T17:01:55.477Z",
+  "computedAt": "2026-11-11T17:06:13.649Z",
   "delayed": false,
   "errors": [],
   "games": [
@@ -3054,7 +3102,7 @@
     "gameKey": "LAR@WAS",
     "points": 13,
     "stats": {
-     "passYds": 273,
+     "passYds": 274,
      "rushYds": 16,
      "passTdLengths": [
       7
@@ -3096,7 +3144,7 @@
     "gameKey": "LAR@WAS",
     "points": 10,
     "stats": {
-     "recYds": 56,
+     "recYds": 57,
      "receptions": 6
     }
    },
@@ -4668,7 +4716,7 @@
     "stats": {
      "opponentPoints": 13,
      "offensiveTdsAllowed": 1,
-     "passYdsAllowed": 252,
+     "passYdsAllowed": 253,
      "rushYdsAllowed": 60,
      "sacks": 4,
      "fumbleRecoveries": 2
@@ -4785,5 +4833,7 @@
   "unmatched": [],
   "warnings": []
  },
- "autoFinalizeAt": "2026-11-11T04:00:00.000Z"
+ "autoFinalizeAt": "2026-11-11T04:00:00.000Z",
+ "finalizedAt": "2026-11-11T17:06:13.649Z",
+ "finalizedBy": "auto"
 }
