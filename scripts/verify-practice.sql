@@ -65,19 +65,12 @@ begin
   begin
     -- ------------------------------------------------------------------ setup: test accounts via the invite flow
     select array_agg(t.id order by t.id) into all_teams from public.teams t;
-    -- teams with nobody on them (owners + pending invites); co-owners need a team with two free places
-    select t.id into tx from public.teams t
-     where (select count(*) from public.team_managers m where m.team_id = t.id)
-         + (select count(*) from public.invites i where i.team_id = t.id and i.user_id is null) = 0
-     order by t.id limit 1;
-    select t.id into ty from public.teams t
-     where t.id is distinct from tx and (select count(*) from public.team_managers m where m.team_id = t.id)
-         + (select count(*) from public.invites i where i.team_id = t.id and i.user_id is null) <= 1
-     order by (select count(*) from public.team_managers m where m.team_id = t.id), t.id limit 1;
-    select t.id into tz from public.teams t
-     where t.id is distinct from tx and t.id is distinct from ty and (select count(*) from public.team_managers m where m.team_id = t.id)
-         + (select count(*) from public.invites i where i.team_id = t.id and i.user_id is null) <= 1
-     order by (select count(*) from public.team_managers m where m.team_id = t.id), t.id limit 1;
+    -- the three teams with the fewest owners + pending invites. Every team may already be spoken for (invites sent),
+    -- so the owner limit is raised for this run only (rolled back with everything else).
+    update public.league_settings set max_owners_per_team = 4 where true;
+    select t.id into tx from public.teams t order by (select count(*) from public.team_managers m where m.team_id = t.id) + (select count(*) from public.invites i where i.team_id = t.id and i.user_id is null), t.id limit 1;
+    select t.id into ty from public.teams t where t.id <> tx order by (select count(*) from public.team_managers m where m.team_id = t.id) + (select count(*) from public.invites i where i.team_id = t.id and i.user_id is null), t.id limit 1;
+    select t.id into tz from public.teams t where t.id not in (tx, ty) order by (select count(*) from public.team_managers m where m.team_id = t.id) + (select count(*) from public.invites i where i.team_id = t.id and i.user_id is null), t.id limit 1;
     if tx is null or ty is null or tz is null then raise exception 'setup: not enough free team places for the test accounts'; end if;
 
     insert into public.invites (email, team_id, is_commissioner) values

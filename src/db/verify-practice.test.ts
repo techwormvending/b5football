@@ -18,6 +18,7 @@ test("live practice-draft check: every item passes and everything is rolled back
     insert into public.team_managers values ('0011', '00000000-0000-0000-0000-00000000000c');
     insert into public.nfl_players (id, name, position, nfl_team) values
       ${Array.from({ length: 90 }, (_, i) => `('P${String(i).padStart(3, "0")}', 'Player ${i}', '${["QB", "RB", "WR", "TE"][i % 4]}', 'DET')`).join(", ")};
+    insert into public.invites (email, team_id) select 'owner' || t.id || '@example.com', t.id from public.teams t where t.id <> '0011';   -- like live: every team spoken for
     insert into public.league_settings (id) values (true) on conflict do nothing;
     update public.league_settings set practice_video_url = 'https://scribehow.com/embed/How_to_Create_a_New_Practice_Draft_on_B5_Football__iD_l2TKMREOYcfUsx13N8w?as=video' where true;
   `);
