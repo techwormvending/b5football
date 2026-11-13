@@ -1,0 +1,350 @@
+{
+ "season": 2026,
+ "week": 10,
+ "status": "live",
+ "missingGames": [
+  "BUF@NYJ",
+  "CAR@NO",
+  "HOU@CLE",
+  "JAX@TEN",
+  "KC@ATL",
+  "LAC@BAL",
+  "LAR@ARI",
+  "MIA@IND",
+  "MIN@GB",
+  "NE@DET",
+  "PIT@CIN",
+  "SEA@LV",
+  "SF@DAL"
+ ],
+ "diffLog": [
+  {
+   "at": "2026-11-13T17:11:42.264Z",
+   "kind": "live_vs_final",
+   "entries": [],
+   "note": "no live numbers were recorded for WAS@NYG"
+  }
+ ],
+ "updatedAt": "2026-11-13T17:11:42.264Z",
+ "final": {
+  "season": 2026,
+  "week": 10,
+  "source": "final",
+  "computedAt": "2026-11-13T17:11:42.264Z",
+  "delayed": false,
+  "errors": [],
+  "games": [
+   {
+    "gameKey": "WAS@NYG",
+    "sourceGameId": "2026_10_WAS_NYG",
+    "home": "NYG",
+    "away": "WAS",
+    "homeScore": 21,
+    "awayScore": 24,
+    "status": "final",
+    "gameDate": "2026-11-12"
+   }
+  ],
+  "players": {
+   "nflverse:00-0039923": {
+    "key": "nflverse:00-0039923",
+    "name": "J.J. McCarthy",
+    "position": "QB",
+    "team": "NYG",
+    "gameKey": "WAS@NYG",
+    "points": 18,
+    "stats": {
+     "passYds": 293,
+     "rushYds": 34,
+     "interceptionsThrown": 1,
+     "passTdLengths": [
+      66
+     ]
+    }
+   },
+   "nflverse:00-0040715": {
+    "key": "nflverse:00-0040715",
+    "name": "Cam Skattebo",
+    "position": "RB",
+    "team": "NYG",
+    "gameKey": "WAS@NYG",
+    "points": 22.5,
+    "stats": {
+     "rushYds": 78,
+     "recYds": 44,
+     "receptions": 3,
+     "rushTdLengths": [
+      1,
+      13
+     ]
+    }
+   },
+   "nflverse:00-0037838": {
+    "key": "nflverse:00-0037838",
+    "name": "Isaiah Likely",
+    "position": "TE",
+    "team": "NYG",
+    "gameKey": "WAS@NYG",
+    "points": 31,
+    "stats": {
+     "recYds": 127,
+     "receptions": 9,
+     "recTdLengths": [
+      66
+     ]
+    }
+   },
+   "nflverse:00-0035250": {
+    "key": "nflverse:00-0035250",
+    "name": "Devin Singletary",
+    "position": "RB",
+    "team": "NYG",
+    "gameKey": "WAS@NYG",
+    "points": 0,
+    "stats": {
+     "rushYds": 3
+    }
+   },
+   "nflverse:00-0037256": {
+    "key": "nflverse:00-0037256",
+    "name": "Rachaad White",
+    "position": "RB",
+    "team": "WAS",
+    "gameKey": "WAS@NYG",
+    "points": 4.5,
+    "stats": {
+     "rushYds": 47,
+     "recYds": 5,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0039910": {
+    "key": "nflverse:00-0039910",
+    "name": "Jayden Daniels",
+    "position": "QB",
+    "team": "WAS",
+    "gameKey": "WAS@NYG",
+    "points": 27,
+    "stats": {
+     "passYds": 249,
+     "rushYds": 28,
+     "interceptionsThrown": 2,
+     "passTdLengths": [
+      1,
+      31,
+      32
+     ]
+    }
+   },
+   "nflverse:00-0037742": {
+    "key": "nflverse:00-0037742",
+    "name": "Treylon Burks",
+    "position": "WR",
+    "team": "WAS",
+    "gameKey": "WAS@NYG",
+    "points": 2,
+    "stats": {
+     "recYds": 27,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0031588": {
+    "key": "nflverse:00-0031588",
+    "name": "Stefon Diggs",
+    "position": "WR",
+    "team": "WAS",
+    "gameKey": "WAS@NYG",
+    "points": 15,
+    "stats": {
+     "recYds": 83,
+     "receptions": 6,
+     "recTdLengths": [
+      32
+     ]
+    }
+   },
+   "nflverse:00-0039337": {
+    "key": "nflverse:00-0039337",
+    "name": "Malik Nabers",
+    "position": "WR",
+    "team": "NYG",
+    "gameKey": "WAS@NYG",
+    "points": 3.5,
+    "stats": {
+     "recYds": 44,
+     "receptions": 5
+    }
+   },
+   "nflverse:00-0033699": {
+    "key": "nflverse:00-0033699",
+    "name": "Austin Ekeler",
+    "position": "RB",
+    "team": "WAS",
+    "gameKey": "WAS@NYG",
+    "points": 6,
+    "stats": {
+     "rushYds": 26,
+     "recYds": 26,
+     "receptions": 4
+    }
+   },
+   "nflverse:00-0037809": {
+    "key": "nflverse:00-0037809",
+    "name": "Chig Okonkwo",
+    "position": "TE",
+    "team": "WAS",
+    "gameKey": "WAS@NYG",
+    "points": 5,
+    "stats": {
+     "recYds": 24,
+     "receptions": 4
+    }
+   },
+   "nflverse:00-0036309": {
+    "key": "nflverse:00-0036309",
+    "name": "Darnell Mooney",
+    "position": "WR",
+    "team": "NYG",
+    "gameKey": "WAS@NYG",
+    "points": 1,
+    "stats": {
+     "recYds": 8,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0039912": {
+    "key": "nflverse:00-0039912",
+    "name": "Ben Sinnott",
+    "position": "TE",
+    "team": "WAS",
+    "gameKey": "WAS@NYG",
+    "points": 12,
+    "stats": {
+     "recYds": 42,
+     "receptions": 4,
+     "recTdLengths": [
+      1
+     ]
+    }
+   },
+   "nflverse:00-0031503": {
+    "key": "nflverse:00-0031503",
+    "name": "Jameis Winston",
+    "position": "QB",
+    "team": "NYG",
+    "gameKey": "WAS@NYG",
+    "points": 0,
+    "stats": {
+     "rushYds": 1
+    }
+   },
+   "nflverse:00-0041042": {
+    "key": "nflverse:00-0041042",
+    "name": "Malachi Fields",
+    "position": "WR",
+    "team": "NYG",
+    "gameKey": "WAS@NYG",
+    "points": 3.5,
+    "stats": {
+     "recYds": 62,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0039847": {
+    "key": "nflverse:00-0039847",
+    "name": "Theo Johnson",
+    "position": "TE",
+    "team": "NYG",
+    "gameKey": "WAS@NYG",
+    "points": 2,
+    "stats": {
+     "recYds": 8,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0041178": {
+    "key": "nflverse:00-0041178",
+    "name": "Robert Henry Jr.",
+    "position": "RB",
+    "team": "WAS",
+    "gameKey": "WAS@NYG",
+    "points": 0,
+    "stats": {
+     "rushYds": 4
+    }
+   },
+   "nflverse:00-0041040": {
+    "key": "nflverse:00-0041040",
+    "name": "Antonio Williams",
+    "position": "WR",
+    "team": "WAS",
+    "gameKey": "WAS@NYG",
+    "points": 10,
+    "stats": {
+     "recYds": 42,
+     "receptions": 2,
+     "recTdLengths": [
+      31
+     ]
+    }
+   },
+   "nflverse:00-0041182": {
+    "key": "nflverse:00-0041182",
+    "name": "Drew Stevens",
+    "position": "K",
+    "team": "WAS",
+    "gameKey": "WAS@NYG",
+    "points": 7.6,
+    "stats": {
+     "fgMadeLengths": [
+      46
+     ],
+     "extraPoints": 3
+    }
+   },
+   "nflverse:00-0041145": {
+    "key": "nflverse:00-0041145",
+    "name": "Dominic Zvada",
+    "position": "K",
+    "team": "NYG",
+    "gameKey": "WAS@NYG",
+    "points": 3,
+    "stats": {
+     "extraPoints": 3
+    }
+   }
+  },
+  "defenses": {
+   "NYG": {
+    "team": "NYG",
+    "gameKey": "WAS@NYG",
+    "points": 5,
+    "stats": {
+     "opponentPoints": 24,
+     "offensiveTdsAllowed": 3,
+     "passYdsAllowed": 235,
+     "rushYdsAllowed": 105,
+     "sacks": 1,
+     "interceptions": 2
+    }
+   },
+   "WAS": {
+    "team": "WAS",
+    "gameKey": "WAS@NYG",
+    "points": 5,
+    "stats": {
+     "opponentPoints": 21,
+     "offensiveTdsAllowed": 3,
+     "passYdsAllowed": 283,
+     "rushYdsAllowed": 116,
+     "sacks": 1,
+     "interceptions": 1,
+     "fumbleRecoveries": 1
+    }
+   }
+  },
+  "unmatched": [],
+  "warnings": []
+ },
+ "autoFinalizeAt": "2026-11-18T04:00:00.000Z"
+}
