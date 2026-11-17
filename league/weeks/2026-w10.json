@@ -1,10 +1,8 @@
 {
  "season": 2026,
  "week": 10,
- "status": "live",
- "missingGames": [
-  "LAC@BAL"
- ],
+ "status": "pending_review",
+ "missingGames": [],
  "diffLog": [
   {
    "at": "2026-11-13T17:11:42.264Z",
@@ -17,14 +15,20 @@
    "kind": "live_vs_final",
    "entries": [],
    "note": "no live numbers were recorded for BUF@NYJ, CAR@NO, HOU@CLE, JAX@TEN, KC@ATL, LAR@ARI, MIA@IND, MIN@GB, NE@DET, PIT@CIN, SEA@LV, SF@DAL"
+  },
+  {
+   "at": "2026-11-17T18:33:22.262Z",
+   "kind": "live_vs_final",
+   "entries": [],
+   "note": "no live numbers were recorded for LAC@BAL"
   }
  ],
- "updatedAt": "2026-11-16T19:35:12.603Z",
+ "updatedAt": "2026-11-17T18:33:22.262Z",
  "final": {
   "season": 2026,
   "week": 10,
   "source": "final",
-  "computedAt": "2026-11-16T19:35:12.603Z",
+  "computedAt": "2026-11-17T18:33:22.262Z",
   "delayed": false,
   "errors": [],
   "games": [
@@ -77,6 +81,16 @@
     "awayScore": 35,
     "status": "final",
     "gameDate": "2026-11-15"
+   },
+   {
+    "gameKey": "LAC@BAL",
+    "sourceGameId": "2026_10_LAC_BAL",
+    "home": "BAL",
+    "away": "LAC",
+    "homeScore": 20,
+    "awayScore": 23,
+    "status": "final",
+    "gameDate": "2026-11-16"
    },
    {
     "gameKey": "LAR@ARI",
@@ -1588,6 +1602,259 @@
       38
      ],
      "extraPoints": 1
+    }
+   },
+   "nflverse:00-0032764": {
+    "key": "nflverse:00-0032764",
+    "name": "Derrick Henry",
+    "position": "RB",
+    "team": "BAL",
+    "gameKey": "LAC@BAL",
+    "points": 14.5,
+    "stats": {
+     "rushYds": 10,
+     "recYds": 10,
+     "receptions": 5,
+     "rushTdLengths": [
+      2,
+      1
+     ]
+    }
+   },
+   "nflverse:00-0033119": {
+    "key": "nflverse:00-0033119",
+    "name": "Jacoby Brissett",
+    "position": "QB",
+    "team": "BAL",
+    "gameKey": "LAC@BAL",
+    "points": 8,
+    "stats": {
+     "passYds": 340,
+     "rushYds": 2,
+     "interceptionsThrown": 1
+    }
+   },
+   "nflverse:00-0040870": {
+    "key": "nflverse:00-0040870",
+    "name": "Ja'Kobi Lane",
+    "position": "WR",
+    "team": "BAL",
+    "gameKey": "LAC@BAL",
+    "points": 3.5,
+    "stats": {
+     "recYds": 61,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0034753": {
+    "key": "nflverse:00-0034753",
+    "name": "Mark Andrews",
+    "position": "TE",
+    "team": "BAL",
+    "gameKey": "LAC@BAL",
+    "points": 14,
+    "stats": {
+     "recYds": 82,
+     "receptions": 8
+    }
+   },
+   "nflverse:00-0040666": {
+    "key": "nflverse:00-0040666",
+    "name": "Omarion Hampton",
+    "position": "RB",
+    "team": "LAC",
+    "gameKey": "LAC@BAL",
+    "points": 14.5,
+    "stats": {
+     "rushYds": 105,
+     "receptions": 1,
+     "rushTdLengths": [
+      1
+     ]
+    }
+   },
+   "nflverse:00-0036355": {
+    "key": "nflverse:00-0036355",
+    "name": "Justin Herbert",
+    "position": "QB",
+    "team": "LAC",
+    "gameKey": "LAC@BAL",
+    "points": 11,
+    "stats": {
+     "passYds": 129,
+     "rushYds": 51,
+     "rushTdLengths": [
+      22
+     ]
+    }
+   },
+   "nflverse:00-0040727": {
+    "key": "nflverse:00-0040727",
+    "name": "Tre Harris",
+    "position": "WR",
+    "team": "LAC",
+    "gameKey": "LAC@BAL",
+    "points": 6.5,
+    "stats": {
+     "recYds": 86,
+     "receptions": 5
+    }
+   },
+   "nflverse:00-0036550": {
+    "key": "nflverse:00-0036550",
+    "name": "Rashod Bateman",
+    "position": "WR",
+    "team": "BAL",
+    "gameKey": "LAC@BAL",
+    "points": 2.5,
+    "stats": {
+     "recYds": 42,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0038046": {
+    "key": "nflverse:00-0038046",
+    "name": "Charlie Kolar",
+    "position": "TE",
+    "team": "LAC",
+    "gameKey": "LAC@BAL",
+    "points": 3,
+    "stats": {
+     "recYds": 16,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0039391": {
+    "key": "nflverse:00-0039391",
+    "name": "Kimani Vidal",
+    "position": "RB",
+    "team": "LAC",
+    "gameKey": "LAC@BAL",
+    "points": 1,
+    "stats": {
+     "recYds": 14,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0034975": {
+    "key": "nflverse:00-0034975",
+    "name": "Justice Hill",
+    "position": "RB",
+    "team": "BAL",
+    "gameKey": "LAC@BAL",
+    "points": 4.5,
+    "stats": {
+     "rushYds": 4,
+     "recYds": 34,
+     "receptions": 5
+    }
+   },
+   "nflverse:00-0038454": {
+    "key": "nflverse:00-0038454",
+    "name": "Keaton Mitchell",
+    "position": "RB",
+    "team": "LAC",
+    "gameKey": "LAC@BAL",
+    "points": 0,
+    "stats": {
+     "rushYds": 4
+    }
+   },
+   "nflverse:00-0039064": {
+    "key": "nflverse:00-0039064",
+    "name": "Zay Flowers",
+    "position": "WR",
+    "team": "BAL",
+    "gameKey": "LAC@BAL",
+    "points": 5,
+    "stats": {
+     "recYds": 74,
+     "receptions": 6
+    }
+   },
+   "nflverse:00-0040887": {
+    "key": "nflverse:00-0040887",
+    "name": "Josh Cuevas",
+    "position": "TE",
+    "team": "BAL",
+    "gameKey": "LAC@BAL",
+    "points": 5,
+    "stats": {
+     "recYds": 37,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0038544": {
+    "key": "nflverse:00-0038544",
+    "name": "Quentin Johnston",
+    "position": "WR",
+    "team": "LAC",
+    "gameKey": "LAC@BAL",
+    "points": 0.5,
+    "stats": {
+     "recYds": 6,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0040311": {
+    "key": "nflverse:00-0040311",
+    "name": "Theo Wease Jr.",
+    "position": "WR",
+    "team": "LAC",
+    "gameKey": "LAC@BAL",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0032398": {
+    "key": "nflverse:00-0032398",
+    "name": "Chris Moore",
+    "position": "WR",
+    "team": "BAL",
+    "gameKey": "LAC@BAL",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0040189": {
+    "key": "nflverse:00-0040189",
+    "name": "Oronde Gadsden II",
+    "position": "TE",
+    "team": "LAC",
+    "gameKey": "LAC@BAL",
+    "points": 2,
+    "stats": {
+     "recYds": 7,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0037224": {
+    "key": "nflverse:00-0037224",
+    "name": "Cameron Dicker",
+    "position": "K",
+    "team": "LAC",
+    "gameKey": "LAC@BAL",
+    "points": 12.7,
+    "stats": {
+     "extraPoints": 2,
+     "fgMadeLengths": [
+      38,
+      34,
+      35
+     ]
+    }
+   },
+   "nflverse:00-0036816": {
+    "key": "nflverse:00-0036816",
+    "name": "Riley Patterson",
+    "position": "K",
+    "team": "BAL",
+    "gameKey": "LAC@BAL",
+    "points": 8.6,
+    "stats": {
+     "extraPoints": 2,
+     "fgMadeLengths": [
+      26,
+      36
+     ]
     }
    },
    "nflverse:00-0037263": {
@@ -4058,6 +4325,32 @@
      "passYdsAllowed": 270,
      "rushYdsAllowed": 100,
      "sacks": 3,
+     "interceptions": 1,
+     "fumbleRecoveries": 1
+    }
+   },
+   "BAL": {
+    "team": "BAL",
+    "gameKey": "LAC@BAL",
+    "points": 8,
+    "stats": {
+     "opponentPoints": 23,
+     "offensiveTdsAllowed": 2,
+     "passYdsAllowed": 127,
+     "rushYdsAllowed": 160,
+     "sacks": 2
+    }
+   },
+   "LAC": {
+    "team": "LAC",
+    "gameKey": "LAC@BAL",
+    "points": 12,
+    "stats": {
+     "opponentPoints": 20,
+     "offensiveTdsAllowed": 2,
+     "passYdsAllowed": 331,
+     "rushYdsAllowed": 16,
+     "sacks": 2,
      "interceptions": 1,
      "fumbleRecoveries": 1
     }
