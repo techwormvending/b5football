@@ -1,0 +1,376 @@
+{
+ "season": 2026,
+ "week": 11,
+ "status": "live",
+ "missingGames": [
+  "ARI@KC",
+  "BAL@CAR",
+  "CIN@WAS",
+  "JAX@NYG",
+  "LV@DEN",
+  "MIA@BUF",
+  "MIN@SF",
+  "NO@CHI",
+  "NYJ@LAC",
+  "PIT@PHI",
+  "TB@DET",
+  "TEN@DAL"
+ ],
+ "diffLog": [
+  {
+   "at": "2026-11-20T17:47:01.323Z",
+   "kind": "live_vs_final",
+   "entries": [],
+   "note": "no live numbers were recorded for IND@HOU"
+  }
+ ],
+ "updatedAt": "2026-11-20T17:47:01.323Z",
+ "final": {
+  "season": 2026,
+  "week": 11,
+  "source": "final",
+  "computedAt": "2026-11-20T17:47:01.323Z",
+  "delayed": false,
+  "errors": [],
+  "games": [
+   {
+    "gameKey": "IND@HOU",
+    "sourceGameId": "2026_11_IND_HOU",
+    "home": "HOU",
+    "away": "IND",
+    "homeScore": 26,
+    "awayScore": 3,
+    "status": "final",
+    "gameDate": "2026-11-19"
+   }
+  ],
+  "players": {
+   "nflverse:00-0036223": {
+    "key": "nflverse:00-0036223",
+    "name": "Jonathan Taylor",
+    "position": "RB",
+    "team": "IND",
+    "gameKey": "IND@HOU",
+    "points": 4,
+    "stats": {
+     "rushYds": 21,
+     "recYds": 6,
+     "receptions": 4
+    }
+   },
+   "nflverse:00-0035710": {
+    "key": "nflverse:00-0035710",
+    "name": "Daniel Jones",
+    "position": "QB",
+    "team": "IND",
+    "gameKey": "IND@HOU",
+    "points": 1,
+    "stats": {
+     "passYds": 144,
+     "rushYds": 3,
+     "interceptionsThrown": 1
+    }
+   },
+   "nflverse:00-0041132": {
+    "key": "nflverse:00-0041132",
+    "name": "Deion Burks",
+    "position": "WR",
+    "team": "IND",
+    "gameKey": "IND@HOU",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0035021": {
+    "key": "nflverse:00-0035021",
+    "name": "Ashton Dulin",
+    "position": "WR",
+    "team": "IND",
+    "gameKey": "IND@HOU",
+    "points": 2,
+    "stats": {
+     "recYds": 30,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0041125": {
+    "key": "nflverse:00-0041125",
+    "name": "Seth McGowan",
+    "position": "RB",
+    "team": "IND",
+    "gameKey": "IND@HOU",
+    "points": 0.5,
+    "stats": {
+     "rushYds": 7,
+     "recYds": 1,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0039163": {
+    "key": "nflverse:00-0039163",
+    "name": "C.J. Stroud",
+    "position": "QB",
+    "team": "HOU",
+    "gameKey": "IND@HOU",
+    "points": 24,
+    "stats": {
+     "passYds": 194,
+     "rushYds": 27,
+     "interceptionsThrown": 1,
+     "passTdLengths": [
+      42,
+      24,
+      13
+     ]
+    }
+   },
+   "nflverse:00-0035685": {
+    "key": "nflverse:00-0035685",
+    "name": "David Montgomery",
+    "position": "RB",
+    "team": "HOU",
+    "gameKey": "IND@HOU",
+    "points": 9.5,
+    "stats": {
+     "rushYds": 107,
+     "recYds": 17,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0034383": {
+    "key": "nflverse:00-0034383",
+    "name": "Dalton Schultz",
+    "position": "TE",
+    "team": "HOU",
+    "gameKey": "IND@HOU",
+    "points": 2,
+    "stats": {
+     "recYds": 11,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0036554": {
+    "key": "nflverse:00-0036554",
+    "name": "Nico Collins",
+    "position": "WR",
+    "team": "HOU",
+    "gameKey": "IND@HOU",
+    "points": 11.5,
+    "stats": {
+     "recYds": 58,
+     "receptions": 3,
+     "recTdLengths": [
+      42
+     ]
+    }
+   },
+   "nflverse:00-0036271": {
+    "key": "nflverse:00-0036271",
+    "name": "Quez Watkins",
+    "position": "WR",
+    "team": "IND",
+    "gameKey": "IND@HOU",
+    "points": 1.5,
+    "stats": {
+     "recYds": 26,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0040128": {
+    "key": "nflverse:00-0040128",
+    "name": "Tyler Warren",
+    "position": "TE",
+    "team": "IND",
+    "gameKey": "IND@HOU",
+    "points": 2,
+    "stats": {
+     "recYds": 22,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0038618": {
+    "key": "nflverse:00-0038618",
+    "name": "Xavier Hutchinson",
+    "position": "WR",
+    "team": "HOU",
+    "gameKey": "IND@HOU",
+    "points": 1,
+    "stats": {
+     "recYds": 13,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0038705": {
+    "key": "nflverse:00-0038705",
+    "name": "Emari Demercado",
+    "position": "RB",
+    "team": "HOU",
+    "gameKey": "IND@HOU",
+    "points": 3,
+    "stats": {
+     "rushYds": 33,
+     "recYds": -4,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0039816": {
+    "key": "nflverse:00-0039816",
+    "name": "Anthony Gould",
+    "position": "WR",
+    "team": "IND",
+    "gameKey": "IND@HOU",
+    "points": 2,
+    "stats": {
+     "recYds": 48,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0041472": {
+    "key": "nflverse:00-0041472",
+    "name": "Marlin Klein",
+    "position": "TE",
+    "team": "HOU",
+    "gameKey": "IND@HOU",
+    "points": 12,
+    "stats": {
+     "recYds": 24,
+     "receptions": 4,
+     "recTdLengths": [
+      13
+     ]
+    }
+   },
+   "nflverse:00-0034981": {
+    "key": "nflverse:00-0034981",
+    "name": "Foster Moreau",
+    "position": "TE",
+    "team": "HOU",
+    "gameKey": "IND@HOU",
+    "points": 2,
+    "stats": {
+     "recYds": 8,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0038608": {
+    "key": "nflverse:00-0038608",
+    "name": "Kayshon Boutte",
+    "position": "WR",
+    "team": "HOU",
+    "gameKey": "IND@HOU",
+    "points": 8,
+    "stats": {
+     "recYds": 40,
+     "receptions": 2,
+     "recTdLengths": [
+      24
+     ]
+    }
+   },
+   "nflverse:00-0038977": {
+    "key": "nflverse:00-0038977",
+    "name": "Tank Dell",
+    "position": "WR",
+    "team": "HOU",
+    "gameKey": "IND@HOU",
+    "points": 2.5,
+    "stats": {
+     "recYds": 27,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0032951": {
+    "key": "nflverse:00-0032951",
+    "name": "Laquon Treadwell",
+    "position": "WR",
+    "team": "IND",
+    "gameKey": "IND@HOU",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0040179": {
+    "key": "nflverse:00-0040179",
+    "name": "DJ Giddens",
+    "position": "RB",
+    "team": "IND",
+    "gameKey": "IND@HOU",
+    "points": 0.5,
+    "stats": {
+     "rushYds": 5,
+     "recYds": 11,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0039164": {
+    "key": "nflverse:00-0039164",
+    "name": "Anthony Richardson",
+    "position": "QB",
+    "team": "IND",
+    "gameKey": "IND@HOU",
+    "points": 0,
+    "stats": {
+     "rushYds": 2
+    }
+   },
+   "nflverse:00-0039576": {
+    "key": "nflverse:00-0039576",
+    "name": "Spencer Shrader",
+    "position": "K",
+    "team": "IND",
+    "gameKey": "IND@HOU",
+    "points": 3.4,
+    "stats": {
+     "fgMadeLengths": [
+      34
+     ]
+    }
+   },
+   "nflverse:00-0032726": {
+    "key": "nflverse:00-0032726",
+    "name": "Ka'imi Fairbairn",
+    "position": "K",
+    "team": "HOU",
+    "gameKey": "IND@HOU",
+    "points": 6,
+    "stats": {
+     "extraPoints": 3,
+     "fgMadeLengths": [
+      27
+     ]
+    }
+   }
+  },
+  "defenses": {
+   "HOU": {
+    "team": "HOU",
+    "gameKey": "IND@HOU",
+    "points": 27,
+    "stats": {
+     "opponentPoints": 3,
+     "offensiveTdsAllowed": 0,
+     "passYdsAllowed": 129,
+     "rushYdsAllowed": 38,
+     "sacks": 2,
+     "interceptions": 1,
+     "blockedFgs": 1,
+     "safeties": 1
+    }
+   },
+   "IND": {
+    "team": "IND",
+    "gameKey": "IND@HOU",
+    "points": 4,
+    "stats": {
+     "opponentPoints": 26,
+     "offensiveTdsAllowed": 3,
+     "passYdsAllowed": 187,
+     "rushYdsAllowed": 167,
+     "sacks": 1,
+     "interceptions": 1
+    }
+   }
+  },
+  "unmatched": [],
+  "warnings": []
+ },
+ "autoFinalizeAt": "2026-11-25T04:00:00.000Z"
+}
