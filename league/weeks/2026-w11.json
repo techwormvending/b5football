@@ -1,10 +1,8 @@
 {
  "season": 2026,
  "week": 11,
- "status": "live",
- "missingGames": [
-  "CIN@WAS"
- ],
+ "status": "pending_review",
+ "missingGames": [],
  "diffLog": [
   {
    "at": "2026-11-20T17:47:01.323Z",
@@ -17,14 +15,20 @@
    "kind": "live_vs_final",
    "entries": [],
    "note": "no live numbers were recorded for ARI@KC, BAL@CAR, JAX@NYG, LV@DEN, MIA@BUF, MIN@SF, NO@CHI, NYJ@LAC, PIT@PHI, TB@DET, TEN@DAL"
+  },
+  {
+   "at": "2026-11-24T20:08:33.613Z",
+   "kind": "live_vs_final",
+   "entries": [],
+   "note": "no live numbers were recorded for CIN@WAS"
   }
  ],
- "updatedAt": "2026-11-23T21:20:01.244Z",
+ "updatedAt": "2026-11-24T20:08:33.613Z",
  "final": {
   "season": 2026,
   "week": 11,
   "source": "final",
-  "computedAt": "2026-11-23T21:20:01.244Z",
+  "computedAt": "2026-11-24T20:08:33.613Z",
   "delayed": false,
   "errors": [],
   "games": [
@@ -47,6 +51,16 @@
     "awayScore": 33,
     "status": "final",
     "gameDate": "2026-11-22"
+   },
+   {
+    "gameKey": "CIN@WAS",
+    "sourceGameId": "2026_11_CIN_WAS",
+    "home": "WAS",
+    "away": "CIN",
+    "homeScore": 22,
+    "awayScore": 20,
+    "status": "final",
+    "gameDate": "2026-11-23"
    },
    {
     "gameKey": "IND@HOU",
@@ -742,6 +756,269 @@
      "fgMadeLengths": [
       33,
       37
+     ]
+    }
+   },
+   "nflverse:00-0036442": {
+    "key": "nflverse:00-0036442",
+    "name": "Joe Burrow",
+    "position": "QB",
+    "team": "CIN",
+    "gameKey": "CIN@WAS",
+    "points": 21,
+    "stats": {
+     "passYds": 300,
+     "rushYds": -1,
+     "passTdLengths": [
+      31,
+      4
+     ]
+    }
+   },
+   "nflverse:00-0036900": {
+    "key": "nflverse:00-0036900",
+    "name": "Ja'Marr Chase",
+    "position": "WR",
+    "team": "CIN",
+    "gameKey": "CIN@WAS",
+    "points": 3.5,
+    "stats": {
+     "recYds": 31,
+     "receptions": 5
+    }
+   },
+   "nflverse:00-0038597": {
+    "key": "nflverse:00-0038597",
+    "name": "Chase Brown",
+    "position": "RB",
+    "team": "CIN",
+    "gameKey": "CIN@WAS",
+    "points": 4.5,
+    "stats": {
+     "rushYds": 6,
+     "recYds": 30,
+     "receptions": 5
+    }
+   },
+   "nflverse:00-0039910": {
+    "key": "nflverse:00-0039910",
+    "name": "Jayden Daniels",
+    "position": "QB",
+    "team": "WAS",
+    "gameKey": "CIN@WAS",
+    "points": 9,
+    "stats": {
+     "passYds": 289,
+     "rushYds": 55
+    }
+   },
+   "nflverse:00-0037809": {
+    "key": "nflverse:00-0037809",
+    "name": "Chig Okonkwo",
+    "position": "TE",
+    "team": "WAS",
+    "gameKey": "CIN@WAS",
+    "points": 8,
+    "stats": {
+     "recYds": 66,
+     "receptions": 4
+    }
+   },
+   "nflverse:00-0033526": {
+    "key": "nflverse:00-0033526",
+    "name": "Samaje Perine",
+    "position": "RB",
+    "team": "CIN",
+    "gameKey": "CIN@WAS",
+    "points": 8,
+    "stats": {
+     "rushYds": 26,
+     "recYds": 71,
+     "receptions": 4
+    }
+   },
+   "nflverse:00-0034829": {
+    "key": "nflverse:00-0034829",
+    "name": "Mike Gesicki",
+    "position": "TE",
+    "team": "CIN",
+    "gameKey": "CIN@WAS",
+    "points": 11,
+    "stats": {
+     "recYds": 77,
+     "receptions": 5
+    }
+   },
+   "nflverse:00-0041069": {
+    "key": "nflverse:00-0041069",
+    "name": "Colbie Young",
+    "position": "WR",
+    "team": "CIN",
+    "gameKey": "CIN@WAS",
+    "points": 6.5,
+    "stats": {
+     "recYds": 4,
+     "receptions": 1,
+     "recTdLengths": [
+      4
+     ]
+    }
+   },
+   "nflverse:00-0040242": {
+    "key": "nflverse:00-0040242",
+    "name": "Jacory Croskey-Merritt",
+    "position": "RB",
+    "team": "WAS",
+    "gameKey": "CIN@WAS",
+    "points": 13,
+    "stats": {
+     "rushYds": 54,
+     "recYds": 23,
+     "receptions": 2,
+     "rushTdLengths": [
+      1
+     ]
+    }
+   },
+   "nflverse:00-0041040": {
+    "key": "nflverse:00-0041040",
+    "name": "Antonio Williams",
+    "position": "WR",
+    "team": "WAS",
+    "gameKey": "CIN@WAS",
+    "points": 10.5,
+    "stats": {
+     "recYds": 122,
+     "receptions": 9
+    }
+   },
+   "nflverse:00-0033699": {
+    "key": "nflverse:00-0033699",
+    "name": "Austin Ekeler",
+    "position": "RB",
+    "team": "WAS",
+    "gameKey": "CIN@WAS",
+    "points": 3,
+    "stats": {
+     "rushYds": 41,
+     "recYds": 3,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0041116": {
+    "key": "nflverse:00-0041116",
+    "name": "Jack Endries",
+    "position": "TE",
+    "team": "CIN",
+    "gameKey": "CIN@WAS",
+    "points": 6,
+    "stats": {
+     "recYds": 33,
+     "receptions": 4
+    }
+   },
+   "nflverse:00-0035631": {
+    "key": "nflverse:00-0035631",
+    "name": "Drew Sample",
+    "position": "TE",
+    "team": "CIN",
+    "gameKey": "CIN@WAS",
+    "points": 2,
+    "stats": {
+     "recYds": 9,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0040785": {
+    "key": "nflverse:00-0040785",
+    "name": "Dohnte Meyers",
+    "position": "WR",
+    "team": "CIN",
+    "gameKey": "CIN@WAS",
+    "points": 0.5,
+    "stats": {
+     "recYds": 2,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0031588": {
+    "key": "nflverse:00-0031588",
+    "name": "Stefon Diggs",
+    "position": "WR",
+    "team": "WAS",
+    "gameKey": "CIN@WAS",
+    "points": 3,
+    "stats": {
+     "recYds": 45,
+     "receptions": 4
+    }
+   },
+   "nflverse:00-0036410": {
+    "key": "nflverse:00-0036410",
+    "name": "Tee Higgins",
+    "position": "WR",
+    "team": "CIN",
+    "gameKey": "CIN@WAS",
+    "points": 10,
+    "stats": {
+     "recYds": 43,
+     "receptions": 2,
+     "recTdLengths": [
+      31
+     ]
+    }
+   },
+   "nflverse:00-0037742": {
+    "key": "nflverse:00-0037742",
+    "name": "Treylon Burks",
+    "position": "WR",
+    "team": "WAS",
+    "gameKey": "CIN@WAS",
+    "points": 2,
+    "stats": {
+     "recYds": 30,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0036415": {
+    "key": "nflverse:00-0036415",
+    "name": "Van Jefferson",
+    "position": "WR",
+    "team": "WAS",
+    "gameKey": "CIN@WAS",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0036854": {
+    "key": "nflverse:00-0036854",
+    "name": "Evan McPherson",
+    "position": "K",
+    "team": "CIN",
+    "gameKey": "CIN@WAS",
+    "points": 11.4,
+    "stats": {
+     "fgMadeLengths": [
+      38,
+      56
+     ],
+     "extraPoints": 2
+    }
+   },
+   "nflverse:00-0041182": {
+    "key": "nflverse:00-0041182",
+    "name": "Drew Stevens",
+    "position": "K",
+    "team": "WAS",
+    "gameKey": "CIN@WAS",
+    "points": 18.7,
+    "stats": {
+     "extraPoints": 1,
+     "fgMadeLengths": [
+      36,
+      40,
+      25,
+      41,
+      26
      ]
     }
    },
@@ -3706,6 +3983,30 @@
      "interceptions": 1,
      "safeties": 1,
      "kickReturnTds": 1
+    }
+   },
+   "WAS": {
+    "team": "WAS",
+    "gameKey": "CIN@WAS",
+    "points": 9,
+    "stats": {
+     "opponentPoints": 20,
+     "offensiveTdsAllowed": 2,
+     "passYdsAllowed": 281,
+     "rushYdsAllowed": 31,
+     "sacks": 3
+    }
+   },
+   "CIN": {
+    "team": "CIN",
+    "gameKey": "CIN@WAS",
+    "points": 3,
+    "stats": {
+     "opponentPoints": 22,
+     "offensiveTdsAllowed": 1,
+     "passYdsAllowed": 278,
+     "rushYdsAllowed": 150,
+     "sacks": 3
     }
    },
    "HOU": {
