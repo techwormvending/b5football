@@ -8,3 +8,4 @@
 {"at":"2026-11-04T17:14:01.877Z","actor":"system","action":"auto_finalize_week","season":2026,"week":8,"details":{"autoFinalizeAt":"2026-11-04T04:00:00.000Z"}}
 {"at":"2026-11-11T17:06:13.649Z","actor":"system","action":"auto_finalize_week","season":2026,"week":9,"details":{"autoFinalizeAt":"2026-11-11T04:00:00.000Z"}}
 {"at":"2026-11-18T18:02:13.802Z","actor":"system","action":"auto_finalize_week","season":2026,"week":10,"details":{"autoFinalizeAt":"2026-11-18T04:00:00.000Z"}}
+{"at":"2026-11-25T19:14:24.500Z","actor":"system","action":"auto_finalize_week","season":2026,"week":11,"details":{"autoFinalizeAt":"2026-11-25T04:00:00.000Z"}}

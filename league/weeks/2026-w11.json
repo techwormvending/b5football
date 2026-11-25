@@ -1,7 +1,7 @@
 {
  "season": 2026,
  "week": 11,
- "status": "pending_review",
+ "status": "final",
  "missingGames": [],
  "diffLog": [
   {
@@ -23,12 +23,12 @@
    "note": "no live numbers were recorded for CIN@WAS"
   }
  ],
- "updatedAt": "2026-11-24T20:08:33.613Z",
+ "updatedAt": "2026-11-25T19:14:24.500Z",
  "final": {
   "season": 2026,
   "week": 11,
   "source": "final",
-  "computedAt": "2026-11-24T20:08:33.613Z",
+  "computedAt": "2026-11-25T19:14:24.500Z",
   "delayed": false,
   "errors": [],
   "games": [
@@ -4273,5 +4273,7 @@
   "unmatched": [],
   "warnings": []
  },
- "autoFinalizeAt": "2026-11-25T04:00:00.000Z"
+ "autoFinalizeAt": "2026-11-25T04:00:00.000Z",
+ "finalizedAt": "2026-11-25T19:14:24.500Z",
+ "finalizedBy": "auto"
 }
