@@ -1,0 +1,351 @@
+{
+ "season": 2026,
+ "week": 12,
+ "status": "live",
+ "missingGames": [
+  "ATL@MIN",
+  "BAL@HOU",
+  "CAR@TB",
+  "CHI@DET",
+  "DEN@PIT",
+  "KC@BUF",
+  "LV@CLE",
+  "NE@LAC",
+  "NO@CIN",
+  "NYG@IND",
+  "NYJ@MIA",
+  "PHI@DAL",
+  "SEA@SF",
+  "TEN@JAX",
+  "WAS@ARI"
+ ],
+ "diffLog": [
+  {
+   "at": "2026-11-26T18:59:11.399Z",
+   "kind": "live_vs_final",
+   "entries": [],
+   "note": "no live numbers were recorded for GB@LAR"
+  }
+ ],
+ "updatedAt": "2026-11-26T18:59:11.399Z",
+ "final": {
+  "season": 2026,
+  "week": 12,
+  "source": "final",
+  "computedAt": "2026-11-26T18:59:11.399Z",
+  "delayed": false,
+  "errors": [],
+  "games": [
+   {
+    "gameKey": "GB@LAR",
+    "sourceGameId": "2026_12_GB_LA",
+    "home": "LAR",
+    "away": "GB",
+    "homeScore": 26,
+    "awayScore": 13,
+    "status": "final",
+    "gameDate": "2026-11-25"
+   }
+  ],
+  "players": {
+   "nflverse:00-0036264": {
+    "key": "nflverse:00-0036264",
+    "name": "Jordan Love",
+    "position": "QB",
+    "team": "GB",
+    "gameKey": "GB@LAR",
+    "points": 9,
+    "stats": {
+     "passYds": 198,
+     "rushYds": 7,
+     "interceptionsThrown": 2,
+     "passTdLengths": [
+      6
+     ]
+    }
+   },
+   "nflverse:00-0038124": {
+    "key": "nflverse:00-0038124",
+    "name": "Christian Watson",
+    "position": "WR",
+    "team": "GB",
+    "gameKey": "GB@LAR",
+    "points": 10,
+    "stats": {
+     "recYds": 65,
+     "receptions": 4,
+     "recTdLengths": [
+      6
+     ]
+    }
+   },
+   "nflverse:00-0040009": {
+    "key": "nflverse:00-0040009",
+    "name": "Savion Williams",
+    "position": "WR",
+    "team": "GB",
+    "gameKey": "GB@LAR",
+    "points": 0.5,
+    "stats": {
+     "rushYds": 18,
+     "recYds": 3,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0040948": {
+    "key": "nflverse:00-0040948",
+    "name": "J. Michael Sturdivant",
+    "position": "WR",
+    "team": "GB",
+    "gameKey": "GB@LAR",
+    "points": 0,
+    "stats": {}
+   },
+   "nflverse:00-0039738": {
+    "key": "nflverse:00-0039738",
+    "name": "Blake Corum",
+    "position": "RB",
+    "team": "LAR",
+    "gameKey": "GB@LAR",
+    "points": 23,
+    "stats": {
+     "rushYds": 184,
+     "recYds": 21,
+     "receptions": 2,
+     "rushTdLengths": [
+      1
+     ]
+    }
+   },
+   "nflverse:00-0038359": {
+    "key": "nflverse:00-0038359",
+    "name": "Xavier Smith",
+    "position": "WR",
+    "team": "LAR",
+    "gameKey": "GB@LAR",
+    "points": 0.5,
+    "stats": {
+     "rushYds": 11,
+     "recYds": 4,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0026498": {
+    "key": "nflverse:00-0026498",
+    "name": "Matthew Stafford",
+    "position": "QB",
+    "team": "LAR",
+    "gameKey": "GB@LAR",
+    "points": 1,
+    "stats": {
+     "passYds": 140,
+     "interceptionsThrown": 1
+    }
+   },
+   "nflverse:00-0037840": {
+    "key": "nflverse:00-0037840",
+    "name": "Kyren Williams",
+    "position": "RB",
+    "team": "LAR",
+    "gameKey": "GB@LAR",
+    "points": 12,
+    "stats": {
+     "rushYds": 46,
+     "recYds": 19,
+     "receptions": 4,
+     "rushTdLengths": [
+      7
+     ]
+    }
+   },
+   "nflverse:00-0036244": {
+    "key": "nflverse:00-0036244",
+    "name": "Colby Parkinson",
+    "position": "TE",
+    "team": "LAR",
+    "gameKey": "GB@LAR",
+    "points": 2,
+    "stats": {
+     "recYds": -1,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0040142": {
+    "key": "nflverse:00-0040142",
+    "name": "Kaleb Johnson",
+    "position": "RB",
+    "team": "GB",
+    "gameKey": "GB@LAR",
+    "points": 2.5,
+    "stats": {
+     "rushYds": 13,
+     "recYds": 19,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0038685": {
+    "key": "nflverse:00-0038685",
+    "name": "Chris Brooks",
+    "position": "RB",
+    "team": "GB",
+    "gameKey": "GB@LAR",
+    "points": 4,
+    "stats": {
+     "rushYds": 4,
+     "recYds": 22,
+     "receptions": 4
+    }
+   },
+   "nflverse:00-0038996": {
+    "key": "nflverse:00-0038996",
+    "name": "Tucker Kraft",
+    "position": "TE",
+    "team": "GB",
+    "gameKey": "GB@LAR",
+    "points": 4,
+    "stats": {
+     "recYds": 24,
+     "receptions": 3
+    }
+   },
+   "nflverse:00-0040590": {
+    "key": "nflverse:00-0040590",
+    "name": "Konata Mumpfield",
+    "position": "WR",
+    "team": "LAR",
+    "gameKey": "GB@LAR",
+    "points": 4,
+    "stats": {
+     "recYds": 69,
+     "receptions": 4
+    }
+   },
+   "nflverse:00-0039074": {
+    "key": "nflverse:00-0039074",
+    "name": "Davis Allen",
+    "position": "TE",
+    "team": "LAR",
+    "gameKey": "GB@LAR",
+    "points": 3,
+    "stats": {
+     "recYds": 14,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0033110": {
+    "key": "nflverse:00-0033110",
+    "name": "Tyler Higbee",
+    "position": "TE",
+    "team": "LAR",
+    "gameKey": "GB@LAR",
+    "points": 2,
+    "stats": {
+     "recYds": 14,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0040667": {
+    "key": "nflverse:00-0040667",
+    "name": "Matthew Golden",
+    "position": "WR",
+    "team": "GB",
+    "gameKey": "GB@LAR",
+    "points": 1.5,
+    "stats": {
+     "recYds": 39,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0039811": {
+    "key": "nflverse:00-0039811",
+    "name": "MarShawn Lloyd",
+    "position": "RB",
+    "team": "GB",
+    "gameKey": "GB@LAR",
+    "points": 0.5,
+    "stats": {
+     "rushYds": 10,
+     "recYds": 6,
+     "receptions": 1
+    }
+   },
+   "nflverse:00-0037091": {
+    "key": "nflverse:00-0037091",
+    "name": "Bo Melton",
+    "position": "WR",
+    "team": "GB",
+    "gameKey": "GB@LAR",
+    "points": 1,
+    "stats": {
+     "rushYds": 3,
+     "recYds": 20,
+     "receptions": 2
+    }
+   },
+   "nflverse:00-0029822": {
+    "key": "nflverse:00-0029822",
+    "name": "Brandon McManus",
+    "position": "K",
+    "team": "LAR",
+    "gameKey": "GB@LAR",
+    "points": 17.4,
+    "stats": {
+     "fgMadeLengths": [
+      43,
+      41,
+      40,
+      30
+     ],
+     "extraPoints": 2
+    }
+   },
+   "nflverse:00-0040899": {
+    "key": "nflverse:00-0040899",
+    "name": "Trey Smack",
+    "position": "K",
+    "team": "GB",
+    "gameKey": "GB@LAR",
+    "points": 11.2,
+    "stats": {
+     "fgMadeLengths": [
+      54,
+      48
+     ],
+     "extraPoints": 1
+    }
+   }
+  },
+  "defenses": {
+   "LAR": {
+    "team": "LAR",
+    "gameKey": "GB@LAR",
+    "points": 14,
+    "stats": {
+     "opponentPoints": 13,
+     "offensiveTdsAllowed": 1,
+     "passYdsAllowed": 189,
+     "rushYdsAllowed": 55,
+     "sacks": 1,
+     "interceptions": 2,
+     "fumbleRecoveries": 1
+    }
+   },
+   "GB": {
+    "team": "GB",
+    "gameKey": "GB@LAR",
+    "points": 9,
+    "stats": {
+     "opponentPoints": 26,
+     "offensiveTdsAllowed": 2,
+     "passYdsAllowed": 132,
+     "rushYdsAllowed": 241,
+     "sacks": 1,
+     "interceptions": 1
+    }
+   }
+  },
+  "unmatched": [],
+  "warnings": []
+ },
+ "autoFinalizeAt": "2026-12-02T04:00:00.000Z"
+}
